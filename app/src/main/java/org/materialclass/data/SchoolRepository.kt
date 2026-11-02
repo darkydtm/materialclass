@@ -16,6 +16,7 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
+import java.util.concurrent.CancellationException
 
 internal fun interface IdentityVerifier {
 	fun verifiedAccount(session: UnverifiedSession): AccountId?
@@ -35,6 +36,7 @@ internal data class DiarySnapshot(val diary: Diary, val lastSuccessMillis: Long)
 
 internal sealed class DiaryState {
 	data object Loading : DiaryState()
+	data object Cleared : DiaryState()
 	data class Ready(val snapshot: DiarySnapshot, val staleError: AppError? = null) : DiaryState()
 	data class Error(val error: AppError) : DiaryState()
 }
@@ -54,12 +56,14 @@ internal class SchoolRepository(
 	fun login(username: String, password: CharArray): GatewayResult<Unit> {
 		val revision = coordinator.beginLogin()
 		loginRevision = revision
-		val result = try { gateway.login(username, password) } catch (_: Exception) {
+		val result = try { gateway.login(username, password) } catch (error: CancellationException) {
+			throw error
+		} catch (_: Exception) {
 			GatewayResult.Failure(AppError.UNAVAILABLE)
 		} finally { password.fill('\u0000') }
 		if (result is GatewayResult.Failure) return result
 		val candidate = (result as GatewayResult.Success).value
-		val account = try { verifier.verifiedAccount(candidate) } catch (_: Exception) { null }
+		val account = try { verifier.verifiedAccount(candidate) } catch (error: CancellationException) { throw error } catch (_: Exception) { null }
 		if (candidate.role != "student" || account == null) return GatewayResult.Failure(AppError.UNAVAILABLE)
 		return try {
 			val active = coordinator.activateIfUnchanged(revision, account) ?: return GatewayResult.Failure(AppError.UNAVAILABLE)
@@ -68,7 +72,7 @@ internal class SchoolRepository(
 				remote = candidate
 			} ?: return GatewayResult.Failure(AppError.UNAVAILABLE)
 			GatewayResult.Success(Unit)
-		} catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
+		} catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
 	}
 
 	fun refresh(context: DiaryContext) {
@@ -77,7 +81,7 @@ internal class SchoolRepository(
 			emit(DiaryState.Loading)
 			remote
 		} ?: return
-		val result = try { gateway.diary(authenticated, context) } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
+		val result = try { gateway.diary(authenticated, context) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
 		coordinator.ifActive(active) {
 			if (result is GatewayResult.Failure && result.error == AppError.SESSION_EXPIRED) {
 				remote = null
@@ -99,7 +103,7 @@ internal class SchoolRepository(
 					}
 					is GatewayResult.Failure -> emitFailure(active, context, result.error)
 				}
-			} catch (_: Exception) { emit(DiaryState.Error(AppError.CACHE_UNREADABLE)) }
+			} catch (error: CancellationException) { throw error } catch (_: Exception) { emit(DiaryState.Error(AppError.CACHE_UNREADABLE)) }
 		}
 	}
 
@@ -115,7 +119,7 @@ internal class SchoolRepository(
 		coordinator.ifActive(active) {
 			remote = null
 			session = null
-			coordinator.revokeIfActive(active)
+			try { coordinator.revokeIfActive(active) } finally { emit(DiaryState.Cleared) }
 		}
 	}
 }
