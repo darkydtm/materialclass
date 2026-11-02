@@ -26,6 +26,12 @@ class AccessibilityUiTest {
 		(if (node.isEditable) listOf(node) else emptyList()) +
 			(0 until node.childCount).flatMap { node.getChild(it)?.let { child -> editableNodes(child) } ?: emptyList() }
 
+	private fun clickable(node: AccessibilityNodeInfo): AccessibilityNodeInfo {
+		var current = node
+		while (!current.isClickable && current.parent != null) current = current.parent
+		return current
+	}
+
 	private fun waitFor(text: String): AccessibilityNodeInfo {
 		val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
 		val deadline = SystemClock.uptimeMillis() + 10000
@@ -52,9 +58,10 @@ class AccessibilityUiTest {
 				activity.window.decorView.findFocus().onCreateInputConnection(info)
 			}
 			assertEquals(InputType.TYPE_TEXT_VARIATION_PASSWORD, info.inputType and InputType.TYPE_MASK_VARIATION)
-			val diary = waitFor(context.getString(R.string.diary))
+			val diary = clickable(waitFor(context.getString(R.string.diary)))
 			assertTrue(diary.performAction(AccessibilityNodeInfo.ACTION_CLICK))
-			val selected = waitFor(context.getString(R.string.diary))
+			SystemClock.sleep(300)
+			val selected = clickable(waitFor(context.getString(R.string.diary)))
 			assertNotNull(selected)
 			assertTrue("Current navigation item must be selected", selected.isChecked || selected.isSelected)
 		} finally {
