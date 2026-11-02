@@ -11,6 +11,13 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class LauncherTest {
+	private fun containsVisibleText(node: android.view.accessibility.AccessibilityNodeInfo, text: String): Boolean {
+		if (node.text?.toString() == text && node.isVisibleToUser) return true
+		return (0 until node.childCount).any { index ->
+			node.getChild(index)?.let { containsVisibleText(it, text) } == true
+		}
+	}
+
 	@Test
 	fun displaysAppName() {
 		val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -25,8 +32,7 @@ class LauncherTest {
 			while (!displayed && android.os.SystemClock.uptimeMillis() < deadline) {
 				val root = instrumentation.uiAutomation.rootInActiveWindow
 				observed = root?.toString() ?: "no active root"
-				displayed = root?.findAccessibilityNodeInfosByText(expected)
-					?.any { it.text?.toString() == expected && it.isVisibleToUser } == true
+				displayed = root?.let { containsVisibleText(it, expected) } == true
 				if (!displayed) android.os.SystemClock.sleep(100)
 			}
 			assertTrue("App name must be visible in the launcher: $observed", displayed)
