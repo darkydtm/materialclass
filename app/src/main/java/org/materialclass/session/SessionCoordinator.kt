@@ -20,10 +20,29 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 	companion object {
 		private var active: ActiveSession? = null
 		private var restorationAllowed = true
+		private var revision = 0L
 	}
 
-	fun activate(account: AccountId): ActiveSession = synchronized(StorageLock) {
+	internal fun beginLogin(): Long = synchronized(StorageLock) { revision }
+
+	internal fun activateIfUnchanged(expected: Long, account: AccountId): ActiveSession? = synchronized(StorageLock) {
+		if (revision != expected) return@synchronized null
+		activate(account)
+	}
+
+	internal fun cancelLogin(expected: Long) = synchronized(StorageLock) {
+		if (revision == expected) logout()
+	}
+
+	internal fun revokeIfActive(session: ActiveSession): Boolean = synchronized(StorageLock) {
+		if (active !== session) return@synchronized false
+		logout()
+		true
+	}
+
+	internal fun activate(account: AccountId): ActiveSession = synchronized(StorageLock) {
 		active = null
+		revision++
 		restorationAllowed = false
 		clearSession()
 		ActiveSession(account).also { active = it }
@@ -33,11 +52,12 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		if (active != null || !restorationAllowed) return@synchronized null
 		val restored = account()
 		restorationAllowed = false
-		restored?.let { ActiveSession(it).also { session -> active = session } }
+		restored?.let { revision++; ActiveSession(it).also { session -> active = session } }
 	}
 
 	fun logout() = synchronized(StorageLock) {
 		active = null
+		revision++
 		restorationAllowed = false
 		clearSession()
 	}
