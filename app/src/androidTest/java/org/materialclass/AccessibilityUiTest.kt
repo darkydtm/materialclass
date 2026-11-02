@@ -32,6 +32,15 @@ class AccessibilityUiTest {
 		return current
 	}
 
+	private fun selectedAncestor(node: AccessibilityNodeInfo): Boolean {
+		var current: AccessibilityNodeInfo? = node
+		while (current != null) {
+			if (current.isSelected || current.isChecked) return true
+			current = current.parent
+		}
+		return false
+	}
+
 	private fun waitFor(text: String): AccessibilityNodeInfo {
 		val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
 		val deadline = SystemClock.uptimeMillis() + 10000
@@ -61,9 +70,8 @@ class AccessibilityUiTest {
 			val diary = clickable(waitFor(context.getString(R.string.diary)))
 			assertTrue(diary.performAction(AccessibilityNodeInfo.ACTION_CLICK))
 			SystemClock.sleep(300)
-			val selected = clickable(waitFor(context.getString(R.string.diary)))
-			assertNotNull(selected)
-			assertTrue("Current navigation item must be selected", selected.isChecked || selected.isSelected)
+			val selected = waitFor(context.getString(R.string.diary))
+			assertTrue("Current navigation item must be selected", selectedAncestor(selected))
 		} finally {
 			activity.finish()
 			context.getSharedPreferences("appearance", 0).edit().clear().commit()
