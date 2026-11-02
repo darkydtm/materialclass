@@ -10,6 +10,24 @@ import kotlin.concurrent.thread
 
 class SessionCoordinatorTest {
 	@Test
+	fun recreationCannotReviveAnOldGeneration() {
+		val first = SessionCoordinator()
+		val old = first.activate(AccountId("synthetic-same"))
+		first.logout()
+		val second = SessionCoordinator()
+		second.activate(AccountId("synthetic-same"))
+		assertNull(second.ifActive(old) { "stale" })
+	}
+
+	@Test
+	fun logoutInvalidatesSessionsAcrossInstances() {
+		val first = SessionCoordinator()
+		val old = first.activate(AccountId("synthetic-shared"))
+		SessionCoordinator().logout()
+		assertNull(first.ifActive(old) { "stale" })
+	}
+
+	@Test
 	fun exposesSessionCoordinatorForAccountIsolation() {
 		val coordinator = try {
 			Class.forName("org.materialclass.session.SessionCoordinator")
