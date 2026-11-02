@@ -20,6 +20,26 @@ jobs:
         with:
           packages: platform-tools
       - run: ./gradlew --no-daemon assembleDebug testDebugUnitTest lintDebug
+      - name: Report resolved dependency graphs
+        run: |
+          ./gradlew --no-daemon buildEnvironment
+          ./gradlew --no-daemon :app:dependencies --configuration debugRuntimeClasspath
+          ./gradlew --no-daemon :app:dependencies --configuration debugUnitTestRuntimeClasspath
+          ./gradlew --no-daemon :app:dependencies --configuration debugAndroidTestRuntimeClasspath
+      - name: Check merged manifest SDK floor
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          manifests = list(Path('app/build/intermediates/merged_manifests/debug').rglob('AndroidManifest.xml'))
+          if len(manifests) != 1:
+              raise SystemExit(f'Expected one merged debug manifest, found {len(manifests)}')
+          sdk = ET.parse(manifests[0]).getroot().find('uses-sdk')
+          namespace = '{http://schemas.android.com/apk/res/android}'
+          if sdk is None or sdk.get(namespace + 'minSdkVersion') != '24':
+              raise SystemExit('Unexpected merged minSdkVersion')
+          print('Merged debug manifest minSdkVersion=24')
+          PY
   device:
     if: github.ref == 'refs/heads/ci-android-toolchain'
     runs-on: ubuntu-latest
