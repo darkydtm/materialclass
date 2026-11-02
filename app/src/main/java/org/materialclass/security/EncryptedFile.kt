@@ -36,7 +36,17 @@ internal class EncryptedFile(
 	}
 
 	fun reset() {
-		if (file.exists() && !file.delete()) throw java.io.IOException("Could not delete encrypted file")
-		keys.delete(alias)
+		var failure: Exception? = null
+		try {
+			if (file.exists() && !file.delete()) throw java.io.IOException("Could not delete encrypted file")
+		} catch (error: Exception) {
+			failure = error
+		}
+		try {
+			keys.delete(alias)
+		} catch (error: Exception) {
+			if (failure == null) failure = error else failure.addSuppressed(error)
+		}
+		failure?.let { throw it }
 	}
 }
