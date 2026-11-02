@@ -20,6 +20,28 @@ class StorageSecurityTest {
 	private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
 	@Test
+	fun failedFileDeletionStillDestroysKey() {
+		val alias = "synthetic-delete-failure"
+		val keys = KeystoreKeys()
+		keys.delete(alias)
+		keys.key(alias, true)
+		val directory = File(context.noBackupFilesDir, "synthetic-delete-failure")
+		directory.mkdirs()
+		val child = File(directory, "child")
+		child.writeBytes(byteArrayOf(1))
+		try {
+			EncryptedFile(directory, alias, keys, org.materialclass.cache.CacheFiles(context)).reset()
+			fail("Deletion failure must be reported")
+		} catch (_: java.io.IOException) { }
+		try {
+			keys.key(alias, false)
+			fail("Key must be destroyed even when file deletion fails")
+		} catch (_: StorageUnreadableException) { }
+		child.delete()
+		directory.delete()
+	}
+
+	@Test
 	fun wrongKeyAndInterruptedTemporaryFileDoNotReplaceCache() {
 		val coordinator = SessionCoordinator(context)
 		val cache = EncryptedCache(context, coordinator)
