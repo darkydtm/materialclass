@@ -97,7 +97,7 @@ internal class SchoolRepository(
 							emitFailure(active, context, AppError.INCOMPATIBLE_RESPONSE)
 						} else {
 							val snapshot = DiarySnapshot(result.value, clock())
-							check(cache.write(active, encode(snapshot)))
+							check(cache.write(active, encode(context, snapshot)))
 							emit(DiaryState.Ready(snapshot))
 						}
 					}
@@ -108,7 +108,7 @@ internal class SchoolRepository(
 	}
 
 	private fun emitFailure(active: ActiveSession, context: DiaryContext, error: AppError) {
-		val saved = cache.read(active)?.let { decode(it) }?.takeIf { it.diary.date == context.date }
+		val saved = cache.read(active)?.let { decode(it, context) }?.takeIf { it.diary.date == context.date }
 		emit(if (saved == null) DiaryState.Error(error) else DiaryState.Ready(saved, error))
 	}
 
@@ -124,10 +124,13 @@ internal class SchoolRepository(
 	}
 }
 
-private fun encode(snapshot: DiarySnapshot): ByteArray {
+private fun encode(context: DiaryContext, snapshot: DiarySnapshot): ByteArray {
 	val bytes = ByteArrayOutputStream()
 	DataOutputStream(bytes).use { out ->
-		out.writeInt(1)
+		out.writeInt(2)
+		out.writeLong(context.schoolId)
+		out.writeInt(context.eduYear)
+		out.writeLong(context.groupId)
 		out.writeLong(snapshot.lastSuccessMillis)
 		out.writeUTF(snapshot.diary.date)
 		out.writeInt(snapshot.diary.days.size)
@@ -147,9 +150,13 @@ private fun encode(snapshot: DiarySnapshot): ByteArray {
 	return bytes.toByteArray()
 }
 
-private fun decode(bytes: ByteArray): DiarySnapshot {
+private fun decode(bytes: ByteArray, context: DiaryContext): DiarySnapshot? {
 	val input = DataInputStream(ByteArrayInputStream(bytes))
-	check(input.readInt() == 1)
+	check(input.readInt() == 2)
+	val schoolId = input.readLong()
+	val eduYear = input.readInt()
+	val groupId = input.readLong()
+	if (schoolId != context.schoolId || eduYear != context.eduYear || groupId != context.groupId) return null
 	val time = input.readLong()
 	val date = input.readUTF()
 	fun count(): Int = input.readInt().also { require(it in 0..10000) }
