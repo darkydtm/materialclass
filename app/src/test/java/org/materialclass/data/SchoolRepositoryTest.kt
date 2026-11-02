@@ -97,6 +97,32 @@ class SchoolRepositoryTest {
 	}
 
 	@Test
+	fun olderRefreshCannotOverwriteNewerRefresh() {
+		val entered = CountDownLatch(1); val release = CountDownLatch(1)
+		val gateway = object : SchoolGateway {
+			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", "a", "student"))
+			override fun diary(session: UnverifiedSession, context: DiaryContext): GatewayResult<Diary> {
+				if (Thread.currentThread().name == "older") {
+					entered.countDown()
+					check(release.await(10, TimeUnit.SECONDS))
+					return GatewayResult.Failure(AppError.OFFLINE)
+				}
+				return GatewayResult.Success(Diary(context.date, emptyList()))
+			}
+		}
+		val events = mutableListOf<DiaryState>()
+		val repository = SchoolRepository(gateway, IdentityVerifier { AccountId("a") }, SessionCoordinator { }, FakeCache(), { 1234L }, events::add)
+		repository.login("synthetic", charArrayOf('x'))
+		val worker = thread(name = "older") { repository.refresh(context) }
+		check(entered.await(10, TimeUnit.SECONDS))
+		repository.refresh(context)
+		release.countDown(); worker.join(10000)
+		assertFalse(worker.isAlive)
+		assertNull((events.last() as DiaryState.Ready).staleError)
+		repository.logout()
+	}
+
+	@Test
 	fun offlineDoesNotReadAnotherSchoolContext() {
 		val gateway = FakeGateway(); val events = mutableListOf<DiaryState>()
 		val repository = repository(gateway, FakeCache(), events)
