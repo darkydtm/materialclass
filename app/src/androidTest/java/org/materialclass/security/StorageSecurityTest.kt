@@ -20,6 +20,32 @@ class StorageSecurityTest {
 	private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
 	@Test
+	fun restoresEncryptedSessionAfterProcessRecreation() {
+		val coordinator = SessionCoordinator(context)
+		val store = SessionStore(context, coordinator)
+		val old = coordinator.activate(AccountId("synthetic-restored-account"))
+		assertTrue(store.write(old, "synthetic-restored-token".toByteArray()))
+		val bytes = File(context.noBackupFilesDir, "session").readBytes().toString(Charsets.ISO_8859_1)
+		assertFalse(bytes.contains("synthetic-restored-account"))
+		assertFalse(bytes.contains("synthetic-restored-token"))
+		val active = SessionCoordinator::class.java.getDeclaredField("active")
+		active.isAccessible = true
+		active.set(null, null)
+		val restarted = SessionCoordinator(context)
+		val restoredStore = SessionStore(context, restarted)
+		val restore = try { SessionStore::class.java.getMethod("restore") } catch (_: NoSuchMethodException) { null }
+		assertNotNull("Session restore must be available", restore)
+		val restored = restore!!.invoke(restoredStore) as org.materialclass.session.ActiveSession?
+		assertNotNull(restored)
+		assertEquals(AccountId("synthetic-restored-account"), restored!!.account)
+		assertArrayEquals("synthetic-restored-token".toByteArray(), restoredStore.read(restored))
+		assertNull(restarted.ifActive(old) { "stale" })
+		restarted.logout()
+		assertNull(restore.invoke(restoredStore))
+		assertFalse(store.write(old, byteArrayOf(9)))
+	}
+
+	@Test
 	fun failedFileDeletionStillDestroysKey() {
 		val alias = "synthetic-delete-failure"
 		val keys = KeystoreKeys()
