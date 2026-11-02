@@ -27,6 +27,11 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		ActiveSession(account).also { active = it }
 	}
 
+	internal fun restore(account: () -> AccountId?): ActiveSession? = synchronized(StorageLock) {
+		if (active != null) return@synchronized null
+		account()?.let { ActiveSession(it).also { session -> active = session } }
+	}
+
 	fun logout() = synchronized(StorageLock) {
 		active = null
 		clearSession()
