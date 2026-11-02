@@ -25,6 +25,8 @@ class StorageSecurityTest {
 		val store = SessionStore(context, coordinator)
 		val old = coordinator.activate(AccountId("synthetic-restored-account"))
 		assertTrue(store.write(old, "synthetic-restored-token".toByteArray()))
+		val cache = EncryptedCache(context, coordinator)
+		cache.write(old, byteArrayOf(3, 4))
 		val bytes = File(context.noBackupFilesDir, "session").readBytes().toString(Charsets.ISO_8859_1)
 		assertFalse(bytes.contains("synthetic-restored-account"))
 		assertFalse(bytes.contains("synthetic-restored-token"))
@@ -42,10 +44,16 @@ class StorageSecurityTest {
 		assertNotNull(restored)
 		assertEquals(AccountId("synthetic-restored-account"), restored!!.account)
 		assertArrayEquals("synthetic-restored-token".toByteArray(), restoredStore.read(restored))
+		assertArrayEquals(byteArrayOf(3, 4), EncryptedCache(context, restarted).read(restored))
+		assertNull(restore.invoke(restoredStore))
 		assertNull(restarted.ifActive(old) { "stale" })
+		val emitted = mutableListOf<String>()
 		restarted.logout()
+		assertNull(restarted.ifActive(restored) { emitted.add("stale") })
+		assertTrue(emitted.isEmpty())
 		assertNull(restore.invoke(restoredStore))
 		assertFalse(store.write(old, byteArrayOf(9)))
+		cache.clearAll()
 	}
 
 	@Test
