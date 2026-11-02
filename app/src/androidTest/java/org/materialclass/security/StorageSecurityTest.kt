@@ -57,6 +57,24 @@ class StorageSecurityTest {
 	}
 
 	@Test
+	fun logoutDeletesSessionKeyWhenTemporaryDirectoryIsBlocked() {
+		val coordinator = SessionCoordinator(context)
+		val store = SessionStore(context, coordinator)
+		val session = coordinator.activate(AccountId("synthetic-blocked-temporary"))
+		store.write(session, byteArrayOf(1))
+		val temporary = File(context.noBackupFilesDir, "storage-tmp")
+		check(temporary.delete())
+		temporary.writeBytes(byteArrayOf(1))
+		try {
+			try { coordinator.logout() } catch (_: Exception) { }
+			try { KeystoreKeys().key("session", false); fail("Session key must be deleted") } catch (_: StorageUnreadableException) { }
+		} finally {
+			temporary.delete()
+			coordinator.logout()
+		}
+	}
+
+	@Test
 	fun clearAllDestroysCacheKeysAfterFileDeletionFailure() {
 		val cache = EncryptedCache(context, SessionCoordinator(context))
 		cache.clearAll()
