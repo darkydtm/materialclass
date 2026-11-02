@@ -22,7 +22,7 @@ class SessionStore(context: Context, private val coordinator: SessionCoordinator
 
 	companion object {
 		private fun syncDirectory(directory: File) {
-			val descriptor = Os.open(directory.absolutePath, OsConstants.O_RDONLY or OsConstants.O_DIRECTORY, 0)
+			val descriptor = Os.open(directory.absolutePath, OsConstants.O_RDONLY, 0)
 			try { Os.fsync(descriptor) } finally { Os.close(descriptor) }
 		}
 
