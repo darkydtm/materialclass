@@ -57,6 +57,26 @@ class StorageSecurityTest {
 	}
 
 	@Test
+	fun clearAllDestroysCacheKeysAfterFileDeletionFailure() {
+		val cache = EncryptedCache(context, SessionCoordinator(context))
+		cache.clearAll()
+		val keys = KeystoreKeys()
+		keys.key("cache-synthetic-clear-failure", true)
+		val directory = File(context.filesDir, "backup-cache/synthetic-blocked")
+		check(directory.mkdir())
+		val child = File(directory, "child")
+		child.writeBytes(byteArrayOf(1))
+		try {
+			try { cache.clearAll(); fail("Failure must be reported") } catch (_: java.io.IOException) { }
+			try { keys.key("cache-synthetic-clear-failure", false); fail("Cache key must be deleted") } catch (_: StorageUnreadableException) { }
+		} finally {
+			child.delete()
+			directory.delete()
+			cache.clearAll()
+		}
+	}
+
+	@Test
 	fun failedFileDeletionStillDestroysKey() {
 		val alias = "synthetic-delete-failure"
 		val keys = KeystoreKeys()
