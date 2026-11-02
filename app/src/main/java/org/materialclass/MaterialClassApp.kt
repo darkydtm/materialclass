@@ -3,6 +3,13 @@ package org.materialclass
 import android.content.res.Configuration
 import android.os.Build
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -67,11 +74,10 @@ internal fun MaterialClassApp(example: ExampleData? = null) {
 						Text(stringResource(R.string.warning_text))
 						TextButton(onClick = { warning = false; preferences.edit().putBoolean("warning_seen", true).apply() }) { Text(stringResource(R.string.ok)) }
 					}
-					Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-						TextButton(onClick = { screen = "login" }) { Text(stringResource(R.string.login)) }
-						TextButton(onClick = { screen = "diary" }) { Text(stringResource(R.string.diary)) }
-						TextButton(onClick = { screen = "schedule" }) { Text(stringResource(R.string.schedule)) }
-						TextButton(onClick = { screen = "settings" }) { Text(stringResource(R.string.settings)) }
+					Row(modifier = Modifier.horizontalScroll(rememberScrollState()).selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+						listOf("login" to R.string.login, "diary" to R.string.diary, "schedule" to R.string.schedule, "settings" to R.string.settings).forEach { (value, label) ->
+							TextButton(onClick = { screen = value }, modifier = Modifier.semantics { selected = screen == value; role = Role.Tab }) { Text(stringResource(label)) }
+						}
 					}
 					when (screen) {
 						"login" -> LoginScreen()
@@ -84,12 +90,16 @@ internal fun MaterialClassApp(example: ExampleData? = null) {
 						}
 						"settings" -> {
 							Text(stringResource(R.string.language), style = MaterialTheme.typography.titleLarge)
-							listOf("system" to R.string.system, "ru" to R.string.russian, "kk" to R.string.kazakh, "en" to R.string.english).forEach { (value, label) ->
-								TextButton(onClick = { language = value; preferences.edit().putString("language", value).apply() }) { Text((if (language == value) "✓ " else "") + stringResource(label)) }
+							Column(Modifier.selectableGroup()) {
+								listOf("system" to R.string.system, "ru" to R.string.russian, "kk" to R.string.kazakh, "en" to R.string.english).forEach { (value, label) ->
+									TextButton(onClick = { language = value; preferences.edit().putString("language", value).apply() }, modifier = Modifier.semantics { selected = language == value; role = Role.RadioButton }) { Text((if (language == value) "✓ " else "") + stringResource(label)) }
+								}
 							}
 							Text(stringResource(R.string.theme), style = MaterialTheme.typography.titleLarge)
-							listOf("system" to R.string.system, "light" to R.string.light, "dark" to R.string.dark, "black" to R.string.black).forEach { (value, label) ->
-								TextButton(onClick = { theme = value; preferences.edit().putString("theme", value).apply() }) { Text((if (theme == value) "✓ " else "") + stringResource(label)) }
+							Column(Modifier.selectableGroup()) {
+								listOf("system" to R.string.system, "light" to R.string.light, "dark" to R.string.dark, "black" to R.string.black).forEach { (value, label) ->
+									TextButton(onClick = { theme = value; preferences.edit().putString("theme", value).apply() }, modifier = Modifier.semantics { selected = theme == value; role = Role.RadioButton }) { Text((if (theme == value) "✓ " else "") + stringResource(label)) }
+								}
 							}
 							var clearStatus by remember { mutableStateOf<Int?>(null) }
 							Button(onClick = {
@@ -110,6 +120,6 @@ private fun LoginScreen() {
 	var password by remember { mutableStateOf("") }
 	Text(stringResource(R.string.login), style = MaterialTheme.typography.headlineSmall)
 	OutlinedTextField(value = login, onValueChange = { login = it }, label = { Text(stringResource(R.string.username)) }, singleLine = true)
-	OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text(stringResource(R.string.password)) }, singleLine = true, visualTransformation = PasswordVisualTransformation())
+	OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text(stringResource(R.string.password)) }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), visualTransformation = PasswordVisualTransformation())
 	Button(onClick = {}, enabled = false) { Text(stringResource(R.string.sign_in)) }
 }

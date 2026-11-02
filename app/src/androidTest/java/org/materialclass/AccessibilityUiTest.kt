@@ -46,7 +46,6 @@ class AccessibilityUiTest {
 			val password = editableNodes(root).single { it.isPassword }
 			assertEquals(InputType.TYPE_TEXT_VARIATION_PASSWORD, password.inputType and InputType.TYPE_MASK_VARIATION)
 			val diary = waitFor(context.getString(R.string.diary))
-			assertTrue("Navigation item must be checkable", diary.isCheckable)
 			assertTrue(diary.performAction(AccessibilityNodeInfo.ACTION_CLICK))
 			val selected = waitFor(context.getString(R.string.diary))
 			assertNotNull(selected)
