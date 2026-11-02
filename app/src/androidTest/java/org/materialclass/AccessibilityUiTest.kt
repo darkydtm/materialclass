@@ -71,9 +71,14 @@ class AccessibilityUiTest {
 			SystemClock.sleep(500)
 			val diary = clickable(waitFor(context.getString(R.string.diary)))
 			assertTrue(diary.performAction(AccessibilityNodeInfo.ACTION_CLICK))
-			SystemClock.sleep(300)
-			val selected = waitFor(context.getString(R.string.diary))
-			assertTrue("Current navigation item must be selected", selectedAncestor(selected))
+			val deadline = SystemClock.uptimeMillis() + 5000
+			var selected = false
+			while (!selected && SystemClock.uptimeMillis() < deadline) {
+				val rootAfterClick = InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
+				selected = rootAfterClick?.let { find(it, context.getString(R.string.diary)) }?.let { selectedAncestor(it) } == true
+				if (!selected) SystemClock.sleep(100)
+			}
+			assertTrue("Current navigation item must be selected", selected)
 		} finally {
 			activity.finish()
 			context.getSharedPreferences("appearance", 0).edit().clear().commit()
