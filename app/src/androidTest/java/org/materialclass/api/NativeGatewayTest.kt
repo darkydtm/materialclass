@@ -46,6 +46,17 @@ class NativeGatewayTest {
 	}
 
 	@Test
+	fun mapsOnlyExplicitUnambiguousSchoolContext() {
+		val user = """{"success":true,"access_token":"token","user_info":{"role":"student","school_id":1,"group":{"id":2},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}}"""
+		val session = (NativeGateway(Exchange { Response(200, user) }).login("x", charArrayOf('x')) as GatewayResult.Success).value
+		assertEquals(2026, session.context!!.eduYear)
+		assertEquals(1L, session.context!!.schoolId)
+		val ambiguous = user.replace("[{\"isCurrent\":true,\"eduYear\":2026}]", "[{\"isCurrent\":true,\"eduYear\":2026},{\"isCurrent\":true,\"eduYear\":2025}]")
+		val other = (NativeGateway(Exchange { Response(200, ambiguous) }).login("x", charArrayOf('x')) as GatewayResult.Success).value
+		assertNull(other.context)
+	}
+
+	@Test
 	fun rejectsMalformedResponsesAndUnrecognizedRoles() {
 		for (response in listOf("{}", loginResponse.replace("student", "parent"), loginResponse.replace("true", "\"true\""))) {
 			assertTrue(NativeGateway(Exchange { Response(200, response) }).login("x", charArrayOf('x')) is GatewayResult.Failure)

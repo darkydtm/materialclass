@@ -22,9 +22,15 @@ class UnverifiedSession internal constructor(
 	internal val token: String,
 	val identityCandidate: String?,
 	val role: String,
+	val context: SchoolContext? = null,
 ) {
 	val identityVerified: Boolean = false
 	override fun toString(): String = "UnverifiedSession([redacted])"
+}
+
+class SchoolContext(val schoolId: Long, val eduYear: Int, val groupId: Long) {
+	fun diary(date: String): DiaryContext = DiaryContext(schoolId, eduYear, groupId, date)
+	override fun toString(): String = "SchoolContext([redacted])"
 }
 
 class DiaryContext(val schoolId: Long, val eduYear: Int, val groupId: Long, val date: String) {
@@ -63,7 +69,7 @@ class NativeGateway internal constructor(private val exchange: Exchange) : Schoo
 			if (role != "student") return GatewayResult.Failure(AppError.FORBIDDEN)
 			val candidate = user.opt("userId")
 			val id = if (candidate is Int || candidate is Long) candidate.toString() else null
-			GatewayResult.Success(UnverifiedSession(token, id, role))
+			GatewayResult.Success(UnverifiedSession(token, id, role, schoolContext(user)))
 		} catch (_: SocketTimeoutException) {
 			GatewayResult.Failure(AppError.TIMEOUT)
 		} catch (_: java.io.IOException) {
@@ -135,6 +141,23 @@ internal class HttpsExchange : Exchange {
 			connection.disconnect()
 		}
 	}
+}
+
+private fun schoolContext(user: JSONObject): SchoolContext? {
+	val schoolId = user.opt("school_id").integerValue() ?: return null
+	val groupId = user.optJSONObject("group")?.opt("id").integerValue() ?: return null
+	val years = user.optJSONObject("school")?.optJSONArray("eduYears") ?: return null
+	val current = (0 until years.length()).mapNotNull { years.optJSONObject(it) }.filter { it.opt("isCurrent") == true }
+	if (current.size != 1) return null
+	val year = current.single().opt("eduYear").integerValue() ?: return null
+	if (schoolId <= 0 || groupId <= 0 || year <= 0 || year > Int.MAX_VALUE) return null
+	return SchoolContext(schoolId, year.toInt(), groupId)
+}
+
+private fun Any?.integerValue(): Long? = when (this) {
+	is Int -> toLong()
+	is Long -> this
+	else -> null
 }
 
 private fun JSONObject.strictString(key: String): String = (get(key) as? String)?.takeIf { it.isNotEmpty() } ?: throw IllegalArgumentException()
