@@ -10,6 +10,22 @@ import kotlin.concurrent.thread
 
 class SessionCoordinatorTest {
 	@Test
+	fun retriesRestorationAfterTransientFailure() {
+		val active = SessionCoordinator::class.java.getDeclaredField("active")
+		active.isAccessible = true
+		active.set(null, null)
+		val allowed = SessionCoordinator::class.java.getDeclaredField("restorationAllowed")
+		allowed.isAccessible = true
+		allowed.setBoolean(null, true)
+		val coordinator = SessionCoordinator { }
+		try {
+			coordinator.restore { throw IllegalStateException("synthetic transient failure") }
+			throw AssertionError("Failure must be reported")
+		} catch (_: IllegalStateException) { }
+		assertEquals(AccountId("synthetic-retry"), coordinator.restore { AccountId("synthetic-retry") }?.account)
+		coordinator.logout()
+	}
+	@Test
 	fun failedLogoutCannotRestoreSessionInSameProcess() {
 		var fail = false
 		val coordinator = SessionCoordinator { if (fail) throw IllegalStateException("synthetic failure") }
