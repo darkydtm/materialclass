@@ -3,6 +3,7 @@ package org.materialclass
 import android.content.res.Configuration
 import android.os.Build
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.semantics.Role
@@ -76,7 +77,7 @@ internal fun MaterialClassApp(example: ExampleData? = null) {
 					}
 					Row(modifier = Modifier.horizontalScroll(rememberScrollState()).selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
 						listOf("login" to R.string.login, "diary" to R.string.diary, "schedule" to R.string.schedule, "settings" to R.string.settings).forEach { (value, label) ->
-							TextButton(onClick = { screen = value }, modifier = Modifier.semantics { selected = screen == value; role = Role.Tab }) { Text(stringResource(label)) }
+							Box(Modifier.selectable(selected = screen == value, role = Role.Tab, onClick = { screen = value }).padding(12.dp)) { Text(stringResource(label)) }
 						}
 					}
 					when (screen) {
