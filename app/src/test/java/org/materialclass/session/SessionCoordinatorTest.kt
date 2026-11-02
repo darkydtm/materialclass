@@ -10,6 +10,43 @@ import kotlin.concurrent.thread
 
 class SessionCoordinatorTest {
 	@Test
+	fun clearingFailureLeavesSessionInvalid() {
+		var fail = false
+		val coordinator = SessionCoordinator { if (fail) throw IllegalStateException("synthetic failure") }
+		val old = coordinator.activate(AccountId("synthetic-failure"))
+		fail = true
+		try {
+			coordinator.logout()
+			throw AssertionError("Logout must report a clear failure")
+		} catch (_: IllegalStateException) { }
+		assertNull(coordinator.ifActive(old) { "stale" })
+	}
+
+	@Test
+	fun logoutWaitsForOngoingWrite() {
+		val first = SessionCoordinator { }
+		val second = SessionCoordinator { }
+		val session = first.activate(AccountId("synthetic-serialization"))
+		val entered = CountDownLatch(1)
+		val release = CountDownLatch(1)
+		val done = CountDownLatch(1)
+		val writer = thread {
+			first.ifActive(session) {
+				entered.countDown()
+				check(release.await(10, TimeUnit.SECONDS))
+			}
+		}
+		check(entered.await(10, TimeUnit.SECONDS))
+		val logout = thread { second.logout(); done.countDown() }
+		assertEquals(false, done.await(100, TimeUnit.MILLISECONDS))
+		release.countDown()
+		writer.join(10000)
+		logout.join(10000)
+		assertEquals(0L, done.count)
+		assertNull(first.ifActive(session) { "stale" })
+	}
+
+	@Test
 	fun recreationCannotReviveAnOldGeneration() {
 		val first = SessionCoordinator { }
 		val old = first.activate(AccountId("synthetic-same"))

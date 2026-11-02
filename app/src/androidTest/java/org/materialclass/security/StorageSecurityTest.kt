@@ -20,6 +20,30 @@ class StorageSecurityTest {
 	private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
 	@Test
+	fun wrongKeyAndInterruptedTemporaryFileDoNotReplaceCache() {
+		val coordinator = SessionCoordinator(context)
+		val cache = EncryptedCache(context, coordinator)
+		cache.clearAll()
+		val account = AccountId("synthetic-wrong-key")
+		val session = coordinator.activate(account)
+		cache.write(session, byteArrayOf(4, 5))
+		val id = KeystoreKeys().namespace(account.value, false)
+		val disk = File(context.filesDir, "backup-cache/$id")
+		val bytes = disk.readBytes()
+		val tempDir = File(context.noBackupFilesDir, "storage-tmp")
+		val interrupted = File(tempDir, "synthetic-interrupted.tmp")
+		interrupted.writeBytes(byteArrayOf(1, 2, 3))
+		assertArrayEquals(byteArrayOf(4, 5), EncryptedCache(context, SessionCoordinator(context)).read(session))
+		KeystoreKeys().delete("cache-$id")
+		KeystoreKeys().key("cache-$id", true)
+		try { cache.write(session, byteArrayOf(6)); fail("Wrong key must fail") } catch (_: StorageUnreadableException) { }
+		assertArrayEquals(bytes, disk.readBytes())
+		assertTrue(interrupted.delete())
+		cache.clearAll()
+		coordinator.logout()
+	}
+
+	@Test
 	fun restoredCacheWithoutNamespaceKeyIsPreservedUntilAnonymousReset() {
 		val coordinator = SessionCoordinator(context)
 		val cache = EncryptedCache(context, coordinator)
