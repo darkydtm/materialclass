@@ -67,6 +67,8 @@ class AccessibilityUiTest {
 				activity.window.decorView.findFocus().onCreateInputConnection(info)
 			}
 			assertEquals(InputType.TYPE_TEXT_VARIATION_PASSWORD, info.inputType and InputType.TYPE_MASK_VARIATION)
+			InstrumentationRegistry.getInstrumentation().uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+			SystemClock.sleep(500)
 			val diary = clickable(waitFor(context.getString(R.string.diary)))
 			assertTrue(diary.performAction(AccessibilityNodeInfo.ACTION_CLICK))
 			SystemClock.sleep(300)
