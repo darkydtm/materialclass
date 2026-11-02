@@ -19,4 +19,3 @@ activity-compose = { module = "androidx.activity:activity-compose", version.ref 
 junit = { module = "junit:junit", version.ref = "junit" }
 androidx-junit = { module = "androidx.test.ext:junit", version.ref = "androidx-junit" }
 androidx-runner = { module = "androidx.test:runner", version.ref = "androidx-runner" }
-compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }

@@ -4,22 +4,33 @@ import android.content.Intent
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onNodeWithText
 import org.junit.Assert.assertFalse
-import org.junit.Rule
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class LauncherTest {
-	@get:Rule
-	val compose = createAndroidComposeRule<MainActivity>()
-
 	@Test
 	fun displaysAppName() {
-		compose.onNodeWithText(compose.activity.getString(R.string.app_name)).assertIsDisplayed()
+		val instrumentation = InstrumentationRegistry.getInstrumentation()
+		val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+		val intent = Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+		val activity = instrumentation.startActivitySync(intent)
+		try {
+			val expected = context.getString(R.string.app_name)
+			val deadline = android.os.SystemClock.uptimeMillis() + 10000
+			var displayed = false
+			while (!displayed && android.os.SystemClock.uptimeMillis() < deadline) {
+				val root = instrumentation.uiAutomation.rootInActiveWindow
+				displayed = root?.findAccessibilityNodeInfosByText(expected)
+					?.any { it.text?.toString() == expected && it.isVisibleToUser } == true
+				if (!displayed) android.os.SystemClock.sleep(100)
+			}
+			assertTrue("App name must be visible in the launcher", displayed)
+		} finally {
+			activity.finish()
+		}
 	}
 
 	@Test
