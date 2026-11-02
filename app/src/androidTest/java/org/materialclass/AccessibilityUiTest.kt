@@ -1,0 +1,54 @@
+package org.materialclass
+
+import android.content.Context
+import android.content.Intent
+import android.os.SystemClock
+import android.text.InputType
+import android.view.accessibility.AccessibilityNodeInfo
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.junit.runner.RunWith
+
+@RunWith(AndroidJUnit4::class)
+class AccessibilityUiTest {
+	private fun find(node: AccessibilityNodeInfo, text: String): AccessibilityNodeInfo? {
+		if (node.text?.toString() == text) return node
+		return (0 until node.childCount).firstNotNullOfOrNull { node.getChild(it)?.let { child -> find(child, text) } }
+	}
+
+	private fun waitFor(text: String): AccessibilityNodeInfo {
+		val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+		val deadline = SystemClock.uptimeMillis() + 10000
+		while (SystemClock.uptimeMillis() < deadline) {
+			automation.rootInActiveWindow?.let { find(it, text) }?.let { return it }
+			SystemClock.sleep(100)
+		}
+		throw AssertionError("Missing accessibility node: $text")
+	}
+
+	@Test
+	fun passwordRequestsPasswordKeyboardAndNavigationExposesSelection() {
+		val context = ApplicationProvider.getApplicationContext<Context>()
+		context.getSharedPreferences("appearance", 0).edit().clear().putBoolean("warning_seen", true).commit()
+		val activity = InstrumentationRegistry.getInstrumentation().startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+		try {
+			val password = waitFor(context.getString(R.string.password))
+			assertTrue(password.isPassword)
+			assertEquals(InputType.TYPE_TEXT_VARIATION_PASSWORD, password.inputType and InputType.TYPE_MASK_VARIATION)
+			val diary = waitFor(context.getString(R.string.diary))
+			assertTrue("Navigation item must be checkable", diary.isCheckable)
+			assertTrue(diary.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+			val selected = waitFor(context.getString(R.string.diary))
+			assertNotNull(selected)
+			assertTrue("Current navigation item must be selected", selected.isChecked || selected.isSelected)
+		} finally {
+			activity.finish()
+			context.getSharedPreferences("appearance", 0).edit().clear().commit()
+		}
+	}
+}
