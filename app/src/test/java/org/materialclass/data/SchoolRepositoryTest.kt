@@ -97,6 +97,17 @@ class SchoolRepositoryTest {
 	}
 
 	@Test
+	fun offlineDoesNotReadAnotherSchoolContext() {
+		val gateway = FakeGateway(); val events = mutableListOf<DiaryState>()
+		val repository = repository(gateway, FakeCache(), events)
+		repository.login("synthetic", charArrayOf('x'))
+		repository.refresh(context)
+		gateway.result = GatewayResult.Failure(AppError.OFFLINE)
+		repository.refresh(DiaryContext(9, 2026, 2, context.date))
+		assertTrue(events.last() is DiaryState.Error)
+	}
+
+	@Test
 	fun offlineWithoutCacheIsErrorNotEmptySuccess() {
 		val gateway = FakeGateway(); gateway.result = GatewayResult.Failure(AppError.OFFLINE)
 		val events = mutableListOf<DiaryState>(); val repository = repository(gateway, FakeCache(), events)
