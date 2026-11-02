@@ -13,5 +13,10 @@ class AppErrorTest {
 			emptyList()
 		}
 		assertTrue("AppError must expose OFFLINE", "OFFLINE" in names)
+		val expected = setOf(
+			"OFFLINE", "TIMEOUT", "INVALID_CREDENTIALS", "SESSION_EXPIRED", "FORBIDDEN",
+			"SERVER", "INCOMPATIBLE_RESPONSE", "UNAVAILABLE", "CACHE_UNREADABLE"
+		)
+		assertTrue("AppError categories must match the contract", names.toSet() == expected)
 	}
 }
