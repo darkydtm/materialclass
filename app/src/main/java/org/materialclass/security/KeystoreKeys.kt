@@ -56,6 +56,12 @@ internal class KeystoreKeys {
 
 	fun deleteCacheKeys() = synchronized(StorageLock) {
 		val aliases = store.aliases().toList().filter { it.startsWith("cache-") }
-		aliases.forEach { store.deleteEntry(it) }
+		var failure: Exception? = null
+		aliases.forEach {
+			try { store.deleteEntry(it) } catch (error: Exception) {
+				if (failure == null) failure = error else failure?.addSuppressed(error)
+			}
+		}
+		failure?.let { throw it }
 	}
 }

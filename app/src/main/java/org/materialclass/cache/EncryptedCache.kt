@@ -10,7 +10,7 @@ import org.materialclass.session.SessionCoordinator
 import java.io.File
 
 class EncryptedCache(context: Context, private val coordinator: SessionCoordinator) {
-	private val files = CacheFiles(context)
+	private val files by lazy { CacheFiles(context) }
 	private val keys = KeystoreKeys()
 
 	private fun file(session: ActiveSession): EncryptedFile {
@@ -33,10 +33,24 @@ class EncryptedCache(context: Context, private val coordinator: SessionCoordinat
 	fun reset(session: ActiveSession): Boolean = coordinator.ifActive(session) { file(session).reset(); true } ?: false
 
 	fun clearAll() = synchronized(StorageLock) {
-		val entries = files.directory.listFiles() ?: throw IOException("Could not list cache")
-		for (entry in entries) {
-			if (!entry.isFile || !entry.delete()) throw IOException("Could not delete cache")
+		var failure: Exception? = null
+		try {
+			val entries = files.directory.listFiles() ?: throw IOException("Could not list cache")
+			for (entry in entries) {
+				try {
+					if (!entry.isFile || !entry.delete()) throw IOException("Could not delete cache")
+				} catch (error: Exception) {
+					if (failure == null) failure = error else failure.addSuppressed(error)
+				}
+			}
+		} catch (error: Exception) {
+			failure = error
 		}
-		keys.deleteCacheKeys()
+		try {
+			keys.deleteCacheKeys()
+		} catch (error: Exception) {
+			if (failure == null) failure = error else failure.addSuppressed(error)
+		}
+		failure?.let { throw it }
 	}
 }
