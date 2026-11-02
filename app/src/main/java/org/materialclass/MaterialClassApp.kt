@@ -2,6 +2,7 @@ package org.materialclass
 
 import android.content.res.Configuration
 import android.os.Build
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -42,7 +43,7 @@ internal fun MaterialClassApp(example: ExampleData? = null) {
 	val systemConfiguration = LocalConfiguration.current
 	val localized = remember(language, systemConfiguration) {
 		if (language == "system") base else {
-			val configuration = Configuration(base.resources.configuration)
+			val configuration = Configuration(systemConfiguration)
 			configuration.setLocale(Locale.forLanguageTag(language))
 			base.createConfigurationContext(configuration)
 		}
@@ -66,7 +67,7 @@ internal fun MaterialClassApp(example: ExampleData? = null) {
 						Text(stringResource(R.string.warning_text))
 						TextButton(onClick = { warning = false; preferences.edit().putBoolean("warning_seen", true).apply() }) { Text(stringResource(R.string.ok)) }
 					}
-					Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+					Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
 						TextButton(onClick = { screen = "login" }) { Text(stringResource(R.string.login)) }
 						TextButton(onClick = { screen = "diary" }) { Text(stringResource(R.string.diary)) }
 						TextButton(onClick = { screen = "schedule" }) { Text(stringResource(R.string.schedule)) }
