@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.SystemClock
 import android.text.InputType
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.inputmethod.EditorInfo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -44,7 +45,13 @@ class AccessibilityUiTest {
 			waitFor(context.getString(R.string.password))
 			val root = InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
 			val password = editableNodes(root).single { it.isPassword }
-			assertEquals(InputType.TYPE_TEXT_VARIATION_PASSWORD, password.inputType and InputType.TYPE_MASK_VARIATION)
+			assertTrue(password.performAction(AccessibilityNodeInfo.ACTION_FOCUS))
+			SystemClock.sleep(500)
+			val info = EditorInfo()
+			InstrumentationRegistry.getInstrumentation().runOnMainSync {
+				activity.window.decorView.findFocus().onCreateInputConnection(info)
+			}
+			assertEquals(InputType.TYPE_TEXT_VARIATION_PASSWORD, info.inputType and InputType.TYPE_MASK_VARIATION)
 			val diary = waitFor(context.getString(R.string.diary))
 			assertTrue(diary.performAction(AccessibilityNodeInfo.ACTION_CLICK))
 			val selected = waitFor(context.getString(R.string.diary))
