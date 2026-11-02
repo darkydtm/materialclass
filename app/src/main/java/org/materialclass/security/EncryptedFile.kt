@@ -5,7 +5,7 @@ import java.io.File
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 
-class EncryptedFile(
+internal class EncryptedFile(
 	private val file: File,
 	private val alias: String,
 	private val keys: KeystoreKeys,

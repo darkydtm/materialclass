@@ -1,5 +1,8 @@
 package org.materialclass.session
 
+import android.content.Context
+import org.materialclass.security.StorageLock
+
 @JvmInline
 value class AccountId(val value: String) {
 	init {
@@ -9,30 +12,28 @@ value class AccountId(val value: String) {
 	override fun toString(): String = "AccountId([redacted])"
 }
 
-@JvmInline
-value class Generation(val value: Long)
+class ActiveSession internal constructor(val account: AccountId)
 
-data class ActiveSession(val account: AccountId, val generation: Generation)
+class SessionCoordinator internal constructor(private val clearSession: () -> Unit) {
+	constructor(context: Context) : this({ SessionStore.clear(context) })
 
-class SessionCoordinator {
-	private var generation = 0L
-	private var active: ActiveSession? = null
-
-	@Synchronized
-	fun activate(account: AccountId): ActiveSession {
-		generation = Math.addExact(generation, 1)
-		return ActiveSession(account, Generation(generation)).also { active = it }
+	companion object {
+		private var active: ActiveSession? = null
 	}
 
-	@Synchronized
-	fun logout() {
+	fun activate(account: AccountId): ActiveSession = synchronized(StorageLock) {
 		active = null
-		generation = Math.addExact(generation, 1)
+		clearSession()
+		ActiveSession(account).also { active = it }
 	}
 
-	@Synchronized
-	fun <T> ifActive(session: ActiveSession, action: () -> T): T? {
-		if (active != session) return null
-		return action()
+	fun logout() = synchronized(StorageLock) {
+		active = null
+		clearSession()
+	}
+
+	fun <T> ifActive(session: ActiveSession, action: () -> T): T? = synchronized(StorageLock) {
+		if (active !== session) return@synchronized null
+		action()
 	}
 }

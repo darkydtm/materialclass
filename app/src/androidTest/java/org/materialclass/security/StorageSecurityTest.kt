@@ -10,20 +10,69 @@ import org.materialclass.session.AccountId
 import org.materialclass.session.SessionCoordinator
 import org.materialclass.session.SessionStore
 import java.io.File
+import java.security.MessageDigest
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
 
 @RunWith(AndroidJUnit4::class)
 class StorageSecurityTest {
 	private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
 	@Test
+	fun restoredCacheWithoutNamespaceKeyIsPreservedUntilAnonymousReset() {
+		val coordinator = SessionCoordinator(context)
+		val cache = EncryptedCache(context, coordinator)
+		cache.clearAll()
+		val account = AccountId("synthetic-restored")
+		val active = coordinator.activate(account)
+		cache.write(active, byteArrayOf(8))
+		val directory = File(context.filesDir, "backup-cache")
+		val files = directory.listFiles()!!.associate { it.name to it.readBytes().toList() }
+		val predictable = MessageDigest.getInstance("SHA-256").digest(account.value.toByteArray()).joinToString("") { "%02x".format(it.toInt() and 255) }
+		assertFalse(files.containsKey(predictable))
+		KeystoreKeys().delete("cache-namespace")
+		try { cache.write(active, byteArrayOf(9)); fail("Missing namespace must fail") } catch (_: StorageUnreadableException) { }
+		assertEquals(files, directory.listFiles()!!.associate { it.name to it.readBytes().toList() })
+		coordinator.logout()
+		cache.clearAll()
+		assertTrue(directory.listFiles()!!.isEmpty())
+	}
+
+	@Test
+	fun delayedSessionWriteCannotResurrectLogoutAcrossInstances() {
+		val first = SessionCoordinator(context)
+		val second = SessionCoordinator(context)
+		val old = first.activate(AccountId("synthetic-delay"))
+		val store = SessionStore(context, first)
+		assertTrue(store.write(old, byteArrayOf(1)))
+		val ready = CountDownLatch(1)
+		val release = CountDownLatch(1)
+		var wrote = true
+		val worker = thread {
+			ready.countDown()
+			check(release.await(10, TimeUnit.SECONDS))
+			wrote = store.write(old, byteArrayOf(2))
+		}
+		check(ready.await(10, TimeUnit.SECONDS))
+		second.logout()
+		release.countDown()
+		worker.join(10000)
+		assertFalse(worker.isAlive)
+		assertFalse(wrote)
+		assertFalse(File(context.noBackupFilesDir, "session").exists())
+	}
+
+	@Test
 	fun tamperingAndMissingKeyPreserveBytesUntilReset() {
 		val account = AccountId("synthetic-tamper")
-		val coordinator = SessionCoordinator()
+		val coordinator = SessionCoordinator(context)
 		val active = coordinator.activate(account)
 		val cache = EncryptedCache(context, coordinator)
 		cache.reset(active)
 		assertTrue(cache.write(active, "synthetic-content".toByteArray()))
-		val disk = File(context.filesDir, "backup-cache/${opaqueId(account.value)}")
+		val id = KeystoreKeys().namespace(account.value, false)
+		val disk = File(context.filesDir, "backup-cache/$id")
 		assertFalse(disk.readBytes().toString(Charsets.ISO_8859_1).contains("synthetic-content"))
 		val corrupt = disk.readBytes().apply { this[lastIndex] = (this[lastIndex].toInt() xor 1).toByte() }
 		disk.writeBytes(corrupt)
@@ -32,7 +81,7 @@ class StorageSecurityTest {
 		assertArrayEquals(corrupt, disk.readBytes())
 		cache.reset(active)
 		cache.write(active, byteArrayOf(4))
-		KeystoreKeys().delete("cache-${opaqueId(account.value)}")
+		KeystoreKeys().delete("cache-$id")
 		val original = disk.readBytes()
 		try { cache.read(active); fail("Missing key must fail") } catch (_: StorageUnreadableException) { }
 		try { cache.write(active, byteArrayOf(5)); fail("Missing key must not overwrite") } catch (_: StorageUnreadableException) { }
@@ -45,7 +94,7 @@ class StorageSecurityTest {
 
 	@Test
 	fun isolatesAccountsAndSessions() {
-		val coordinator = SessionCoordinator()
+		val coordinator = SessionCoordinator(context)
 		val cache = EncryptedCache(context, coordinator)
 		val a = coordinator.activate(AccountId("synthetic-a"))
 		cache.reset(a)
@@ -61,11 +110,12 @@ class StorageSecurityTest {
 		val aAgain = coordinator.activate(AccountId("synthetic-a"))
 		assertArrayEquals(byteArrayOf(1), cache.read(aAgain))
 		cache.reset(aAgain)
-		val session = SessionStore(context)
-		session.reset()
-		session.write("synthetic-token".toByteArray())
-		assertArrayEquals("synthetic-token".toByteArray(), session.read())
+		val session = SessionStore(context, coordinator)
+		session.write(aAgain, "synthetic-token".toByteArray())
+		assertArrayEquals("synthetic-token".toByteArray(), session.read(aAgain))
 		assertFalse(File(context.noBackupFilesDir, "session").readBytes().toString(Charsets.ISO_8859_1).contains("synthetic-token"))
-		session.reset()
+		coordinator.logout()
+		assertFalse(File(context.noBackupFilesDir, "session").exists())
+		assertFalse(session.write(aAgain, byteArrayOf(7)))
 	}
 }

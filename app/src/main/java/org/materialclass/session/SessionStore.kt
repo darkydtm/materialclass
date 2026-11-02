@@ -6,15 +6,17 @@ import org.materialclass.security.EncryptedFile
 import org.materialclass.security.KeystoreKeys
 import java.io.File
 
-class SessionStore(context: Context, keys: KeystoreKeys = KeystoreKeys()) {
-	private val file = EncryptedFile(File(context.noBackupFilesDir, "session"), "session", keys, CacheFiles(context))
+class SessionStore(context: Context, private val coordinator: SessionCoordinator) {
+	private val file = EncryptedFile(File(context.noBackupFilesDir, "session"), "session", KeystoreKeys(), CacheFiles(context))
 
-	@Synchronized
-	fun read(): ByteArray? = file.read()
+	companion object {
+		internal fun clear(context: Context) {
+			EncryptedFile(File(context.noBackupFilesDir, "session"), "session", KeystoreKeys(), CacheFiles(context)).reset()
+		}
+	}
 
-	@Synchronized
-	fun write(value: ByteArray) = file.write(value)
+	fun read(session: ActiveSession): ByteArray? = coordinator.ifActive(session) { file.read() }
 
-	@Synchronized
-	fun reset() = file.reset()
+	fun write(session: ActiveSession, value: ByteArray): Boolean =
+		coordinator.ifActive(session) { file.write(value); true } ?: false
 }

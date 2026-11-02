@@ -4,7 +4,7 @@ import android.content.Context
 import android.system.Os
 import java.io.File
 
-class CacheFiles(context: Context) {
+internal class CacheFiles(context: Context) {
 	val directory = File(context.filesDir, "backup-cache").apply { check(mkdirs() || isDirectory) }
 	private val temporary = File(context.noBackupFilesDir, "storage-tmp").apply { check(mkdirs() || isDirectory) }
 

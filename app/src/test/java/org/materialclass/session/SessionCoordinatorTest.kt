@@ -11,19 +11,19 @@ import kotlin.concurrent.thread
 class SessionCoordinatorTest {
 	@Test
 	fun recreationCannotReviveAnOldGeneration() {
-		val first = SessionCoordinator()
+		val first = SessionCoordinator { }
 		val old = first.activate(AccountId("synthetic-same"))
 		first.logout()
-		val second = SessionCoordinator()
+		val second = SessionCoordinator { }
 		second.activate(AccountId("synthetic-same"))
 		assertNull(second.ifActive(old) { "stale" })
 	}
 
 	@Test
 	fun logoutInvalidatesSessionsAcrossInstances() {
-		val first = SessionCoordinator()
+		val first = SessionCoordinator { }
 		val old = first.activate(AccountId("synthetic-shared"))
-		SessionCoordinator().logout()
+		SessionCoordinator { }.logout()
 		assertNull(first.ifActive(old) { "stale" })
 	}
 
@@ -39,7 +39,7 @@ class SessionCoordinatorTest {
 
 	@Test
 	fun rejectsDelayedWorkAfterLogoutAndAccountSwitch() {
-		val coordinator = SessionCoordinator()
+		val coordinator = SessionCoordinator { }
 		val a = coordinator.activate(AccountId("synthetic-a"))
 		val ready = CountDownLatch(1)
 		val release = CountDownLatch(1)
