@@ -10,6 +10,16 @@ import kotlin.concurrent.thread
 
 class SessionCoordinatorTest {
 	@Test
+	fun failedLogoutCannotRestoreSessionInSameProcess() {
+		var fail = false
+		val coordinator = SessionCoordinator { if (fail) throw IllegalStateException("synthetic failure") }
+		coordinator.activate(AccountId("synthetic-account"))
+		fail = true
+		try { coordinator.logout() } catch (_: IllegalStateException) { }
+		assertNull(coordinator.restore { AccountId("synthetic-account") })
+	}
+
+	@Test
 	fun clearingFailureLeavesSessionInvalid() {
 		var fail = false
 		val coordinator = SessionCoordinator { if (fail) throw IllegalStateException("synthetic failure") }

@@ -19,21 +19,25 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 
 	companion object {
 		private var active: ActiveSession? = null
+		private var restorationAllowed = true
 	}
 
 	fun activate(account: AccountId): ActiveSession = synchronized(StorageLock) {
 		active = null
+		restorationAllowed = false
 		clearSession()
 		ActiveSession(account).also { active = it }
 	}
 
 	internal fun restore(account: () -> AccountId?): ActiveSession? = synchronized(StorageLock) {
-		if (active != null) return@synchronized null
+		if (active != null || !restorationAllowed) return@synchronized null
+		restorationAllowed = false
 		account()?.let { ActiveSession(it).also { session -> active = session } }
 	}
 
 	fun logout() = synchronized(StorageLock) {
 		active = null
+		restorationAllowed = false
 		clearSession()
 	}
 

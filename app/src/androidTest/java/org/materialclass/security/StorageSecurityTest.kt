@@ -31,6 +31,9 @@ class StorageSecurityTest {
 		val active = SessionCoordinator::class.java.getDeclaredField("active")
 		active.isAccessible = true
 		active.set(null, null)
+		val allowed = SessionCoordinator::class.java.getDeclaredField("restorationAllowed")
+		allowed.isAccessible = true
+		allowed.setBoolean(null, true)
 		val restarted = SessionCoordinator(context)
 		val restoredStore = SessionStore(context, restarted)
 		val restore = try { SessionStore::class.java.getMethod("restore") } catch (_: NoSuchMethodException) { null }
