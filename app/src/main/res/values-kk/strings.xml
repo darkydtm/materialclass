@@ -1,0 +1,28 @@
+<resources>
+	<string name="app_name">MaterialClass</string>
+	<string name="login">Кіру</string>
+	<string name="diary">Күнделік</string>
+	<string name="schedule">Сабақ кестесі</string>
+	<string name="settings">Баптаулар</string>
+	<string name="backend_unavailable">Нақты сервер қолжетімсіз. Кіру және мектеп деректері қосылмаған.</string>
+	<string name="data_unavailable">Мектеп деректері қолжетімсіз.</string>
+	<string name="example_only">Тек үлгі - бұл нақты мектеп деректері емес.</string>
+	<string name="username">Логин</string>
+	<string name="password">Құпия сөз</string>
+	<string name="sign_in">Кіру</string>
+	<string name="language">Тіл</string>
+	<string name="system">Жүйелік</string>
+	<string name="russian">Орысша</string>
+	<string name="kazakh">Қазақша</string>
+	<string name="english">Ағылшынша</string>
+	<string name="theme">Тақырып</string>
+	<string name="light">Ашық</string>
+	<string name="dark">Қараңғы</string>
+	<string name="black">Қара</string>
+	<string name="clear_cache">Шифрланған кэшті тазалау</string>
+	<string name="cache_cleared">Кэш тазаланды.</string>
+	<string name="cache_error">Кэшті тазалау мүмкін болмады.</string>
+	<string name="warning_title">Ақпарат</string>
+	<string name="warning_text">Кейбір әрекеттер сервердегі деректерді өзгертуі мүмкін. Қазір сервер әрекеттері қолжетімсіз.</string>
+	<string name="ok">Түсінікті</string>
+</resources>

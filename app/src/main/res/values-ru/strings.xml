@@ -1,0 +1,28 @@
+<resources>
+	<string name="app_name">MaterialClass</string>
+	<string name="login">Вход</string>
+	<string name="diary">Дневник</string>
+	<string name="schedule">Расписание</string>
+	<string name="settings">Настройки</string>
+	<string name="backend_unavailable">Настоящий сервер недоступен. Вход и школьные данные не подключены.</string>
+	<string name="data_unavailable">Школьные данные недоступны.</string>
+	<string name="example_only">Только пример - это не реальные школьные данные.</string>
+	<string name="username">Логин</string>
+	<string name="password">Пароль</string>
+	<string name="sign_in">Войти</string>
+	<string name="language">Язык</string>
+	<string name="system">Системный</string>
+	<string name="russian">Русский</string>
+	<string name="kazakh">Казахский</string>
+	<string name="english">Английский</string>
+	<string name="theme">Тема</string>
+	<string name="light">Светлая</string>
+	<string name="dark">Темная</string>
+	<string name="black">Черная</string>
+	<string name="clear_cache">Очистить зашифрованный кэш</string>
+	<string name="cache_cleared">Кэш очищен.</string>
+	<string name="cache_error">Не удалось очистить кэш.</string>
+	<string name="warning_title">Информация</string>
+	<string name="warning_text">Некоторые действия могут изменять данные на сервере. Сейчас действия с сервером недоступны.</string>
+	<string name="ok">Понятно</string>
+</resources>
