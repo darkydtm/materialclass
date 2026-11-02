@@ -21,6 +21,10 @@ class AccessibilityUiTest {
 		return (0 until node.childCount).firstNotNullOfOrNull { node.getChild(it)?.let { child -> find(child, text) } }
 	}
 
+	private fun editableNodes(node: AccessibilityNodeInfo): List<AccessibilityNodeInfo> =
+		(if (node.isEditable) listOf(node) else emptyList()) +
+			(0 until node.childCount).flatMap { node.getChild(it)?.let { child -> editableNodes(child) } ?: emptyList() }
+
 	private fun waitFor(text: String): AccessibilityNodeInfo {
 		val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
 		val deadline = SystemClock.uptimeMillis() + 10000
@@ -37,8 +41,9 @@ class AccessibilityUiTest {
 		context.getSharedPreferences("appearance", 0).edit().clear().putBoolean("warning_seen", true).commit()
 		val activity = InstrumentationRegistry.getInstrumentation().startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 		try {
-			val password = waitFor(context.getString(R.string.password))
-			assertTrue(password.isPassword)
+			waitFor(context.getString(R.string.password))
+			val root = InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
+			val password = editableNodes(root).single { it.isPassword }
 			assertEquals(InputType.TYPE_TEXT_VARIATION_PASSWORD, password.inputType and InputType.TYPE_MASK_VARIATION)
 			val diary = waitFor(context.getString(R.string.diary))
 			assertTrue("Navigation item must be checkable", diary.isCheckable)
