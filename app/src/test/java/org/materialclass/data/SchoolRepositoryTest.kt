@@ -34,6 +34,33 @@ class SchoolRepositoryTest {
 	)
 
 	@Test
+	fun logoutClearsPreviouslyEmittedDiary() {
+		val gateway = FakeGateway(); val events = mutableListOf<DiaryState>()
+		val repository = repository(gateway, FakeCache(), events)
+		repository.login("synthetic", charArrayOf('x'))
+		repository.refresh(context)
+		assertTrue(events.last() is DiaryState.Ready)
+		repository.logout()
+		assertFalse(events.last() is DiaryState.Ready)
+	}
+
+	@Test
+	fun cancellationIsNotConvertedToUnavailable() {
+		val gateway = object : SchoolGateway {
+			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = throw java.util.concurrent.CancellationException()
+			override fun diary(session: UnverifiedSession, context: DiaryContext): GatewayResult<Diary> = error("unexpected")
+		}
+		val repository = SchoolRepository(gateway, IdentityVerifier { null }, SessionCoordinator { }, FakeCache(), { 0L }, {})
+		val password = charArrayOf('x')
+		try {
+			repository.login("synthetic", password)
+			fail("Cancellation must propagate")
+		} catch (_: java.util.concurrent.CancellationException) {
+			assertTrue(password.all { it == '\u0000' })
+		}
+	}
+
+	@Test
 	fun verifiedLoginCachesEmptySuccessAndOfflinePreservesTimestamp() {
 		val gateway = FakeGateway(); val cache = FakeCache(); val events = mutableListOf<DiaryState>()
 		val repository = repository(gateway, cache, events)
