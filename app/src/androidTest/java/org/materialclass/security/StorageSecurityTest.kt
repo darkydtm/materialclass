@@ -57,6 +57,26 @@ class StorageSecurityTest {
 	}
 
 	@Test
+	fun durableRevocationMarkerPreventsRestoreAfterCrash() {
+		val coordinator = SessionCoordinator(context)
+		val store = SessionStore(context, coordinator)
+		val session = coordinator.activate(AccountId("synthetic-revoked"))
+		store.write(session, byteArrayOf(1))
+		File(context.noBackupFilesDir, "session-revoked").writeBytes(byteArrayOf(1))
+		val active = SessionCoordinator::class.java.getDeclaredField("active")
+		active.isAccessible = true
+		active.set(null, null)
+		val allowed = SessionCoordinator::class.java.getDeclaredField("restorationAllowed")
+		allowed.isAccessible = true
+		allowed.setBoolean(null, true)
+		try {
+			assertNull(SessionStore(context, SessionCoordinator(context)).restore())
+		} finally {
+			coordinator.logout()
+		}
+	}
+
+	@Test
 	fun logoutDeletesSessionKeyWhenTemporaryDirectoryIsBlocked() {
 		val coordinator = SessionCoordinator(context)
 		val store = SessionStore(context, coordinator)
