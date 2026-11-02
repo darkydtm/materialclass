@@ -67,4 +67,7 @@ jobs:
           api-level: ${{ matrix.api }}
           target: default
           arch: x86_64
-          script: ./gradlew --no-daemon connectedDebugAndroidTest
+          script: |
+            adb shell input keyevent KEYCODE_WAKEUP
+            adb shell wm dismiss-keyguard
+            ./gradlew --no-daemon connectedDebugAndroidTest
