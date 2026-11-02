@@ -57,6 +57,16 @@ class StorageSecurityTest {
 	}
 
 	@Test
+	fun logoutPersistsRevocationBeforeSessionRemoval() {
+		val coordinator = SessionCoordinator(context)
+		val store = SessionStore(context, coordinator)
+		val session = coordinator.activate(AccountId("synthetic-marker"))
+		store.write(session, byteArrayOf(1))
+		coordinator.logout()
+		assertTrue(File(context.noBackupFilesDir, "session-revoked").exists())
+	}
+
+	@Test
 	fun durableRevocationMarkerPreventsRestoreAfterCrash() {
 		val coordinator = SessionCoordinator(context)
 		val store = SessionStore(context, coordinator)
