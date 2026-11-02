@@ -21,13 +21,15 @@ class LauncherTest {
 			val expected = context.getString(R.string.app_name)
 			val deadline = android.os.SystemClock.uptimeMillis() + 10000
 			var displayed = false
+			var observed = "no active root"
 			while (!displayed && android.os.SystemClock.uptimeMillis() < deadline) {
 				val root = instrumentation.uiAutomation.rootInActiveWindow
+				observed = root?.toString() ?: "no active root"
 				displayed = root?.findAccessibilityNodeInfosByText(expected)
 					?.any { it.text?.toString() == expected && it.isVisibleToUser } == true
 				if (!displayed) android.os.SystemClock.sleep(100)
 			}
-			assertTrue("App name must be visible in the launcher", displayed)
+			assertTrue("App name must be visible in the launcher: $observed", displayed)
 		} finally {
 			activity.finish()
 		}
