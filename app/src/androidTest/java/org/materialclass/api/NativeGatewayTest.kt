@@ -9,6 +9,13 @@ import java.net.URL
 
 @RunWith(AndroidJUnit4::class)
 class NativeGatewayTest {
+	@Test
+	fun currentWeekRequiresVerifiedSessionAndLease() {
+		val method = SchoolGateway::class.java.methods.singleOrNull { it.name == "currentWeek" }
+		assertNotNull("Current week operation must exist", method)
+		assertArrayEquals(arrayOf(VerifiedDiarySession::class.java, org.materialclass.session.RequestLease::class.java), method!!.parameterTypes)
+	}
+
 	private val loginResponse = """{"success":true,"access_token":"synthetic-token","user_info":{"userId":123,"role":"student","school_id":1,"group":{"id":2},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}}"""
 	private val profile = JSONObject(loginResponse).getJSONObject("user_info")
 	private val diaryResponse = """{"data":{"date":"01.02.2026","days":[{"day":"Monday","date":"01.02.2026","subjects":[{"label":"Math","type":"lesson","scheduleUuid":"synthetic","homeworkType":"none","homeworkBody":null,"homeworkUuid":null,"hasBooks":false,"hasFiles":true}]}]}}"""
