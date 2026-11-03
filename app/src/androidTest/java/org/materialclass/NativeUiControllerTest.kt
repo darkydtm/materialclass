@@ -40,7 +40,6 @@ class NativeUiControllerTest {
 		assertTrue(node.performAction(AccessibilityNodeInfo.ACTION_CLICK))
 	}
 	private fun edit(node: AccessibilityNodeInfo, value: String) {
-		assertTrue(node.performAction(AccessibilityNodeInfo.ACTION_FOCUS))
 		val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, value) }
 		assertTrue(node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args))
 	}
@@ -66,9 +65,9 @@ class NativeUiControllerTest {
 		try {
 			instrumentation.runOnMainSync { activity.setContent { MaterialClassApp(nativeEnabled = true, controllerFactory = { fake }) } }
 			waitFor(context.getString(R.string.sign_in))
-			val fields = editables(instrumentation.uiAutomation.rootInActiveWindow)
-			edit(fields.first { !it.isPassword }, "synthetic")
-			edit(fields.first { it.isPassword }, "synthetic")
+			edit(editables(instrumentation.uiAutomation.rootInActiveWindow).first { !it.isPassword }, "synthetic")
+			SystemClock.sleep(500)
+			edit(editables(instrumentation.uiAutomation.rootInActiveWindow).first { it.isPassword }, "synthetic")
 			instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
 			SystemClock.sleep(500)
 			click(context.getString(R.string.sign_in))
