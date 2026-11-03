@@ -140,16 +140,20 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		}
 	}
 	internal fun revokeIfActive(session: ActiveSession, expired: Boolean = false): Boolean = synchronized(StorageLock) {
-		val event = synchronized(CancellationLock) {
+		val result = synchronized(CancellationLock) {
 			if (active !== session) null else {
 				active = null; restorationAllowed = false
+				val token = Any()
+				pending.add(token)
+				ownPending.addLast(token)
 				lastEvent = SessionEvent(++revocationEpoch, if (expired) SessionChange.EXPIRED else SessionChange.LOGOUT, session)
-				Pair(revocationEpoch, observers.toList())
+				Triple(token, revocationEpoch, observers.toList())
 			}
 		} ?: return@synchronized false
-		notifyAfterStorage(event.first, event.second)
+		notifyAfterStorage(result.second, result.third)
 		cancelRequests(session)
 		clearSession()
+		finishImmediateLogout(result.first)
 		true
 	}
 	internal fun activate(account: AccountId): ActiveSession = synchronized(StorageLock) {
