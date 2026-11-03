@@ -67,6 +67,21 @@ class NativeGatewayTest {
 	}
 
 	@Test
+	fun rejectsMissingOrInvalidLoginIdentity() {
+		val responses = listOf(
+			loginResponse.replace("\"userId\":123,", ""),
+			loginResponse.replace("\"userId\":123", "\"userId\":null"),
+			loginResponse.replace("\"userId\":123", "\"userId\":\"123\""),
+			loginResponse.replace("\"userId\":123", "\"userId\":0"),
+			loginResponse.replace("\"userId\":123", "\"userId\":-1")
+		)
+		responses.forEach { response ->
+			val result = NativeGateway(Exchange { Response(200, response) }).login("x", charArrayOf('x'))
+			assertTrue(result is GatewayResult.Failure)
+		}
+	}
+
+	@Test
 	fun rejectsUntrustedDestinationsBeforeConnecting() {
 		for (url in listOf("http://api.bilimclass.kz/", "https://example.com/", "https://api.bilimclass.kz:444/")) {
 			try {

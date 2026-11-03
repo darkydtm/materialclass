@@ -77,6 +77,24 @@ class RepositorySessionTest {
 	}
 
 	@Test
+	fun legacyTokenOnlySessionIsRevokedAndRequiresLogin() {
+		assertTrue(repository(IdentityVerifier { SessionVerification.Verified(AccountId("synthetic-account"), true) }).login("synthetic", charArrayOf('x')) is GatewayResult.Success)
+		val activeField = SessionCoordinator::class.java.getDeclaredField("active").apply { isAccessible = true }
+		val active = activeField.get(null) as ActiveSession
+		assertTrue(store.write(active, "synthetic-token".toByteArray()))
+		restart()
+		var calls = 0
+		val repo = repository(IdentityVerifier { calls++; SessionVerification.Retry })
+		assertEquals(RestoreResult.Invalid, repo.restore())
+		assertEquals(0, calls)
+		assertFalse(File(context.noBackupFilesDir, "session").exists())
+		repo.refresh(diaryContext)
+		assertEquals(0, accesses)
+		restart()
+		assertEquals(RestoreResult.Absent, repo.restore())
+	}
+
+	@Test
 	fun mismatchedIdentityCannotOpenCache() {
 		saved()
 		val repo = repository(IdentityVerifier { SessionVerification.Verified(AccountId("other"), true) })

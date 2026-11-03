@@ -69,6 +69,15 @@ class NativeIdentityVerifierTest {
 	}
 
 	@Test
+	fun missingLoginIdentityCannotBeVerified() {
+		var calls = 0
+		val verifier = NativeIdentityVerifier(Exchange { calls++; Response(200, success) })
+		val missing = UnverifiedSession("synthetic-token", null, "student", SchoolContext(7, 2026, 2))
+		assertFalse(verifier.verify(missing) is SessionVerification.Verified)
+		assertEquals(0, calls)
+	}
+
+	@Test
 	fun nativeVerificationRestoresMatchingAccountAndRejectsChangedAccount() {
 		val gateway = object : SchoolGateway {
 			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(session)
