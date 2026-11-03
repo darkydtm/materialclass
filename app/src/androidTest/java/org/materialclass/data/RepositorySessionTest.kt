@@ -309,6 +309,7 @@ class RepositorySessionTest {
 		val events = java.util.Collections.synchronizedList(mutableListOf<DiaryState>())
 		val repo = SchoolRepository(gateway, IdentityVerifier { session, _ -> proof(session) }, coordinator, cache, { 1L }, events::add, store)
 		repo.afterRestoreActivation = {
+			assertFalse(Thread.holdsLock(org.materialclass.security.StorageLock))
 			activated.countDown()
 			check(release.await(10, TimeUnit.SECONDS))
 		}
