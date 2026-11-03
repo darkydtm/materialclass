@@ -65,7 +65,11 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		lease.disconnect = null
 	}
 
-	internal fun beginLogin(): Long = synchronized(StorageLock) { ++revision }
+	internal fun admit(expected: Long): RequestLease? = synchronized(StorageLock) {
+		if (revision != expected) null else RequestLease().also { leases.add(it) }
+	}
+
+	internal fun beginLogin(): Long = synchronized(StorageLock) { cancelRequests(); ++revision }
 
 	internal fun activateIfUnchanged(expected: Long, account: AccountId, beforeActivate: () -> Unit = {}): ActiveSession? = synchronized(StorageLock) {
 		if (revision != expected) return@synchronized null
@@ -81,7 +85,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 
 	internal fun cancelLogin(expected: Long) = synchronized(StorageLock) {
 		if (revision == expected) {
-			if (active == null) logout() else revision++
+			if (active == null) logout() else { cancelRequests(); revision++ }
 		}
 	}
 
@@ -89,6 +93,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		if (active !== session) return@synchronized false
 		cancelRequests()
 		active = null
+		revision++
 		restorationAllowed = false
 		clearSession()
 		true
@@ -104,7 +109,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 	}
 
 	internal fun beginRestore(): Long? = synchronized(StorageLock) {
-		if (active != null || !restorationAllowed) null else ++revision
+		if (active != null || !restorationAllowed) null else { cancelRequests(); ++revision }
 	}
 
 	internal fun <T> finishRestore(expected: Long, action: () -> T): T? = synchronized(StorageLock) {

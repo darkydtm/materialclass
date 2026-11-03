@@ -18,6 +18,7 @@ import org.materialclass.session.SessionCoordinator
 import org.materialclass.session.SessionStore
 import org.materialclass.session.SessionVerification
 import org.materialclass.session.RestoreResult
+import org.materialclass.session.RequestLease
 import org.materialclass.security.StorageLock
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -27,6 +28,7 @@ import java.util.concurrent.CancellationException
 
 internal fun interface IdentityVerifier {
 	fun verify(session: UnverifiedSession): SessionVerification
+	fun verify(session: UnverifiedSession, lease: RequestLease): SessionVerification = verify(session)
 }
 
 internal interface DiaryCache {
@@ -72,14 +74,18 @@ internal class SchoolRepository(
 			coordinator.beginLogin().also { loginRevision = it }
 		}
 		try {
-			val result = try { gateway.login(username, password) } catch (error: CancellationException) {
+			beforeRequestAdmission()
+			val lease = coordinator.admit(revision) ?: return GatewayResult.Failure(AppError.UNAVAILABLE)
+			val result = try { gateway.login(username, password, lease) } catch (error: CancellationException) {
 				throw error
 			} catch (_: Exception) {
 				GatewayResult.Failure(AppError.UNAVAILABLE)
-			} finally { password.fill('\u0000') }
+			} finally { coordinator.finish(lease) }
 			if (result is GatewayResult.Failure) return result
 			val candidate = (result as GatewayResult.Success).value
-			val verification = try { verifier.verify(candidate) } catch (error: CancellationException) { throw error } catch (_: Exception) { SessionVerification.Retry }
+			beforeRequestAdmission()
+			val profileLease = coordinator.admit(revision) ?: return GatewayResult.Failure(AppError.UNAVAILABLE)
+			val verification = try { verifier.verify(candidate, profileLease) } catch (error: CancellationException) { throw error } catch (_: Exception) { SessionVerification.Retry } finally { coordinator.finish(profileLease) }
 			if (candidate.role != "student" || verification !is SessionVerification.Verified || !verification.pupil) return GatewayResult.Failure(AppError.UNAVAILABLE)
 			return try {
 				synchronized(StorageLock) {
@@ -105,6 +111,7 @@ internal class SchoolRepository(
 				}
 			} catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
 		} finally {
+			password.fill('\u0000')
 			synchronized(StorageLock) {
 				if (loginRevision == revision) loginRevision = null
 			}
@@ -115,9 +122,9 @@ internal class SchoolRepository(
 		var candidate: UnverifiedSession? = null
 		var scheduleCandidate: VerifiedScheduleSession? = null
 		var diaryCandidate: VerifiedDiarySession? = null
-		return store.restore({ material ->
-			val remote = decodeSession(material) ?: return@restore SessionVerification.Invalid
-			val verification = verifier.verify(remote)
+		return store.restoreLeased({ beforeRequestAdmission() }, { material, lease ->
+			val remote = decodeSession(material) ?: return@restoreLeased SessionVerification.Invalid
+			val verification = verifier.verify(remote, lease)
 			if (verification is SessionVerification.Verified && verification.pupil) { candidate = remote; scheduleCandidate = verification.scheduleSession; diaryCandidate = verification.diarySession }
 			verification
 		}) { active ->

@@ -76,6 +76,70 @@ class RepositorySessionTest {
 		assertFalse(File(context.noBackupFilesDir, "session").exists())
 	}
 
+
+	@Test
+	fun logoutBeforeProfileAdmissionPreventsVerification() {
+		val entered = CountDownLatch(1); val release = CountDownLatch(1)
+		val calls = java.util.concurrent.atomic.AtomicInteger()
+		val admissions = java.util.concurrent.atomic.AtomicInteger()
+		val repo = repository(IdentityVerifier { calls.incrementAndGet(); proof(it) })
+		repo.beforeRequestAdmission = {
+			if (admissions.incrementAndGet() == 2) { entered.countDown(); check(release.await(10, TimeUnit.SECONDS)) }
+		}
+		val worker = thread { repo.login("synthetic", charArrayOf('x')) }
+		try {
+			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			repo.logout()
+		} finally { release.countDown(); worker.join(10000) }
+		assertFalse(worker.isAlive)
+		assertEquals(0, calls.get())
+		assertFalse(File(context.noBackupFilesDir, "session").exists())
+	}
+
+	@Test
+	fun logoutBeforeRestoreProfileAdmissionPreventsVerification() {
+		saved()
+		val entered = CountDownLatch(1); val release = CountDownLatch(1)
+		val calls = java.util.concurrent.atomic.AtomicInteger()
+		val repo = repository(IdentityVerifier { calls.incrementAndGet(); proof(it) })
+		repo.beforeRequestAdmission = { entered.countDown(); check(release.await(10, TimeUnit.SECONDS)) }
+		var result: RestoreResult? = null
+		val worker = thread { result = repo.restore() }
+		try {
+			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			repo.logout()
+		} finally { release.countDown(); worker.join(10000) }
+		assertFalse(worker.isAlive)
+		assertEquals(RestoreResult.Cancelled, result)
+		assertEquals(0, calls.get())
+		assertFalse(File(context.noBackupFilesDir, "session").exists())
+	}
+
+	@Test
+	fun logoutDisconnectsAdmittedProfileAndRejectsLateVerification() {
+		val entered = CountDownLatch(1); val release = CountDownLatch(1); val disconnected = CountDownLatch(1)
+		val verifier = object : IdentityVerifier {
+			override fun verify(session: UnverifiedSession): SessionVerification = error("Lease required")
+			override fun verify(session: UnverifiedSession, lease: RequestLease): SessionVerification {
+				check(lease.register { disconnected.countDown() })
+				entered.countDown()
+				check(release.await(10, TimeUnit.SECONDS))
+				return proof(session)
+			}
+		}
+		val repo = repository(verifier)
+		var result: GatewayResult<Unit>? = null
+		val worker = thread { result = repo.login("synthetic", charArrayOf('x')) }
+		try {
+			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			repo.logout()
+			assertTrue(disconnected.await(10, TimeUnit.SECONDS))
+		} finally { release.countDown(); worker.join(10000) }
+		assertFalse(worker.isAlive)
+		assertTrue(result is GatewayResult.Failure)
+		assertFalse(File(context.noBackupFilesDir, "session").exists())
+	}
+
 	@Test
 	fun verifiedLoginPersistsEncryptedSession() {
 		val constructor = SchoolRepository::class.java.declaredConstructors.firstOrNull { constructor ->

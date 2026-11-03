@@ -15,6 +15,7 @@ import org.materialclass.session.RequestLease
 
 interface SchoolGateway {
 	fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession>
+	fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = login(login, password)
 	fun diary(session: VerifiedDiarySession, context: DiaryContext): GatewayResult<Diary>
 	fun schedule(session: VerifiedScheduleSession, date: String): GatewayResult<Schedule> = GatewayResult.Failure(AppError.UNAVAILABLE)
 	fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = diary(session, context)
@@ -102,11 +103,15 @@ class NativeGateway internal constructor(private val exchange: Exchange) : Schoo
 
 	private val deviceId = UUID.randomUUID().toString()
 
-	override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> {
+	override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = loginRequest(login, password, null)
+
+	override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = loginRequest(login, password, lease)
+
+	private fun loginRequest(login: String, password: CharArray, lease: RequestLease?): GatewayResult<UnverifiedSession> {
 		return try {
 			val body = JSONObject().put("login", login).put("password", String(password)).toString().toByteArray(Charsets.UTF_8)
 			val response = try {
-				exchange.execute(request("/api/v2/os/login", "POST", emptyMap(), body))
+				exchange.execute(request("/api/v2/os/login", "POST", emptyMap(), body, lease))
 			} finally {
 				body.fill(0)
 			}

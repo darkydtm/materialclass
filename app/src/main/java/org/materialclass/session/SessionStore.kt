@@ -42,7 +42,6 @@ class SessionStore(context: Context, private val coordinator: SessionCoordinator
 	private val marker = File(context.noBackupFilesDir, "session-revoked")
 
 	companion object {
-		private val restoreLock = Any()
 
 		private fun syncDirectory(directory: File) {
 			val descriptor = Os.open(directory.absolutePath, OsConstants.O_RDONLY, 0)
@@ -115,14 +114,18 @@ class SessionStore(context: Context, private val coordinator: SessionCoordinator
 
 	fun restore(verifier: SessionVerifier): RestoreResult = restore(verifier) {}
 
-	internal fun restore(verifier: SessionVerifier, onRestored: (ActiveSession) -> Unit): RestoreResult = synchronized(restoreLock) {
-		val revision = coordinator.beginRestore() ?: return@synchronized RestoreResult.Cancelled
+	internal fun restore(verifier: SessionVerifier, onRestored: (ActiveSession) -> Unit): RestoreResult = restoreLeased({}, { material, _ -> verifier.verify(material) }, onRestored)
+
+	internal fun restoreLeased(beforeAdmission: () -> Unit, verifier: (ByteArray, RequestLease) -> SessionVerification, onRestored: (ActiveSession) -> Unit): RestoreResult {
+		val revision = coordinator.beginRestore() ?: return RestoreResult.Cancelled
 		val candidate = coordinator.finishRestore(revision) {
 			if (marker.exists() || File(marker.path + ".bak").exists() || File(marker.path + ".new").exists()) null
 			else file.read()?.let { bytes -> try { decode(bytes) } finally { bytes.fill(0) } }
-		} ?: return@synchronized RestoreResult.Absent
+		} ?: return RestoreResult.Absent
 		val verification = try {
-			verifier.verify(candidate.material)
+			beforeAdmission()
+			val lease = coordinator.admit(revision) ?: return RestoreResult.Cancelled
+			try { verifier(candidate.material, lease) } finally { coordinator.finish(lease) }
 		} catch (error: CancellationException) {
 			throw error
 		} catch (_: Exception) {
@@ -130,7 +133,7 @@ class SessionStore(context: Context, private val coordinator: SessionCoordinator
 		} finally {
 			candidate.material.fill(0)
 		}
-		coordinator.finishRestore(revision) {
+		return coordinator.finishRestore(revision) {
 			when (verification) {
 				SessionVerification.Retry -> RestoreResult.Retry
 				SessionVerification.Expired, SessionVerification.Invalid -> { coordinator.rejectRestore(); RestoreResult.Invalid }
