@@ -74,7 +74,7 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 	@Volatile private var currentTaskEpoch = 0L
 	override var state by mutableStateOf(NativeUiState())
 		private set
-	private val repository = repositoryFactory { diary ->
+	private val repository: SchoolRepository = repositoryFactory { diary ->
 		val task = currentTaskGeneration
 		post(task) {
 			if (!repository.acceptsDiary(diary)) return@post
