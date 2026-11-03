@@ -104,7 +104,7 @@ internal fun MaterialClassApp(example: ExampleData? = null, nativeEnabled: Boole
 										else -> Text(stringResource(R.string.data_unavailable))
 									}
 								} else nativeState.schedule?.days?.forEach { day -> Text(day.dateFormat); day.lessons.forEach { Text(it.themeLabel) } } ?: Text(stringResource(R.string.data_unavailable))
-								if (nativeState.signedIn) Button(onClick = { controller?.refresh() }) { Text(stringResource(R.string.refresh)) }
+								if (nativeState.signedIn) Button(onClick = { controller.refresh() }) { Text(stringResource(R.string.refresh)) }
 							} else if (example == null) Text(stringResource(R.string.data_unavailable)) else {
 								Text(stringResource(R.string.example_only))
 								(screen.let { if (it == "diary") example.diary else example.schedule }).forEach { Text(it) }

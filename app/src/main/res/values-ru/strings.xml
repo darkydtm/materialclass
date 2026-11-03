@@ -1,4 +1,9 @@
 <resources>
+	<string name="logout">Выйти</string>
+	<string name="refresh">Обновить</string>
+	<string name="loading">Загрузка</string>
+	<string name="operation_error">Ошибка операции: %1$s</string>
+	<string name="stale_data">Сохраненные данные - ошибка обновления: %1$s</string>
 	<string name="app_name">MaterialClass</string>
 	<string name="login">Вход</string>
 	<string name="diary">Дневник</string>
