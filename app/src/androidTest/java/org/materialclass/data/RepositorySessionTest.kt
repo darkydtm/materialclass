@@ -96,6 +96,54 @@ class RepositorySessionTest {
 	}
 
 	@Test
+	fun failedSessionWriteClearsPreviouslyEmittedDiary() {
+		val events = mutableListOf<DiaryState>()
+		val repo = SchoolRepository(gateway, IdentityVerifier { SessionVerification.Verified(AccountId("synthetic-account"), true) }, coordinator, cache, { 1L }, { events.add(it) }, store)
+		assertTrue(repo.login("synthetic", charArrayOf('x')) is GatewayResult.Success)
+		repo.refresh(diaryContext)
+		assertTrue(events.last() is DiaryState.Ready)
+		val temporary = File(context.noBackupFilesDir, "storage-tmp")
+		check(temporary.delete())
+		check(temporary.createNewFile())
+		try {
+			assertTrue(repo.login("synthetic", charArrayOf('x')) is GatewayResult.Failure)
+			assertEquals(DiaryState.Cleared, events.last())
+		} finally {
+			check(temporary.delete())
+			check(temporary.mkdir())
+		}
+	}
+
+	@Test
+	fun logoutCancelsRestoreAfterFailedLogin() {
+		saved()
+		val entered = CountDownLatch(1); val release = CountDownLatch(1)
+		var verifyingRestore = false
+		val repo = repository(IdentityVerifier {
+			if (!verifyingRestore) SessionVerification.Retry else {
+				entered.countDown()
+				check(release.await(10, TimeUnit.SECONDS))
+				SessionVerification.Verified(AccountId("synthetic-account"), true)
+			}
+		})
+		assertTrue(repo.login("synthetic", charArrayOf('x')) is GatewayResult.Failure)
+		verifyingRestore = true
+		var result: RestoreResult? = null
+		val worker = thread { result = repo.restore() }
+		try {
+			check(entered.await(10, TimeUnit.SECONDS))
+			repo.logout()
+		} finally {
+			release.countDown()
+			worker.join(10000)
+		}
+		assertFalse(worker.isAlive)
+		assertEquals(RestoreResult.Cancelled, result)
+		repo.refresh(diaryContext)
+		assertEquals(0, accesses)
+	}
+
+	@Test
 	fun logoutCancelsPendingRestore() {
 		saved()
 		val entered = CountDownLatch(1); val release = CountDownLatch(1)
