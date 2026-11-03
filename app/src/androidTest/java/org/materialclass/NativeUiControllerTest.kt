@@ -18,6 +18,8 @@ import org.junit.runner.RunWith
 import org.materialclass.api.*
 import org.materialclass.data.DiarySnapshot
 import org.materialclass.data.DiaryState
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 @RunWith(AndroidJUnit4::class)
 class NativeUiControllerTest {
@@ -48,10 +50,11 @@ class NativeUiControllerTest {
 	@Test fun injectedControllerDrivesVisibleUi() {
 		val context = ApplicationProvider.getApplicationContext<Context>()
 		context.getSharedPreferences("appearance", 0).edit().putBoolean("warning_seen", true).commit()
+		val started = CountDownLatch(1)
 		val fake = object : NativeUiController {
 			override var state by mutableStateOf(NativeUiState())
 			var secretCleared = false
-			override fun start() { }
+			override fun start() { started.countDown() }
 			override fun login(username: String, password: CharArray) {
 				password.fill('\u0000'); secretCleared = password.all { it == '\u0000' }
 				val diary = Diary("01.01.2026", listOf(DiaryDay("Thursday", "01.01.2026", listOf(DiarySubject("UI lesson", "lesson", "id", "text", null, null, false, false)))))
@@ -64,12 +67,15 @@ class NativeUiControllerTest {
 		val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
 		try {
 			instrumentation.runOnMainSync { activity.setContent { MaterialClassApp(nativeEnabled = true, controllerFactory = { fake }) } }
+			assertTrue("Injected controller did not start", started.await(10, TimeUnit.SECONDS))
+			instrumentation.waitForIdleSync()
 			waitFor(context.getString(R.string.sign_in))
 			edit(editables(instrumentation.uiAutomation.rootInActiveWindow).first { !it.isPassword }, "synthetic")
-			SystemClock.sleep(500)
+			waitFor("synthetic")
 			edit(editables(instrumentation.uiAutomation.rootInActiveWindow).first { it.isPassword }, "synthetic")
+			instrumentation.waitForIdleSync()
 			instrumentation.runOnMainSync { (context.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).hideSoftInputFromWindow(activity.window.decorView.windowToken, 0) }
-			SystemClock.sleep(500)
+			instrumentation.waitForIdleSync()
 			click(context.getString(R.string.sign_in))
 			waitFor(context.getString(R.string.logout))
 			assertTrue(fake.secretCleared)
