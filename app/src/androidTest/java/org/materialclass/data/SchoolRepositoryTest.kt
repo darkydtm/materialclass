@@ -492,6 +492,26 @@ class SchoolRepositoryTest {
 	}
 
 	@Test
+	fun throwingSwitchCallbackRevokesPriorSessionBeforeLogout() {
+		val gateway = FakeGateway()
+		var throwOnClear = false
+		val repo = SchoolRepository(gateway, IdentityVerifier { session, _ -> proof(session) }, coordinator, FakeCache(), { 1L }, {
+			if (throwOnClear && it == DiaryState.Cleared) throw IllegalStateException("synthetic callback failure")
+		}, store)
+		assertTrue(repo.login("old", charArrayOf('x')) is GatewayResult.Success)
+		val sessionFile = java.io.File(androidContext.noBackupFilesDir, "session")
+		assertTrue(sessionFile.exists())
+		gateway.identity = "2"
+		throwOnClear = true
+		assertTrue(repo.login("new", charArrayOf('x')) is GatewayResult.Failure)
+		throwOnClear = false
+		repo.logout()
+		assertTrue("Prior session must be durably removed", !sessionFile.exists())
+		assertTrue("Prior session must not remain active", coordinator.logoutIfNoActive())
+		assertFalse(repo.restore() is RestoreResult.Restored)
+	}
+
+	@Test
 	fun switchingAccountsClearsPreviouslyEmittedDiary() {
 		val gateway = FakeGateway(); val events = mutableListOf<DiaryState>()
 		val repository = repository(gateway, FakeCache(), events)
