@@ -20,6 +20,7 @@ class LoginLogoutCallbackTest {
 	private val gateway = object : TestSchoolGateway() {
 		override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> =
 			GatewayResult.Success(UnverifiedSession("synthetic", "1", "student", SchoolContext(1, 2026, 2)))
+		override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = error("unexpected")
 	}
 	private val cache = object : DiaryCache {
 		override fun read(session: ActiveSession): ByteArray? = null
