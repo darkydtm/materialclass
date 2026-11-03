@@ -16,6 +16,41 @@ class NativeGatewayTest {
 		assertArrayEquals(arrayOf(VerifiedDiarySession::class.java, org.materialclass.session.RequestLease::class.java), method!!.parameterTypes)
 	}
 
+	@Test
+	fun currentWeekUsesObservedRequestAndRejectsInvalidResponses() {
+		val coordinator = org.materialclass.session.SessionCoordinator { }
+		val active = coordinator.activate(org.materialclass.session.AccountId("123"))
+		val lease = coordinator.admit(active)!!
+		try {
+			val remote = UnverifiedSession("synthetic-token", "123", "student", SchoolContext(1, 2026, 2))
+			val verified = VerifiedDiarySession.compare(remote, profile)!!
+			var response = Response(200, """{"data":{"week":"29.02.2024"}}""")
+			var calls = 0
+			val gateway = NativeGateway(Exchange { request ->
+				calls++
+				assertEquals("GET", request.method)
+				assertEquals("/api/v4/os/clientoffice/diary/weeks", request.url.path)
+				assertEquals("schoolId=1&eduYear=2026", request.url.query)
+				assertEquals("Bearer synthetic-token", request.headers["Authorization"])
+				assertEquals("1", request.headers["x-school-id"])
+				assertSame(lease, request.lease)
+				response
+			})
+			assertEquals("29.02.2024", (gateway.currentWeek(verified, lease) as GatewayResult.Success).value)
+			for (body in listOf("{}", """{"data":{}}""", """{"data":{"week":123}}""", """{"data":{"week":"29.02.2025"}}""", """{"data":{"week":"1.02.2026"}}""")) {
+				response = Response(200, body)
+				assertEquals(AppError.INCOMPATIBLE_RESPONSE, (gateway.currentWeek(verified, lease) as GatewayResult.Failure).error)
+			}
+			response = Response(401, "")
+			assertEquals(AppError.UNAVAILABLE, (gateway.currentWeek(verified, lease) as GatewayResult.Failure).error)
+			val before = calls
+			assertTrue(gateway.currentWeek(verified, org.materialclass.session.RequestLease()) is GatewayResult.Failure)
+			coordinator.logout()
+			assertTrue(gateway.currentWeek(verified, lease) is GatewayResult.Failure)
+			assertEquals(before, calls)
+		} finally { coordinator.finish(lease); coordinator.logout() }
+	}
+
 	private val loginResponse = """{"success":true,"access_token":"synthetic-token","user_info":{"userId":123,"role":"student","school_id":1,"group":{"id":2},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}}"""
 	private val profile = JSONObject(loginResponse).getJSONObject("user_info")
 	private val diaryResponse = """{"data":{"date":"01.02.2026","days":[{"day":"Monday","date":"01.02.2026","subjects":[{"label":"Math","type":"lesson","scheduleUuid":"synthetic","homeworkType":"none","homeworkBody":null,"homeworkUuid":null,"hasBooks":false,"hasFiles":true}]}]}}"""

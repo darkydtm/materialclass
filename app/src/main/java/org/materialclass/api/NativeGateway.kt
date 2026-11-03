@@ -12,10 +12,12 @@ import java.util.TimeZone
 import java.util.UUID
 import javax.net.ssl.HttpsURLConnection
 import org.materialclass.session.RequestLease
+import org.materialclass.session.SessionCoordinator
 
 interface SchoolGateway {
 	fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession>
 	fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary>
+	fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String>
 	fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule>
 
 }
@@ -129,6 +131,27 @@ class NativeGateway internal constructor(private val exchange: Exchange) : Schoo
 			GatewayResult.Failure(AppError.INCOMPATIBLE_RESPONSE)
 		} finally {
 			password.fill('\u0000')
+		}
+	}
+
+	override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> {
+		return try {
+			val remote = session.remote
+			val context = remote.context ?: return GatewayResult.Failure(AppError.INCOMPATIBLE_RESPONSE)
+			if (!SessionCoordinator.permits(lease, session.account) || session.account != remote.identityCandidate || remote.token.isEmpty() || remote.role != "student" || context.schoolId <= 0 || context.groupId <= 0 || context.eduYear <= 0) return GatewayResult.Failure(AppError.UNAVAILABLE)
+			val query = "schoolId=${context.schoolId}&eduYear=${context.eduYear}"
+			val headers = mapOf("Authorization" to "Bearer ${remote.token}", "x-school-id" to context.schoolId.toString())
+			val response = exchange.execute(request("/api/v4/os/clientoffice/diary/weeks?$query", "GET", headers, null, lease))
+			if (lease.isCancelled() || response.status != 200) return GatewayResult.Failure(AppError.UNAVAILABLE)
+			val week = JSONObject(response.body).getJSONObject("data").strictString("week")
+			if (calendarDate(week) == null) return GatewayResult.Failure(AppError.INCOMPATIBLE_RESPONSE)
+			GatewayResult.Success(week)
+		} catch (_: SocketTimeoutException) {
+			GatewayResult.Failure(AppError.TIMEOUT)
+		} catch (_: java.io.IOException) {
+			GatewayResult.Failure(AppError.OFFLINE)
+		} catch (_: Exception) {
+			GatewayResult.Failure(AppError.INCOMPATIBLE_RESPONSE)
 		}
 	}
 

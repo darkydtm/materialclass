@@ -75,6 +75,50 @@ class SchoolRepositoryTest {
 	}
 
 	@Test
+	fun currentRefreshPublishesOnlyLatestVerifiedWeekAndDiary() {
+		val entered = CountDownLatch(1); val release = CountDownLatch(1)
+		var calls = 0
+		val gateway = object : TestSchoolGateway() {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", "1", "student", SchoolContext(1, 2026, 2)))
+			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> {
+				if (Thread.currentThread().name == "older-week") { entered.countDown(); check(release.await(10, TimeUnit.SECONDS)); return GatewayResult.Success("01.01.2026") }
+				return GatewayResult.Success("08.01.2026")
+			}
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> {
+				calls++; assertEquals(1L, context.schoolId); assertEquals(2026, context.eduYear); assertEquals(2L, context.groupId)
+				return GatewayResult.Success(Diary(context.date, emptyList()))
+			}
+		}
+		val events = mutableListOf<DiaryState>(); val cache = FakeCache()
+		val repo = SchoolRepository(gateway, IdentityVerifier { session, _ -> proof(session) }, coordinator, cache, { 1L }, events::add, store)
+		assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+		val older = thread(name = "older-week") { repo.refreshCurrent() }
+		check(entered.await(10, TimeUnit.SECONDS)); repo.refreshCurrent()
+		assertEquals("08.01.2026", (events.last() as DiaryState.Ready).snapshot.diary.date)
+		val count = events.size
+		release.countDown(); older.join(10000)
+		assertFalse(older.isAlive); assertEquals(count, events.size); assertEquals(1, calls); assertEquals(1, cache.accesses)
+	}
+
+	@Test
+	fun currentRefreshDoesNotContinueOrPublishAfterLogout() {
+		val entered = CountDownLatch(1); val release = CountDownLatch(1)
+		var calls = 0
+		val gateway = object : TestSchoolGateway() {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", "1", "student", SchoolContext(1, 2026, 2)))
+			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> { entered.countDown(); check(release.await(10, TimeUnit.SECONDS)); return GatewayResult.Success("01.01.2026") }
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> { calls++; return GatewayResult.Success(Diary(context.date, emptyList())) }
+		}
+		val events = mutableListOf<DiaryState>(); val cache = FakeCache()
+		val repo = SchoolRepository(gateway, IdentityVerifier { session, _ -> proof(session) }, coordinator, cache, { 1L }, events::add, store)
+		assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+		val worker = thread { repo.refreshCurrent() }
+		check(entered.await(10, TimeUnit.SECONDS)); repo.logout(); val count = events.size
+		release.countDown(); worker.join(10000)
+		assertFalse(worker.isAlive); assertEquals(count, events.size); assertEquals(0, calls); assertEquals(0, cache.accesses)
+	}
+
+	@Test
 	fun passwordIsClearedBeforeProfileVerification() {
 		val password = charArrayOf('x')
 		var cleared = false

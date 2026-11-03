@@ -47,6 +47,10 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		private val leases = mutableSetOf<RequestLease>()
 		private val disconnectExecutor = Executors.newCachedThreadPool()
 
+		internal fun permits(lease: RequestLease, account: String): Boolean = synchronized(StorageLock) {
+			!lease.cancelled && lease in leases && lease.owner === active && active?.account?.value == account
+		}
+
 		private fun cancelRequests(owner: ActiveSession? = null) {
 			val cancelled = leases.filter { owner == null || it.owner === owner }
 			cancelled.forEach { lease ->

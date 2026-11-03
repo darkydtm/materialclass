@@ -64,6 +64,7 @@ internal class SchoolRepository(
 	private var diarySession: VerifiedDiarySession? = null
 	private var refreshRevision = 0L
 	private var scheduleRevision = 0L
+	private var weekRevision = 0L
 	@Volatile private var loginRevision: Long? = null
 	internal var afterRestoreActivation: () -> Unit = {}
 	internal var beforeRequestAdmission: () -> Unit = {}
@@ -137,6 +138,24 @@ internal class SchoolRepository(
 		}
 	}
 
+	fun currentWeek(deliver: (GatewayResult<String>) -> Unit) {
+		val active = session ?: return
+		val request = coordinator.ifActive(active) {
+			val revision = ++weekRevision
+			val candidate = remote
+			val verified = diarySession?.takeIf { candidate != null && candidate.identityCandidate == active.account.value && it.remote === candidate && it.account == active.account.value }
+			verified to revision
+		} ?: return
+		beforeRequestAdmission()
+		val lease = coordinator.admit(active) ?: return
+		try {
+			val result = if (request.first == null) GatewayResult.Failure(AppError.UNAVAILABLE) else try { gateway.currentWeek(request.first!!, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
+			coordinator.ifActive(active) {
+				if (!lease.cancelled && request.second == weekRevision) deliver(result)
+			}
+		} finally { coordinator.finish(lease) }
+	}
+
 	fun schedule(date: String, deliver: (GatewayResult<Schedule>) -> Unit) {
 		val active = session ?: return
 		val request = coordinator.ifActive(active) {
@@ -151,6 +170,54 @@ internal class SchoolRepository(
 			val result = if (request.first == null) GatewayResult.Failure(AppError.UNAVAILABLE) else try { gateway.schedule(request.first!!, date, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
 			coordinator.ifActive(active) {
 				if (!lease.cancelled && request.second == scheduleRevision) deliver(result)
+			}
+		} finally { coordinator.finish(lease) }
+	}
+
+	fun refreshCurrent() {
+		val active = session ?: return
+		val request = coordinator.ifActive(active) {
+			val revision = ++refreshRevision
+			val candidate = remote
+			val proof = diarySession?.takeIf { candidate != null && it.remote === candidate && it.account == active.account.value && candidate.identityCandidate == active.account.value }
+			if (proof == null) {
+				emit(DiaryState.Error(AppError.UNAVAILABLE))
+				return@ifActive null
+			}
+			emit(DiaryState.Loading)
+			proof to revision
+		} ?: return
+		beforeRequestAdmission()
+		val lease = coordinator.admit(active) ?: return
+		try {
+			val week = try { gateway.currentWeek(request.first, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
+			if (week is GatewayResult.Failure) {
+				coordinator.ifActive(active) { if (!lease.cancelled && request.second == refreshRevision) emit(DiaryState.Error(week.error)) }
+				return
+			}
+			val date = (week as GatewayResult.Success).value
+			val context = request.first.remote.context?.diary(date) ?: return
+			val allowed = coordinator.ifActive(active) { !lease.cancelled && request.second == refreshRevision } == true
+			if (!allowed) return
+			val result = try { gateway.diary(request.first, context, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
+			coordinator.ifActive(active) {
+				if (lease.cancelled || request.second != refreshRevision) return@ifActive
+				if (result is GatewayResult.Failure && result.error == AppError.SESSION_EXPIRED) {
+					remote = null; scheduleSession = null; diarySession = null; session = null
+					coordinator.revokeIfActive(active)
+					emit(DiaryState.Error(AppError.SESSION_EXPIRED))
+					return@ifActive
+				}
+				try {
+					when (result) {
+						is GatewayResult.Success -> if (result.value.date != date) emitFailure(active, context, AppError.INCOMPATIBLE_RESPONSE) else {
+							val snapshot = DiarySnapshot(result.value, clock())
+							check(cache.write(active, encode(context, snapshot)))
+							emit(DiaryState.Ready(snapshot))
+						}
+						is GatewayResult.Failure -> emitFailure(active, context, result.error)
+					}
+				} catch (error: CancellationException) { throw error } catch (_: Exception) { emit(DiaryState.Error(AppError.CACHE_UNREADABLE)) }
 			}
 		} finally { coordinator.finish(lease) }
 	}
