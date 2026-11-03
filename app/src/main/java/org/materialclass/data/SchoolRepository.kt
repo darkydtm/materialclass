@@ -126,11 +126,12 @@ internal class SchoolRepository(
 	fun schedule(date: String, deliver: (GatewayResult<Schedule>) -> Unit) {
 		val active = session ?: return
 		val request = coordinator.ifActive(active) {
-			val candidate = remote ?: return@ifActive null
-			if (candidate.identityCandidate != active.account.value) return@ifActive null
-			(scheduleSession ?: return@ifActive null) to ++scheduleRevision
+			val revision = ++scheduleRevision
+			val candidate = remote
+			val verified = scheduleSession?.takeIf { candidate != null && candidate.identityCandidate == active.account.value && it.remote === candidate && it.account == active.account.value }
+			verified to revision
 		} ?: return
-		val result = try { gateway.schedule(request.first, date) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
+		val result = if (request.first == null) GatewayResult.Failure(AppError.UNAVAILABLE) else try { gateway.schedule(request.first!!, date) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
 		coordinator.ifActive(active) {
 			if (request.second == scheduleRevision) deliver(result)
 		}
