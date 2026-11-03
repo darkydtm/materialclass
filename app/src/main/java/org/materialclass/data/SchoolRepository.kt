@@ -9,6 +9,7 @@ import org.materialclass.api.GatewayResult
 import org.materialclass.api.SchoolGateway
 import org.materialclass.api.UnverifiedSession
 import org.materialclass.api.VerifiedScheduleSession
+import org.materialclass.api.VerifiedDiarySession
 import org.materialclass.api.Schedule
 import org.materialclass.cache.EncryptedCache
 import org.materialclass.session.AccountId
@@ -59,6 +60,7 @@ internal class SchoolRepository(
 	@Volatile private var session: ActiveSession? = null
 	private var remote: UnverifiedSession? = null
 	private var scheduleSession: VerifiedScheduleSession? = null
+	private var diarySession: VerifiedDiarySession? = null
 	private var refreshRevision = 0L
 	private var scheduleRevision = 0L
 	@Volatile private var loginRevision: Long? = null
@@ -84,6 +86,7 @@ internal class SchoolRepository(
 						session = null
 						remote = null
 						scheduleSession = null
+						diarySession = null
 						emit(DiaryState.Cleared)
 					} ?: return@synchronized GatewayResult.Failure(AppError.UNAVAILABLE)
 					val material = encodeSession(candidate)
@@ -96,6 +99,7 @@ internal class SchoolRepository(
 					session = active
 					remote = candidate
 					scheduleSession = verification.scheduleSession
+					diarySession = verification.diarySession
 					GatewayResult.Success(Unit)
 				}
 			} catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
@@ -109,16 +113,18 @@ internal class SchoolRepository(
 	fun restore(): RestoreResult {
 		var candidate: UnverifiedSession? = null
 		var scheduleCandidate: VerifiedScheduleSession? = null
+		var diaryCandidate: VerifiedDiarySession? = null
 		return store.restore({ material ->
 			val remote = decodeSession(material) ?: return@restore SessionVerification.Invalid
 			val verification = verifier.verify(remote)
-			if (verification is SessionVerification.Verified && verification.pupil) { candidate = remote; scheduleCandidate = verification.scheduleSession }
+			if (verification is SessionVerification.Verified && verification.pupil) { candidate = remote; scheduleCandidate = verification.scheduleSession; diaryCandidate = verification.diarySession }
 			verification
 		}) { active ->
 			afterRestoreActivation()
 			session = active
 			remote = candidate
 			scheduleSession = scheduleCandidate
+			diarySession = diaryCandidate
 			emit(DiaryState.Cleared)
 		}
 	}
@@ -140,8 +146,13 @@ internal class SchoolRepository(
 	fun refresh(context: DiaryContext) {
 		val active = session ?: return
 		val request = coordinator.ifActive(active) {
-			val authenticated = remote ?: return@ifActive null
 			val revision = ++refreshRevision
+			val authenticated = remote
+			val proof = diarySession
+			if (authenticated == null || proof == null || proof.remote !== authenticated || proof.account != active.account.value || authenticated.identityCandidate != active.account.value || !proof.permits(context)) {
+				emit(DiaryState.Error(AppError.UNAVAILABLE))
+				return@ifActive null
+			}
 			emit(DiaryState.Loading)
 			authenticated to revision
 		} ?: return
@@ -151,6 +162,7 @@ internal class SchoolRepository(
 			if (result is GatewayResult.Failure && result.error == AppError.SESSION_EXPIRED) {
 				remote = null
 				scheduleSession = null
+				diarySession = null
 				session = null
 				coordinator.revokeIfActive(active)
 				emit(DiaryState.Error(AppError.SESSION_EXPIRED))
@@ -189,6 +201,7 @@ internal class SchoolRepository(
 		} else {
 			remote = null
 			scheduleSession = null
+			diarySession = null
 			session = null
 			try {
 				val revoked = coordinator.revokeIfActive(active)

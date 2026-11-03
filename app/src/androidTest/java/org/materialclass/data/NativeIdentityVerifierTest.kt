@@ -20,7 +20,7 @@ class NativeIdentityVerifierTest {
 	private val coordinator = SessionCoordinator(context)
 	private val store = SessionStore(context, coordinator)
 	private val session = UnverifiedSession("synthetic-token", "42", "student", SchoolContext(7, 2026, 2))
-	private val success = "{\"data\":{\"role\":\"student\",\"userId\":42,\"ignored\":\"synthetic\"}}"
+	private val success = """{"data":{"role":"student","userId":42,"school_id":7,"group":{"id":2},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}}"""
 
 	@After
 	fun cleanup() { coordinator.logout() }
@@ -145,6 +145,37 @@ class NativeIdentityVerifierTest {
 		assertEquals(RestoreResult.Cancelled, result)
 		restored.refresh(DiaryContext(7, 2026, 2, "01.01.2026"))
 		assertEquals(0, accesses)
+	}
+
+	@Test
+	fun diaryRequiresMatchingProfileContextWithoutScheduleUuid() {
+		var response = success
+		var calls = 0
+		val gateway = object : SchoolGateway {
+			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(session)
+			override fun diary(session: UnverifiedSession, context: DiaryContext): GatewayResult<Diary> { calls++; return GatewayResult.Success(Diary(context.date, emptyList())) }
+		}
+		val cache = object : DiaryCache {
+			override fun read(session: ActiveSession): ByteArray? = null
+			override fun write(session: ActiveSession, bytes: ByteArray) = true
+		}
+		val events = mutableListOf<DiaryState>()
+		val verifier = NativeIdentityVerifier(Exchange { Response(200, response) })
+		fun repo() = SchoolRepository(gateway, verifier, coordinator, cache, { 1L }, events::add, store)
+		val date = "01.01.2026"
+		val first = repo()
+		assertTrue(first.login("synthetic", charArrayOf('x')) is GatewayResult.Success)
+		first.refresh(DiaryContext(7, 2026, 2, date))
+		assertEquals(1, calls)
+		assertTrue(events.last() is DiaryState.Ready)
+		listOf(success.replace("\"school_id\":7", "\"school_id\":8"), success.replace("\"id\":2", "\"id\":3"), success.replace("\"eduYear\":2026", "\"eduYear\":2027"), """{"data":{"role":"student","userId":42}}""").forEach {
+			response = it
+			val next = repo()
+			assertTrue(next.login("synthetic", charArrayOf('x')) is GatewayResult.Success)
+			next.refresh(DiaryContext(7, 2026, 2, date))
+			assertTrue(events.last() is DiaryState.Error)
+			assertEquals(1, calls)
+		}
 	}
 
 	@Test

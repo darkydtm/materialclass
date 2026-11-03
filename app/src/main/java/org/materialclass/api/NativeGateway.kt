@@ -18,6 +18,26 @@ interface SchoolGateway {
 	fun schedule(session: VerifiedScheduleSession, date: String): GatewayResult<Schedule> = GatewayResult.Failure(AppError.UNAVAILABLE)
 }
 
+class VerifiedDiarySession private constructor(internal val remote: UnverifiedSession, internal val account: String) {
+	override fun toString(): String = "VerifiedDiarySession([redacted])"
+
+	internal fun permits(context: DiaryContext): Boolean {
+		val school = remote.context ?: return false
+		return school.schoolId == context.schoolId && school.groupId == context.groupId && school.eduYear == context.eduYear
+	}
+
+	companion object {
+		internal fun compare(remote: UnverifiedSession, profile: JSONObject): VerifiedDiarySession? {
+			val id = profile.opt("userId").integerValue()?.takeIf { it > 0 }?.toString() ?: return null
+			if (remote.token.isEmpty() || remote.identityCandidate != id || remote.role != "student" || profile.opt("role") != remote.role) return null
+			val login = remote.context ?: return null
+			val actual = schoolContext(profile) ?: return null
+			if (login.schoolId != actual.schoolId || login.groupId != actual.groupId || login.eduYear != actual.eduYear) return null
+			return VerifiedDiarySession(remote, id)
+		}
+	}
+}
+
 class VerifiedScheduleSession private constructor(internal val remote: UnverifiedSession, internal val account: String) {
 	override fun toString(): String = "VerifiedScheduleSession([redacted])"
 

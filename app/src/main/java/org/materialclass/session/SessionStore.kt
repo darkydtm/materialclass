@@ -21,7 +21,7 @@ fun interface SessionVerifier {
 }
 
 sealed class SessionVerification {
-	class Verified(val account: AccountId, val pupil: Boolean, val scheduleSession: org.materialclass.api.VerifiedScheduleSession? = null) : SessionVerification()
+	class Verified(val account: AccountId, val pupil: Boolean, val scheduleSession: org.materialclass.api.VerifiedScheduleSession? = null, val diarySession: org.materialclass.api.VerifiedDiarySession? = null) : SessionVerification()
 	data object Expired : SessionVerification()
 	data object Invalid : SessionVerification()
 	data object Retry : SessionVerification()

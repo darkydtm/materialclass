@@ -19,12 +19,12 @@ class SchoolRepositoryTest {
 
 	private val context = DiaryContext(1, 2026, 2, "01.01.2026")
 	private class FakeGateway : SchoolGateway {
-		var identity: String? = "a"
+		var identity: String? = "1"
 		var role = "student"
 		var result: GatewayResult<Diary> = GatewayResult.Success(Diary("01.01.2026", emptyList()))
 		var entered: CountDownLatch? = null
 		var release: CountDownLatch? = null
-		override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", identity, role))
+		override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", identity, role, SchoolContext(1, 2026, 2)))
 		override fun diary(session: UnverifiedSession, context: DiaryContext): GatewayResult<Diary> {
 			entered?.countDown()
 			release?.let { check(it.await(10, TimeUnit.SECONDS)) }
@@ -38,13 +38,13 @@ class SchoolRepositoryTest {
 		override fun write(session: ActiveSession, bytes: ByteArray): Boolean { accesses++; values[session.account] = bytes; return true }
 	}
 	private fun repository(gateway: FakeGateway, cache: FakeCache, events: MutableList<DiaryState>, verify: Boolean = true): SchoolRepository = SchoolRepository(
-		gateway, IdentityVerifier { if (verify && it.identityCandidate != null) SessionVerification.Verified(AccountId(it.identityCandidate), true) else SessionVerification.Retry }, coordinator, cache, { 1234L }, events::add, store
+		gateway, IdentityVerifier { if (verify && it.identityCandidate != null) proof(it) else SessionVerification.Retry }, coordinator, cache, { 1234L }, events::add, store
 	)
 
 	private fun proof(session: UnverifiedSession): SessionVerification.Verified {
 		val id = session.identityCandidate!!
 		val profile = org.json.JSONObject("""{"userId":$id,"role":"student","school_id":1,"group":{"id":2},"studentInfo":{"studentSchoolUuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}""")
-		return SessionVerification.Verified(AccountId(id), true, VerifiedScheduleSession.compare(session, profile))
+		return SessionVerification.Verified(AccountId(id), true, VerifiedScheduleSession.compare(session, profile), VerifiedDiarySession.compare(session, profile))
 	}
 
 	@Test
@@ -62,6 +62,24 @@ class SchoolRepositoryTest {
 			assertTrue(events.last() is DiaryState.Error)
 		}
 		assertEquals(0, calls)
+	}
+
+	@Test
+	fun rejectedContextSupersedesInFlightValidRefresh() {
+		val entered = CountDownLatch(1); val release = CountDownLatch(1)
+		val gateway = FakeGateway().apply { this.entered = entered; this.release = release }
+		val cache = FakeCache(); val events = mutableListOf<DiaryState>()
+		val repo = repository(gateway, cache, events)
+		assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+		val worker = thread { repo.refresh(context) }
+		check(entered.await(10, TimeUnit.SECONDS))
+		repo.refresh(DiaryContext(9, 2026, 2, context.date))
+		assertTrue(events.last() is DiaryState.Error)
+		val count = events.size
+		release.countDown(); worker.join(10000)
+		assertFalse(worker.isAlive)
+		assertEquals(count, events.size)
+		assertEquals(0, cache.accesses)
 	}
 
 	@Test
@@ -155,12 +173,12 @@ class SchoolRepositoryTest {
 				entered.countDown()
 				if (login == "older") enteredOld.countDown()
 				check((if (login == "older") releaseOld else releaseNew).await(10, TimeUnit.SECONDS))
-				return GatewayResult.Success(UnverifiedSession("synthetic-token", login, "student"))
+				return GatewayResult.Success(UnverifiedSession("synthetic-token", if (login == "older") "1" else "2", "student", SchoolContext(1, 2026, 2)))
 			}
 			override fun diary(session: UnverifiedSession, context: DiaryContext): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
 		}
 		val cache = FakeCache(); val events = mutableListOf<DiaryState>()
-		val repository = SchoolRepository(gateway, IdentityVerifier { it.identityCandidate?.let { id -> SessionVerification.Verified(AccountId(id), true) } ?: SessionVerification.Retry }, coordinator, cache, { 1L }, events::add, store)
+		val repository = SchoolRepository(gateway, IdentityVerifier { proof(it) }, coordinator, cache, { 1L }, events::add, store)
 		var older: GatewayResult<Unit>? = null; var newer: GatewayResult<Unit>? = null
 		val first = thread { older = repository.login("older", charArrayOf('x')) }
 		check(enteredOld.await(10, TimeUnit.SECONDS))
@@ -173,7 +191,7 @@ class SchoolRepositoryTest {
 		assertFalse(second.isAlive)
 		assertTrue(newer is GatewayResult.Success)
 		repository.refresh(context)
-		assertEquals(setOf(AccountId("newer")), cache.values.keys)
+		assertEquals(setOf(AccountId("2")), cache.values.keys)
 		repository.logout()
 	}
 
@@ -184,7 +202,7 @@ class SchoolRepositoryTest {
 		repository.login("a", charArrayOf('x'))
 		repository.refresh(context)
 		assertTrue(events.last() is DiaryState.Ready)
-		gateway.identity = "b"
+		gateway.identity = "2"
 		assertTrue(repository.login("b", charArrayOf('x')) is GatewayResult.Success)
 		assertEquals(DiaryState.Cleared, events.last())
 		repository.logout()
@@ -207,7 +225,7 @@ class SchoolRepositoryTest {
 		val failingCoordinator = SessionCoordinator { if (failClear) throw java.io.IOException("synthetic failure") }
 		val failingStore = SessionStore(androidContext, failingCoordinator)
 		val events = mutableListOf<DiaryState>()
-		val repository = SchoolRepository(FakeGateway(), IdentityVerifier { SessionVerification.Verified(AccountId("a"), true) }, failingCoordinator, FakeCache(), { 1L }, events::add, failingStore)
+		val repository = SchoolRepository(FakeGateway(), IdentityVerifier { proof(it) }, failingCoordinator, FakeCache(), { 1L }, events::add, failingStore)
 		assertTrue(repository.login("a", charArrayOf('x')) is GatewayResult.Success)
 		repository.refresh(context)
 		assertTrue(events.last() is DiaryState.Ready)
@@ -226,7 +244,7 @@ class SchoolRepositoryTest {
 		val older = repository(gateway, FakeCache(), olderEvents)
 		assertTrue(older.login("a", charArrayOf('x')) is GatewayResult.Success)
 		older.refresh(context)
-		gateway.identity = "b"
+		gateway.identity = "2"
 		val newer = repository(gateway, FakeCache(), newerEvents)
 		assertTrue(newer.login("b", charArrayOf('x')) is GatewayResult.Success)
 		older.logout()
@@ -291,7 +309,7 @@ class SchoolRepositoryTest {
 	fun olderRefreshCannotOverwriteNewerRefresh() {
 		val entered = CountDownLatch(1); val release = CountDownLatch(1)
 		val gateway = object : SchoolGateway {
-			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", "a", "student"))
+			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", "1", "student", SchoolContext(1, 2026, 2)))
 			override fun diary(session: UnverifiedSession, context: DiaryContext): GatewayResult<Diary> {
 				if (Thread.currentThread().name == "older") {
 					entered.countDown()
@@ -302,7 +320,7 @@ class SchoolRepositoryTest {
 			}
 		}
 		val events = mutableListOf<DiaryState>()
-		val repository = SchoolRepository(gateway, IdentityVerifier { SessionVerification.Verified(AccountId("a"), true) }, coordinator, FakeCache(), { 1234L }, events::add, store)
+		val repository = SchoolRepository(gateway, IdentityVerifier { proof(it) }, coordinator, FakeCache(), { 1234L }, events::add, store)
 		repository.login("synthetic", charArrayOf('x'))
 		val worker = thread(name = "older") { repository.refresh(context) }
 		check(entered.await(10, TimeUnit.SECONDS))
@@ -343,12 +361,12 @@ class SchoolRepositoryTest {
 					entered.countDown()
 					check(release.await(10, TimeUnit.SECONDS))
 				}
-				return GatewayResult.Success(UnverifiedSession("synthetic-token", login, "student"))
+				return GatewayResult.Success(UnverifiedSession("synthetic-token", if (login == "older") "1" else "2", "student", SchoolContext(1, 2026, 2)))
 			}
 			override fun diary(session: UnverifiedSession, context: DiaryContext): GatewayResult<Diary> = GatewayResult.Failure(AppError.SESSION_EXPIRED)
 		}
 		val events = mutableListOf<DiaryState>()
-		val repository = SchoolRepository(gateway, IdentityVerifier { it.identityCandidate?.let { id -> SessionVerification.Verified(AccountId(id), true) } ?: SessionVerification.Retry }, coordinator, FakeCache(), { 1L }, events::add, store)
+		val repository = SchoolRepository(gateway, IdentityVerifier { proof(it) }, coordinator, FakeCache(), { 1L }, events::add, store)
 		assertTrue(repository.login("older", charArrayOf('x')) is GatewayResult.Success)
 		var newer: GatewayResult<Unit>? = null
 		val worker = thread { newer = repository.login("newer", charArrayOf('x')) }
@@ -364,9 +382,9 @@ class SchoolRepositoryTest {
 	fun expiredResponseFromOldSessionCannotRevokeNewLogin() {
 		val entered = CountDownLatch(1); val release = CountDownLatch(1)
 		val gateway = object : SchoolGateway {
-			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", login, "student"))
+			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", if (login == "older") "1" else "2", "student", SchoolContext(1, 2026, 2)))
 			override fun diary(session: UnverifiedSession, context: DiaryContext): GatewayResult<Diary> {
-				if (session.identityCandidate == "older") {
+				if (session.identityCandidate == "1") {
 					entered.countDown()
 					check(release.await(10, TimeUnit.SECONDS))
 					return GatewayResult.Failure(AppError.SESSION_EXPIRED)
@@ -375,7 +393,7 @@ class SchoolRepositoryTest {
 			}
 		}
 		val cache = FakeCache(); val events = mutableListOf<DiaryState>()
-		val repository = SchoolRepository(gateway, IdentityVerifier { it.identityCandidate?.let { id -> SessionVerification.Verified(AccountId(id), true) } ?: SessionVerification.Retry }, coordinator, cache, { 1L }, events::add, store)
+		val repository = SchoolRepository(gateway, IdentityVerifier { proof(it) }, coordinator, cache, { 1L }, events::add, store)
 		assertTrue(repository.login("older", charArrayOf('x')) is GatewayResult.Success)
 		val worker = thread { repository.refresh(context) }
 		check(entered.await(10, TimeUnit.SECONDS))
@@ -386,7 +404,7 @@ class SchoolRepositoryTest {
 		assertEquals(count, events.size)
 		repository.refresh(context)
 		assertTrue(events.last() is DiaryState.Ready)
-		assertEquals(setOf(AccountId("newer")), cache.values.keys)
+		assertEquals(setOf(AccountId("2")), cache.values.keys)
 		repository.logout()
 	}
 
@@ -399,7 +417,7 @@ class SchoolRepositoryTest {
 		val worker = thread { first.refresh(context) }
 		check(gateway.entered!!.await(10, TimeUnit.SECONDS))
 		first.logout()
-		gateway.identity = "b"
+		gateway.identity = "2"
 		val second = repository(gateway, cache, events)
 		second.login("b", charArrayOf('x'))
 		val count = events.size
