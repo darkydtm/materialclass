@@ -37,6 +37,45 @@ class NativeControllerIntegrationTest {
 		coordinator.logout()
 	}
 
+	@Test fun expiryDuringIndependentLoginKeepsAttemptAndClearsOldData() {
+		val entered = CountDownLatch(1)
+		val release = CountDownLatch(1)
+		val shared = SessionCoordinator { }
+		val gateway = object : SchoolGateway {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> {
+				if (login == "2") { entered.countDown(); check(release.await(10, TimeUnit.SECONDS)) }
+				return GatewayResult.Success(UnverifiedSession("synthetic", login, "student", SchoolContext(1, 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
+			}
+			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = GatewayResult.Success("01.01.2026")
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
+			override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> = GatewayResult.Success(Schedule(emptyList()))
+		}
+		val verifier = IdentityVerifier { session, _ ->
+			val profile = JSONObject("""{"userId":${session.identityCandidate},"role":"student","school_id":1,"group":{"id":2},"studentInfo":{"studentSchoolUuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}""")
+			SessionVerification.Verified(AccountId(session.identityCandidate!!), true, VerifiedScheduleSession.compare(session, profile), VerifiedDiarySession.compare(session, profile))
+		}
+		val cache = object : DiaryCache {
+			override fun read(session: ActiveSession): ByteArray? = null
+			override fun write(session: ActiveSession, bytes: ByteArray) = true
+		}
+		fun create() = NativeController { emit -> SchoolRepository(gateway, verifier, shared, cache, { 1L }, emit, SessionStore(context, shared)) }
+		main { controller = create() }
+		val first = controller!!
+		val second = create()
+		try {
+			main { first.login("1", charArrayOf('x')) }
+			await { first.state.signedIn && first.state.diary is DiaryState.Ready }
+			val old = shared.event().session!!
+			main { second.login("2", charArrayOf('x')) }
+			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			assertTrue(shared.revokeIfActive(old, expired = true))
+			await { !first.state.signedIn && first.state.error == AppError.SESSION_EXPIRED }
+			main { assertTrue(first.state.diary is DiaryState.Cleared); assertNull(first.state.schedule); assertTrue(second.state.busy); assertFalse(second.state.signedIn) }
+			release.countDown()
+			await { second.state.signedIn && second.state.diary is DiaryState.Ready }
+		} finally { release.countDown(); main { second.close() }; shared.logout() }
+	}
+
 	@Test fun failedReplacementClearsBothControllersAndCanRetry() {
 		val failing = java.util.concurrent.atomic.AtomicBoolean(false)
 		val shared = SessionCoordinator { if (failing.get()) throw IllegalStateException("synthetic failure") }
