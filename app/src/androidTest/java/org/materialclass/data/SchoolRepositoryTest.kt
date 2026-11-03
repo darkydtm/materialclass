@@ -122,6 +122,15 @@ class SchoolRepositoryTest {
 		}
 	}
 
+	@Test
+	fun loginAndLogoutCallbacksRunOutsideStorageLock() {
+		val held = mutableListOf<Boolean>()
+		val repo = SchoolRepository(FakeGateway(), IdentityVerifier { session, _ -> proof(session) }, coordinator, FakeCache(), { 1L }, { held.add(Thread.holdsLock(org.materialclass.security.StorageLock)) }, store)
+		assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+		repo.logout()
+		assertEquals(listOf(false, false), held)
+	}
+
 	@Test fun cancelledCacheWriteDoesNotPublishRefresh() = cancelledCacheWriteDoesNotPublish(false)
 	@Test fun cancelledCacheWriteDoesNotPublishCurrentRefresh() = cancelledCacheWriteDoesNotPublish(true)
 
