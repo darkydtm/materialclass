@@ -147,6 +147,36 @@ class NativeControllerIntegrationTest {
 		} finally { main { second.close() } }
 	}
 
+	@Test fun overlappingLogoutCompletionKeepsNewTicketRetryable() {
+		val entered = CountDownLatch(1)
+		val release = CountDownLatch(1)
+		val shared = SessionCoordinator {
+			entered.countDown()
+			check(release.await(10, TimeUnit.SECONDS))
+		}
+		val gateway = object : SchoolGateway {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Failure(AppError.UNAVAILABLE)
+			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = GatewayResult.Failure(AppError.UNAVAILABLE)
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = GatewayResult.Failure(AppError.UNAVAILABLE)
+			override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> = GatewayResult.Failure(AppError.UNAVAILABLE)
+		}
+		val cache = object : DiaryCache {
+			override fun read(session: ActiveSession): ByteArray? = null
+			override fun write(session: ActiveSession, bytes: ByteArray) = true
+		}
+		main { controller = NativeController { emit -> SchoolRepository(gateway, IdentityVerifier { _, _ -> SessionVerification.Retry }, shared, cache, { 1L }, emit, SessionStore(context, shared)) }; controller!!.logout() }
+		try {
+			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			val newer = shared.cancelInFlightNow()
+			release.countDown()
+			await { controller!!.state.logoutPending && !controller!!.state.busy }
+			assertEquals(newer, shared.pendingLogoutTicket())
+			main { controller!!.logout() }
+			await { !controller!!.state.logoutPending && !controller!!.state.busy }
+			assertNull(shared.pendingLogoutTicket())
+		} finally { release.countDown(); shared.pendingLogoutTicket()?.let { shared.logout(it) } }
+	}
+
 	@Test fun failedLogoutCanBeRetriedAfterControllerRecreation() {
 		var failCleanup = false
 		val entered = CountDownLatch(1)

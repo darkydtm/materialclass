@@ -156,15 +156,23 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		activateChecked(account, requestRevision()) ?: throw IllegalStateException("Session activation cancelled")
 	}
 	private fun activateChecked(account: AccountId, expected: Long): ActiveSession? {
-		val activationRevision = synchronized(CancellationLock) {
-			if (pending.isNotEmpty() || revision != expected) null else { active = null; restorationAllowed = false; ++revision }
+		val activation = synchronized(CancellationLock) {
+			if (pending.isNotEmpty() || revision != expected) null else {
+				val previous = active
+				active = null; restorationAllowed = false
+				Pair(++revision, previous)
+			}
 		} ?: return null
+		val (activationRevision, previous) = activation
 		cancelRequests()
 		try {
 			clearSession()
 		} catch (error: Exception) {
 			val event = synchronized(CancellationLock) {
-				lastEvent = SessionEvent(++revocationEpoch, SessionChange.LOGOUT, null)
+				val token = Any()
+				pending.add(token)
+				ownPending.addLast(token)
+				lastEvent = SessionEvent(++revocationEpoch, SessionChange.LOGOUT, previous)
 				Pair(revocationEpoch, observers.toList())
 			}
 			notifyAfterStorage(event.first, event.second)

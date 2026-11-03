@@ -168,16 +168,17 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 		if (closed || logoutPending) return
 		logoutPending = true
 		val token = repository.pendingLogoutTicket() ?: repository.cancelInFlightNow()
-		val task = ++generation
-		val epoch = repository.revocationEpoch()
+		++generation
 		state = NativeUiState(busy = true, logoutPending = true)
 		logoutExecutor.execute {
 			val error = try { repository.logout(token); null } catch (_: Exception) { AppError.UNAVAILABLE }
 			handler.post {
 				logoutPending = false
-				if (!closed && generation == task && repository.revocationEpoch() == epoch) {
+				if (!closed) {
 					val pending = repository.pendingLogoutTicket() != null
-					state = NativeUiState(logoutPending = pending, error = error)
+					if (pending || repository.sessionEvent().change != SessionChange.ACTIVATED) {
+						state = NativeUiState(logoutPending = pending, error = if (pending) error else null)
+					}
 				}
 			}
 		}

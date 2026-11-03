@@ -32,6 +32,6 @@
 	<string name="warning_title">Ақпарат</string>
 	<string name="warning_text">Кейбір әрекеттер сервердегі деректерді өзгертуі мүмкін. Қазір сервер әрекеттері қолжетімсіз.</string>
 	<string name="ok">Түсінікті</string>
-	<string name="logout_cleanup_failed">Шыққаннан кейін тазалау аяқталмады. Кіруден бұрын қайталаңыз.</string>
+	<string name="logout_cleanup_failed">Сессияны тазалау орындалмады немесе расталмады. Кіруден бұрын қайталаңыз.</string>
 	<string name="retry_logout">Шығуды қайталау</string>
 </resources>

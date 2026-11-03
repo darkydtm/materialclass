@@ -32,6 +32,6 @@
 	<string name="warning_title">Information</string>
 	<string name="warning_text">Some actions may change data on the server. No server actions are available yet.</string>
 	<string name="ok">OK</string>
-	<string name="logout_cleanup_failed">Sign-out cleanup is incomplete. Retry before signing in.</string>
+	<string name="logout_cleanup_failed">Session cleanup failed or is unconfirmed. Retry before signing in.</string>
 	<string name="retry_logout">Retry sign out</string>
 </resources>
