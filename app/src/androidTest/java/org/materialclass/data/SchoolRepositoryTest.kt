@@ -73,6 +73,67 @@ class SchoolRepositoryTest {
 	}
 
 	@Test
+	fun logoutCancelsAdmittedRequestBeforeConnectionRegistration() {
+		val entered = CountDownLatch(1); val release = CountDownLatch(1)
+		var registered = true
+		val gateway = object : SchoolGateway {
+			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", "1", "student", SchoolContext(1, 2026, 2)))
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext): GatewayResult<Diary> = error("unexpected")
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> {
+				entered.countDown(); check(release.await(10, TimeUnit.SECONDS))
+				registered = lease.register { }
+				return GatewayResult.Success(Diary(context.date, emptyList()))
+			}
+		}
+		val cache = FakeCache(); val events = mutableListOf<DiaryState>()
+		val repository = SchoolRepository(gateway, IdentityVerifier { proof(it) }, coordinator, cache, { 1L }, events::add, store)
+		assertTrue(repository.login("1", charArrayOf('x')) is GatewayResult.Success)
+		val worker = thread { repository.refresh(context) }
+		check(entered.await(10, TimeUnit.SECONDS)); repository.logout(); val count = events.size
+		release.countDown(); worker.join(10000)
+		assertFalse(worker.isAlive); assertFalse(registered); assertEquals(count, events.size); assertEquals(0, cache.accesses)
+	}
+
+	@Test
+	fun logoutDisconnectsInFlightRequestWithoutPublishing() {
+		val entered = CountDownLatch(1); val disconnected = CountDownLatch(1); val release = CountDownLatch(1)
+		val gateway = object : SchoolGateway {
+			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", "1", "student", SchoolContext(1, 2026, 2)))
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext): GatewayResult<Diary> = error("unexpected")
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> {
+				check(lease.register { disconnected.countDown() }); entered.countDown()
+				check(release.await(10, TimeUnit.SECONDS)); lease.unregister()
+				return GatewayResult.Success(Diary(context.date, emptyList()))
+			}
+		}
+		val cache = FakeCache(); val events = mutableListOf<DiaryState>()
+		val repository = SchoolRepository(gateway, IdentityVerifier { proof(it) }, coordinator, cache, { 1L }, events::add, store)
+		assertTrue(repository.login("1", charArrayOf('x')) is GatewayResult.Success)
+		val worker = thread { repository.refresh(context) }
+		check(entered.await(10, TimeUnit.SECONDS)); repository.logout(); val count = events.size
+		check(disconnected.await(10, TimeUnit.SECONDS)); release.countDown(); worker.join(10000)
+		assertFalse(worker.isAlive); assertEquals(count, events.size); assertEquals(0, cache.accesses)
+	}
+
+	@Test
+	fun logoutBeforeAdmissionPreventsScheduleSubmission() {
+		val prepared = CountDownLatch(1); val release = CountDownLatch(1)
+		var calls = 0; var delivered = false
+		val gateway = object : SchoolGateway {
+			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", "1", "student", SchoolContext(1, 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext): GatewayResult<Diary> = error("unexpected")
+			override fun schedule(session: VerifiedScheduleSession, date: String): GatewayResult<Schedule> { calls++; return GatewayResult.Success(Schedule(emptyList())) }
+		}
+		val repository = SchoolRepository(gateway, IdentityVerifier { proof(it) }, coordinator, FakeCache(), { 1L }, {}, store)
+		repository.beforeRequestAdmission = { prepared.countDown(); check(release.await(10, TimeUnit.SECONDS)) }
+		assertTrue(repository.login("1", charArrayOf('x')) is GatewayResult.Success)
+		val worker = thread { repository.schedule("01.01.2026") { delivered = true } }
+		check(prepared.await(10, TimeUnit.SECONDS)); repository.logout()
+		release.countDown(); worker.join(10000)
+		assertFalse(worker.isAlive); assertEquals(0, calls); assertFalse(delivered)
+	}
+
+	@Test
 	fun unverifiedDiaryContextCannotReachGateway() {
 		var calls = 0
 		val gateway = object : SchoolGateway {

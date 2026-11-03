@@ -11,11 +11,14 @@ import java.util.Locale
 import java.util.TimeZone
 import java.util.UUID
 import javax.net.ssl.HttpsURLConnection
+import org.materialclass.session.RequestLease
 
 interface SchoolGateway {
 	fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession>
 	fun diary(session: VerifiedDiarySession, context: DiaryContext): GatewayResult<Diary>
 	fun schedule(session: VerifiedScheduleSession, date: String): GatewayResult<Schedule> = GatewayResult.Failure(AppError.UNAVAILABLE)
+	fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = diary(session, context)
+	fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> = schedule(session, date)
 }
 
 class VerifiedDiarySession private constructor(internal val remote: UnverifiedSession, internal val account: String) {
@@ -88,7 +91,7 @@ class Diary(val date: String, val days: List<DiaryDay>)
 class DiaryDay(val day: String, val date: String, val subjects: List<DiarySubject>)
 class DiarySubject(val label: String, val type: String, val scheduleUuid: String, val homeworkType: String, val homeworkBody: String?, val homeworkUuid: String?, val hasBooks: Boolean, val hasFiles: Boolean)
 
-internal class Request(val url: URL, val method: String, val headers: Map<String, String>, val body: ByteArray?)
+internal class Request(val url: URL, val method: String, val headers: Map<String, String>, val body: ByteArray?, val lease: RequestLease? = null)
 internal class Response(val status: Int, val body: String)
 internal fun interface Exchange {
 	fun execute(request: Request): Response
@@ -129,12 +132,18 @@ class NativeGateway internal constructor(private val exchange: Exchange) : Schoo
 	}
 
 	override fun diary(session: VerifiedDiarySession, context: DiaryContext): GatewayResult<Diary> {
+		return diaryRequest(session, context, null)
+	}
+
+	override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = diaryRequest(session, context, lease)
+
+	private fun diaryRequest(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease?): GatewayResult<Diary> {
 		return try {
 			val remote = session.remote
 			if (session.account != remote.identityCandidate || remote.token.isEmpty() || remote.role != "student" || !session.permits(context) || context.schoolId <= 0 || context.groupId <= 0 || context.eduYear <= 0 || !context.date.matches(Regex("[0-9]{2}\\.[0-9]{2}\\.[0-9]{4}"))) return GatewayResult.Failure(AppError.INCOMPATIBLE_RESPONSE)
 			val query = listOf("schoolId" to context.schoolId.toString(), "eduYear" to context.eduYear.toString(), "date" to context.date, "groupId" to context.groupId.toString()).joinToString("&") { (key, value) -> "$key=${URLEncoder.encode(value, "UTF-8")}" }
 			val headers = mapOf("Authorization" to "Bearer ${remote.token}", "x-school-id" to context.schoolId.toString())
-			val response = exchange.execute(request("/api/v4/os/clientoffice/diary?$query", "GET", headers, null))
+			val response = exchange.execute(request("/api/v4/os/clientoffice/diary?$query", "GET", headers, null, lease))
 			if (response.status != 200) return GatewayResult.Failure(AppError.UNAVAILABLE)
 			val data = JSONObject(response.body).getJSONObject("data")
 			val days = data.getJSONArray("days").mapObjects { day ->
@@ -153,6 +162,12 @@ class NativeGateway internal constructor(private val exchange: Exchange) : Schoo
 	}
 
 	override fun schedule(session: VerifiedScheduleSession, date: String): GatewayResult<Schedule> {
+		return scheduleRequest(session, date, null)
+	}
+
+	override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> = scheduleRequest(session, date, lease)
+
+	private fun scheduleRequest(session: VerifiedScheduleSession, date: String, lease: RequestLease?): GatewayResult<Schedule> {
 		return try {
 			val remote = session.remote
 			val context = remote.context ?: return GatewayResult.Failure(AppError.INCOMPATIBLE_RESPONSE)
@@ -160,7 +175,7 @@ class NativeGateway internal constructor(private val exchange: Exchange) : Schoo
 			if (session.account != remote.identityCandidate || remote.role != "student" || remote.token.isEmpty() || context.schoolId <= 0 || context.eduYear <= 0 || context.groupId <= 0 || !uuid.matches(Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")) || !date.matches(Regex("[0-9]{2}\\.[0-9]{2}\\.[0-9]{4}"))) return GatewayResult.Failure(AppError.INCOMPATIBLE_RESPONSE)
 			val requested = calendarDate(date) ?: return GatewayResult.Failure(AppError.INCOMPATIBLE_RESPONSE)
 			val query = listOf("schoolId" to context.schoolId.toString(), "eduYear" to context.eduYear.toString(), "studentSchoolUuid" to uuid, "date" to date, "groupId" to context.groupId.toString()).joinToString("&") { (key, value) -> "$key=${URLEncoder.encode(value, "UTF-8")}" }
-			val response = exchange.execute(request("/api/v4/os/clientoffice/schedule?$query", "GET", mapOf("Authorization" to "Bearer ${remote.token}", "x-school-id" to context.schoolId.toString()), null))
+			val response = exchange.execute(request("/api/v4/os/clientoffice/schedule?$query", "GET", mapOf("Authorization" to "Bearer ${remote.token}", "x-school-id" to context.schoolId.toString()), null, lease))
 			if (response.status != 200) return GatewayResult.Failure(AppError.UNAVAILABLE)
 			val data = JSONObject(response.body).getJSONObject("data")
 			val weeks = data.getJSONObject("weeks")
@@ -187,9 +202,9 @@ class NativeGateway internal constructor(private val exchange: Exchange) : Schoo
 		}
 	}
 
-	private fun request(path: String, method: String, extra: Map<String, String>, body: ByteArray?): Request {
+	private fun request(path: String, method: String, extra: Map<String, String>, body: ByteArray?, lease: RequestLease? = null): Request {
 		val headers = mapOf("Accept" to "application/json", "Content-Type" to "application/json", "X-Localization" to "ru", "X-Mathrix" to deviceId, "Origin" to "https://www.bilimclass.kz", "Referer" to "https://www.bilimclass.kz/", "User-Agent" to "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36") + extra
-		return Request(URL("https://api.bilimclass.kz$path"), method, headers, body)
+		return Request(URL("https://api.bilimclass.kz$path"), method, headers, body, lease)
 	}
 }
 
@@ -199,6 +214,7 @@ internal class HttpsExchange : Exchange {
 		require(url.protocol == "https" && url.host == "api.bilimclass.kz" && (url.port == -1 || url.port == 443) && url.userInfo == null)
 		val connection = url.openConnection() as HttpsURLConnection
 		try {
+			if (request.lease?.register { connection.disconnect() } == false) throw java.io.IOException("Request cancelled")
 			connection.instanceFollowRedirects = false
 			connection.connectTimeout = 15000
 			connection.readTimeout = 15000
@@ -221,6 +237,7 @@ internal class HttpsExchange : Exchange {
 			}
 			return Response(status, String(bytes, Charsets.UTF_8))
 		} finally {
+			request.lease?.unregister()
 			connection.disconnect()
 		}
 	}

@@ -65,6 +65,7 @@ internal class SchoolRepository(
 	private var scheduleRevision = 0L
 	@Volatile private var loginRevision: Long? = null
 	internal var afterRestoreActivation: () -> Unit = {}
+	internal var beforeRequestAdmission: () -> Unit = {}
 
 	fun login(username: String, password: CharArray): GatewayResult<Unit> {
 		val revision = synchronized(StorageLock) {
@@ -137,7 +138,11 @@ internal class SchoolRepository(
 			val verified = scheduleSession?.takeIf { candidate != null && candidate.identityCandidate == active.account.value && it.remote === candidate && it.account == active.account.value }
 			verified to revision
 		} ?: return
-		val result = if (request.first == null) GatewayResult.Failure(AppError.UNAVAILABLE) else try { gateway.schedule(request.first!!, date) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
+		beforeRequestAdmission()
+		val lease = coordinator.admit(active) ?: return
+		val result = try {
+			if (request.first == null) GatewayResult.Failure(AppError.UNAVAILABLE) else try { gateway.schedule(request.first!!, date, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
+		} finally { coordinator.finish(lease) }
 		coordinator.ifActive(active) {
 			if (request.second == scheduleRevision) deliver(result)
 		}
@@ -156,7 +161,11 @@ internal class SchoolRepository(
 			emit(DiaryState.Loading)
 			proof to revision
 		} ?: return
-		val result = try { gateway.diary(request.first, context) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
+		beforeRequestAdmission()
+		val lease = coordinator.admit(active) ?: return
+		val result = try {
+			try { gateway.diary(request.first, context, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
+		} finally { coordinator.finish(lease) }
 		coordinator.ifActive(active) {
 			if (request.second != refreshRevision) return@ifActive
 			if (result is GatewayResult.Failure && result.error == AppError.SESSION_EXPIRED) {

@@ -3,6 +3,7 @@ package org.materialclass.session
 import android.content.Context
 import org.materialclass.security.StorageLock
 import java.security.SecureRandom
+import java.util.concurrent.Executors
 
 @JvmInline
 value class AccountId(val value: String) {
@@ -23,6 +24,17 @@ internal class CacheNamespace(val value: String) {
 
 class ActiveSession internal constructor(val account: AccountId, internal val cacheNamespace: CacheNamespace)
 
+class RequestLease internal constructor() {
+	internal var cancelled = false
+	internal var disconnect: (() -> Unit)? = null
+
+	internal fun register(disconnect: () -> Unit): Boolean = synchronized(StorageLock) {
+		if (cancelled) false else { this.disconnect = disconnect; true }
+	}
+
+	internal fun unregister() = synchronized(StorageLock) { disconnect = null }
+}
+
 class SessionCoordinator internal constructor(private val clearSession: () -> Unit) {
 	constructor(context: Context) : this({ SessionStore.clear(context) })
 
@@ -30,6 +42,27 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		private var active: ActiveSession? = null
 		private var restorationAllowed = true
 		private var revision = 0L
+		private val leases = mutableSetOf<RequestLease>()
+		private val disconnectExecutor = Executors.newCachedThreadPool()
+
+		private fun cancelRequests() {
+			leases.forEach { lease ->
+				lease.cancelled = true
+				lease.disconnect?.let { disconnect -> disconnectExecutor.execute { try { disconnect() } catch (_: Exception) { } } }
+				lease.disconnect = null
+			}
+			leases.clear()
+		}
+	}
+
+	internal fun admit(session: ActiveSession): RequestLease? = synchronized(StorageLock) {
+		if (active !== session) null else RequestLease().also { leases.add(it) }
+	}
+
+	internal fun finish(lease: RequestLease) = synchronized(StorageLock) {
+		leases.remove(lease)
+		lease.cancelled = true
+		lease.disconnect = null
 	}
 
 	internal fun beginLogin(): Long = synchronized(StorageLock) { ++revision }
@@ -54,6 +87,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 
 	internal fun revokeIfActive(session: ActiveSession): Boolean = synchronized(StorageLock) {
 		if (active !== session) return@synchronized false
+		cancelRequests()
 		active = null
 		restorationAllowed = false
 		clearSession()
@@ -61,6 +95,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 	}
 
 	internal fun activate(account: AccountId): ActiveSession = synchronized(StorageLock) {
+		cancelRequests()
 		active = null
 		revision++
 		restorationAllowed = false
@@ -89,6 +124,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 	}
 
 	fun logout() = synchronized(StorageLock) {
+		cancelRequests()
 		active = null
 		revision++
 		restorationAllowed = false
