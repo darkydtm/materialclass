@@ -27,8 +27,7 @@ import java.io.DataOutputStream
 import java.util.concurrent.CancellationException
 
 internal fun interface IdentityVerifier {
-	fun verify(session: UnverifiedSession): SessionVerification
-	fun verify(session: UnverifiedSession, lease: RequestLease): SessionVerification = verify(session)
+	fun verify(session: UnverifiedSession, lease: RequestLease): SessionVerification
 }
 
 internal interface DiaryCache {

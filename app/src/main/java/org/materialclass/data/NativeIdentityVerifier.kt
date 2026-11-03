@@ -15,7 +15,7 @@ import java.net.URL
 import java.util.concurrent.CancellationException
 
 internal class NativeIdentityVerifier(private val exchange: Exchange = HttpsExchange()) : IdentityVerifier {
-	override fun verify(session: UnverifiedSession): SessionVerification = verifyRequest(session, null)
+	fun verify(session: UnverifiedSession): SessionVerification = verifyRequest(session, null)
 
 	override fun verify(session: UnverifiedSession, lease: RequestLease): SessionVerification = verifyRequest(session, lease)
 

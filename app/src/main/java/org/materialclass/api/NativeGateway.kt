@@ -14,12 +14,10 @@ import javax.net.ssl.HttpsURLConnection
 import org.materialclass.session.RequestLease
 
 interface SchoolGateway {
-	fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession>
-	fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = login(login, password)
-	fun diary(session: VerifiedDiarySession, context: DiaryContext): GatewayResult<Diary>
-	fun schedule(session: VerifiedScheduleSession, date: String): GatewayResult<Schedule> = GatewayResult.Failure(AppError.UNAVAILABLE)
-	fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = diary(session, context)
-	fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> = schedule(session, date)
+	fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession>
+	fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary>
+	fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule>
+
 }
 
 class VerifiedDiarySession private constructor(internal val remote: UnverifiedSession, internal val account: String) {
@@ -103,7 +101,7 @@ class NativeGateway internal constructor(private val exchange: Exchange) : Schoo
 
 	private val deviceId = UUID.randomUUID().toString()
 
-	override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = loginRequest(login, password, null)
+	internal fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = loginRequest(login, password, null)
 
 	override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = loginRequest(login, password, lease)
 
@@ -136,7 +134,7 @@ class NativeGateway internal constructor(private val exchange: Exchange) : Schoo
 		}
 	}
 
-	override fun diary(session: VerifiedDiarySession, context: DiaryContext): GatewayResult<Diary> {
+	internal fun diary(session: VerifiedDiarySession, context: DiaryContext): GatewayResult<Diary> {
 		return diaryRequest(session, context, null)
 	}
 
@@ -166,7 +164,7 @@ class NativeGateway internal constructor(private val exchange: Exchange) : Schoo
 		}
 	}
 
-	override fun schedule(session: VerifiedScheduleSession, date: String): GatewayResult<Schedule> {
+	internal fun schedule(session: VerifiedScheduleSession, date: String): GatewayResult<Schedule> {
 		return scheduleRequest(session, date, null)
 	}
 
@@ -213,20 +211,32 @@ class NativeGateway internal constructor(private val exchange: Exchange) : Schoo
 	}
 }
 
-internal class HttpsExchange : Exchange {
+// Treat cancellation as best effort once I/O is admitted; do not assume bytes cannot leave after revocation.
+internal class HttpsExchange(private val open: (URL) -> HttpsURLConnection = { it.openConnection() as HttpsURLConnection }, private val afterRegistration: () -> Unit = {}) : Exchange {
 	override fun execute(request: Request): Response {
 		val url = request.url
 		require(url.protocol == "https" && url.host == "api.bilimclass.kz" && (url.port == -1 || url.port == 443) && url.userInfo == null)
-		val connection = url.openConnection() as HttpsURLConnection
+		if (request.lease?.isCancelled() == true) throw java.io.IOException("Request cancelled")
+		val connection = open(url)
 		try {
 			if (request.lease?.register { connection.disconnect() } == false) throw java.io.IOException("Request cancelled")
+			afterRegistration()
+			if (request.lease?.isCancelled() == true) throw java.io.IOException("Request cancelled")
 			connection.instanceFollowRedirects = false
 			connection.connectTimeout = 15000
 			connection.readTimeout = 15000
 			connection.requestMethod = request.method
 			connection.useCaches = false
 			request.headers.forEach { (name, value) -> connection.setRequestProperty(name, value) }
-			request.body?.let { connection.doOutput = true; connection.outputStream.use { output -> output.write(it) } }
+			request.body?.let {
+				connection.doOutput = true
+				if (request.lease?.isCancelled() == true) throw java.io.IOException("Request cancelled")
+				connection.outputStream.use { output ->
+					if (request.lease?.isCancelled() == true) throw java.io.IOException("Request cancelled")
+					output.write(it)
+				}
+			}
+			if (request.lease?.isCancelled() == true) throw java.io.IOException("Request cancelled")
 			val status = connection.responseCode
 			if (status != 200) return Response(status, "")
 			val bytes = connection.inputStream.use { input ->

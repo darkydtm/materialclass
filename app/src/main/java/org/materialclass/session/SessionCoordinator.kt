@@ -32,6 +32,8 @@ class RequestLease internal constructor(internal val owner: ActiveSession? = nul
 		if (cancelled) false else { this.disconnect = disconnect; true }
 	}
 
+	fun isCancelled(): Boolean = synchronized(StorageLock) { cancelled }
+
 	internal fun unregister() = synchronized(StorageLock) { disconnect = null }
 }
 

@@ -80,9 +80,9 @@ class NativeIdentityVerifierTest {
 
 	@Test
 	fun nativeVerificationRestoresMatchingAccountAndRejectsChangedAccount() {
-		val gateway = object : SchoolGateway {
-			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(session)
-			override fun diary(session: VerifiedDiarySession, context: DiaryContext): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
+		val gateway = object : TestSchoolGateway() {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(session)
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
 		}
 		var accesses = 0
 		val cache = object : DiaryCache {
@@ -112,9 +112,9 @@ class NativeIdentityVerifierTest {
 
 	@Test
 	fun restoredSessionUsesPersistedSchoolAndCannotSurviveLogoutRace() {
-		val gateway = object : SchoolGateway {
-			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(session)
-			override fun diary(session: VerifiedDiarySession, context: DiaryContext): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
+		val gateway = object : TestSchoolGateway() {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(session)
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
 		}
 		var accesses = 0
 		val cache = object : DiaryCache {
@@ -151,9 +151,9 @@ class NativeIdentityVerifierTest {
 	fun diaryRequiresMatchingProfileContextWithoutScheduleUuid() {
 		var response = success
 		var calls = 0
-		val gateway = object : SchoolGateway {
-			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(session)
-			override fun diary(session: VerifiedDiarySession, context: DiaryContext): GatewayResult<Diary> { calls++; return GatewayResult.Success(Diary(context.date, emptyList())) }
+		val gateway = object : TestSchoolGateway() {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(session)
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> { calls++; return GatewayResult.Success(Diary(context.date, emptyList())) }
 		}
 		val cache = object : DiaryCache {
 			override fun read(session: ActiveSession): ByteArray? = null
@@ -187,10 +187,10 @@ class NativeIdentityVerifierTest {
 		var profiles = 0
 		var schedules = 0
 		val verifier = NativeIdentityVerifier(Exchange { profiles++; Response(200, response) })
-		val gateway = object : SchoolGateway {
-			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(candidate)
-			override fun diary(session: VerifiedDiarySession, context: DiaryContext): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
-			override fun schedule(session: VerifiedScheduleSession, date: String): GatewayResult<Schedule> { schedules++; return GatewayResult.Success(Schedule(emptyList())) }
+		val gateway = object : TestSchoolGateway() {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(candidate)
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
+			override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> { schedules++; return GatewayResult.Success(Schedule(emptyList())) }
 		}
 		val cache = object : DiaryCache {
 			override fun read(session: ActiveSession): ByteArray? = null
