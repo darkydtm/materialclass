@@ -15,7 +15,7 @@ class NativeScheduleTest {
 
 	@Test
 	fun nativeGatewayExposesAccountBoundScheduleReader() {
-		val method = NativeGateway::class.java.methods.singleOrNull { it.name == "schedule" && it.parameterTypes.size == 2 }
+		val method = NativeGateway::class.java.methods.singleOrNull { it.name == "schedule" && it.parameterTypes.size == 3 }
 		assertNotNull(method)
 	}
 

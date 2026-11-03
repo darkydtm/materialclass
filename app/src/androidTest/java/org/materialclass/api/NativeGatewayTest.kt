@@ -51,10 +51,10 @@ class NativeGatewayTest {
 		var calls = 0
 		val gateway = NativeGateway(Exchange { calls++; Response(200, diaryResponse) })
 		val remote = UnverifiedSession("synthetic-token", "123", "student", SchoolContext(1, 2026, 2))
-		val method = NativeGateway::class.java.methods.single { it.name == "diary" && it.parameterTypes.size == 2 }
+		val method = NativeGateway::class.java.methods.single { it.name == "diary" && it.parameterTypes.size == 3 }
 		assertEquals(VerifiedDiarySession::class.java, method.parameterTypes[0])
 		try {
-			method.invoke(gateway, remote, DiaryContext(1, 2026, 2, "01.02.2026"))
+			method.invoke(gateway, remote, DiaryContext(1, 2026, 2, "01.02.2026"), org.materialclass.session.RequestLease())
 			fail("Unverified session must not be accepted")
 		} catch (_: IllegalArgumentException) {
 		}

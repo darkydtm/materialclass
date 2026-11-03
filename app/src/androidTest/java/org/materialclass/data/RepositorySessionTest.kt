@@ -119,7 +119,7 @@ class RepositorySessionTest {
 	fun logoutDisconnectsAdmittedProfileAndRejectsLateVerification() {
 		val entered = CountDownLatch(1); val release = CountDownLatch(1); val disconnected = CountDownLatch(1)
 		val verifier = object : IdentityVerifier {
-						override fun verify(session: UnverifiedSession, lease: RequestLease): SessionVerification {
+			override fun verify(session: UnverifiedSession, lease: RequestLease): SessionVerification {
 				check(lease.register { disconnected.countDown() })
 				entered.countDown()
 				check(release.await(10, TimeUnit.SECONDS))
