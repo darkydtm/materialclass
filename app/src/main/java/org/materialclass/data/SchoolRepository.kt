@@ -80,7 +80,7 @@ internal class SchoolRepository(
 						remote = null
 						emit(DiaryState.Cleared)
 					} ?: return@synchronized GatewayResult.Failure(AppError.UNAVAILABLE)
-					val material = candidate.token.toByteArray(Charsets.UTF_8)
+					val material = encodeSession(candidate)
 					try {
 						check(store.write(active, material))
 					} catch (error: Exception) {
@@ -102,7 +102,7 @@ internal class SchoolRepository(
 	fun restore(): RestoreResult {
 		var candidate: UnverifiedSession? = null
 		val result = store.restore { material ->
-			val remote = UnverifiedSession(material.toString(Charsets.UTF_8), null, "student")
+			val remote = decodeSession(material) ?: return@restore SessionVerification.Retry
 			val verification = verifier.verify(remote)
 			if (verification is SessionVerification.Verified && verification.pupil) candidate = remote
 			verification
@@ -174,6 +174,26 @@ internal class SchoolRepository(
 		}
 	}
 }
+
+private fun encodeSession(session: UnverifiedSession): ByteArray {
+	val bytes = ByteArrayOutputStream()
+	DataOutputStream(bytes).use { output ->
+		output.writeInt(1)
+		output.writeUTF(session.token)
+		output.writeBoolean(session.context != null)
+		session.context?.let { output.writeLong(it.schoolId); output.writeInt(it.eduYear); output.writeLong(it.groupId) }
+	}
+	return bytes.toByteArray()
+}
+
+private fun decodeSession(bytes: ByteArray): UnverifiedSession? = try {
+	val input = DataInputStream(ByteArrayInputStream(bytes))
+	require(input.readInt() == 1)
+	val token = input.readUTF().also { require(it.isNotEmpty()) }
+	val context = if (input.readBoolean()) org.materialclass.api.SchoolContext(input.readLong(), input.readInt(), input.readLong()) else null
+	require(input.available() == 0)
+	UnverifiedSession(token, null, "student", context)
+} catch (_: Exception) { null }
 
 private fun encode(context: DiaryContext, snapshot: DiarySnapshot): ByteArray {
 	val bytes = ByteArrayOutputStream()
