@@ -94,6 +94,35 @@ class StorageSecurityTest {
 	}
 
 	@Test
+	fun expiredRestoreCannotRevokeNewLoginWithSameAccount() {
+		val coordinator = SessionCoordinator(context)
+		val store = SessionStore(context, coordinator)
+		val account = AccountId("synthetic-same-account")
+		val old = coordinator.activate(account)
+		store.write(old, byteArrayOf(1))
+		resetProcessSession()
+		val entered = CountDownLatch(1)
+		val release = CountDownLatch(1)
+		var result: RestoreResult? = null
+		val worker = thread {
+			result = store.restore {
+				entered.countDown()
+				check(release.await(10, TimeUnit.SECONDS))
+				SessionVerification.Expired
+			}
+		}
+		check(entered.await(10, TimeUnit.SECONDS))
+		val newer = coordinator.activate(account)
+		assertTrue(store.write(newer, byteArrayOf(2)))
+		release.countDown()
+		worker.join(10000)
+		assertFalse(worker.isAlive)
+		assertEquals(RestoreResult.Cancelled, result)
+		assertArrayEquals(byteArrayOf(2), store.read(newer))
+		coordinator.logout()
+	}
+
+	@Test
 	fun logoutCancelsPendingVerification() {
 		val coordinator = SessionCoordinator(context)
 		val store = SessionStore(context, coordinator)
@@ -200,8 +229,13 @@ class StorageSecurityTest {
 		val allowed = SessionCoordinator::class.java.getDeclaredField("restorationAllowed")
 		allowed.isAccessible = true
 		allowed.setBoolean(null, true)
+		var verifierCalled = false
 		try {
-			assertNull(SessionStore(context, SessionCoordinator(context)).restore())
+			assertEquals(RestoreResult.Absent, SessionStore(context, SessionCoordinator(context)).restore {
+				verifierCalled = true
+				SessionVerification.Retry
+			})
+			assertFalse(verifierCalled)
 		} finally {
 			coordinator.logout()
 		}
