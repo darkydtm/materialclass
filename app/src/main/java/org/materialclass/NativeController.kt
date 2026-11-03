@@ -39,6 +39,8 @@ internal interface NativeUiController {
 
 internal class NativeController(private val repositoryFactory: ((DiaryState) -> Unit) -> SchoolRepository) : NativeUiController {
 	private val executor = Executors.newSingleThreadExecutor()
+	private val logoutExecutor = Executors.newSingleThreadExecutor()
+	private var logoutPending = false
 	private val handler = Handler(Looper.getMainLooper())
 	@Volatile private var generation = 0L
 	@Volatile private var closed = false
@@ -75,7 +77,7 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 	}
 
 	override fun login(username: String, password: CharArray) {
-		if (closed) { password.fill('\u0000'); return }
+		if (closed || logoutPending) { password.fill('\u0000'); return }
 		val task = ++generation
 		state = NativeUiState(busy = true)
 		try {
@@ -116,13 +118,14 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 	}
 
 	override fun logout() {
-		if (closed) return
+		if (closed || logoutPending) return
 		val task = ++generation
+		logoutPending = true
 		state = NativeUiState(busy = true)
-		executor.execute {
-			currentTaskGeneration = task
+		repository.cancelInFlightNow()
+		logoutExecutor.execute {
 			val error = try { repository.logout(); null } catch (_: Exception) { AppError.UNAVAILABLE }
-			post(task) { state = NativeUiState(error = error) }
+			post(task) { logoutPending = error != null; state = NativeUiState(busy = false, error = error) }
 		}
 	}
 
@@ -130,6 +133,7 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 		closed = true
 		generation++
 		executor.shutdown()
+		logoutExecutor.shutdown()
 	}
 }
 

@@ -28,6 +28,7 @@ class SessionCoordinatorTest {
 			thread { method!!.invoke(coordinator); cancelled.countDown() }
 			assertEquals(true, cancelled.await(2, TimeUnit.SECONDS))
 			assertEquals(true, lease.isCancelled())
+			assertEquals(false, lease.register { throw AssertionError("Cancelled lease registered") })
 		} finally { release.countDown(); writer.join(10000) }
 		assertNull(coordinator.admit(session, revision))
 		coordinator.logout()

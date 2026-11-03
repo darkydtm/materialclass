@@ -310,6 +310,8 @@ internal class SchoolRepository(
 		emit(if (saved == null) DiaryState.Error(error) else DiaryState.Ready(saved, error))
 	}
 
+	fun cancelInFlightNow() = coordinator.cancelInFlightNow()
+
 	fun logout() = synchronized(StorageLock) {
 		val pending = loginRevision
 		loginRevision = null
@@ -329,6 +331,7 @@ internal class SchoolRepository(
 				pending?.let { coordinator.cancelLogin(it) }
 			} finally { emit(DiaryState.Cleared) }
 		}
+		coordinator.finishImmediateLogout()
 	}
 }
 
