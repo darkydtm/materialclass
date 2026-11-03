@@ -42,11 +42,12 @@ class NativeControllerIntegrationTest {
 		val release = CountDownLatch(1)
 		var block = false
 		var offline = false
+		var blockedLease: RequestLease? = null
 		val gateway = object : SchoolGateway {
 			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic", "1", "student", SchoolContext(1, 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
 			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = if (offline) GatewayResult.Failure(AppError.OFFLINE) else GatewayResult.Success("01.01.2026")
 			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> {
-				if (block) { entered.countDown(); check(release.await(10, TimeUnit.SECONDS)) }
+				if (block) { blockedLease = lease; entered.countDown(); check(release.await(10, TimeUnit.SECONDS)) }
 				return GatewayResult.Success(Diary(context.date, listOf(DiaryDay("Thursday", context.date, listOf(DiarySubject("Synthetic lesson", "lesson", "id", "text", "Synthetic homework", null, false, false))))))
 			}
 			override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> = GatewayResult.Success(Schedule(listOf(ScheduleDay(0, date, true, false, listOf(ScheduleLesson("lesson", 1, "Synthetic schedule"))))))
@@ -74,7 +75,7 @@ class NativeControllerIntegrationTest {
 		main { c.refresh() }
 		assertTrue(entered.await(10, TimeUnit.SECONDS))
 		main { c.logout(); assertFalse(c.state.signedIn) }
-		release.countDown()
+		try { assertTrue("Logout must cancel the request before it returns", blockedLease!!.isCancelled()) } finally { release.countDown() }
 		await { !c.state.busy }
 		main { assertFalse(c.state.signedIn); assertNull(c.state.schedule); assertTrue(c.state.diary is DiaryState.Cleared) }
 	}
