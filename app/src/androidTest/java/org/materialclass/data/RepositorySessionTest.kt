@@ -21,7 +21,7 @@ class RepositorySessionTest {
 	private val store = SessionStore(context, coordinator)
 	private val gateway = object : SchoolGateway {
 		override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", "424242424242", "student", SchoolContext(1, 2026, 2)))
-		override fun diary(session: UnverifiedSession, context: DiaryContext): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
+		override fun diary(session: VerifiedDiarySession, context: DiaryContext): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
 	}
 	private var accesses = 0
 	private val cache = object : DiaryCache {

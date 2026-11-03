@@ -82,7 +82,7 @@ class NativeIdentityVerifierTest {
 	fun nativeVerificationRestoresMatchingAccountAndRejectsChangedAccount() {
 		val gateway = object : SchoolGateway {
 			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(session)
-			override fun diary(session: UnverifiedSession, context: DiaryContext): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
 		}
 		var accesses = 0
 		val cache = object : DiaryCache {
@@ -114,7 +114,7 @@ class NativeIdentityVerifierTest {
 	fun restoredSessionUsesPersistedSchoolAndCannotSurviveLogoutRace() {
 		val gateway = object : SchoolGateway {
 			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(session)
-			override fun diary(session: UnverifiedSession, context: DiaryContext): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
 		}
 		var accesses = 0
 		val cache = object : DiaryCache {
@@ -153,7 +153,7 @@ class NativeIdentityVerifierTest {
 		var calls = 0
 		val gateway = object : SchoolGateway {
 			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(session)
-			override fun diary(session: UnverifiedSession, context: DiaryContext): GatewayResult<Diary> { calls++; return GatewayResult.Success(Diary(context.date, emptyList())) }
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext): GatewayResult<Diary> { calls++; return GatewayResult.Success(Diary(context.date, emptyList())) }
 		}
 		val cache = object : DiaryCache {
 			override fun read(session: ActiveSession): ByteArray? = null
@@ -189,7 +189,7 @@ class NativeIdentityVerifierTest {
 		val verifier = NativeIdentityVerifier(Exchange { profiles++; Response(200, response) })
 		val gateway = object : SchoolGateway {
 			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(candidate)
-			override fun diary(session: UnverifiedSession, context: DiaryContext): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
 			override fun schedule(session: VerifiedScheduleSession, date: String): GatewayResult<Schedule> { schedules++; return GatewayResult.Success(Schedule(emptyList())) }
 		}
 		val cache = object : DiaryCache {

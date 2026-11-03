@@ -154,7 +154,7 @@ internal class SchoolRepository(
 				return@ifActive null
 			}
 			emit(DiaryState.Loading)
-			authenticated to revision
+			proof to revision
 		} ?: return
 		val result = try { gateway.diary(request.first, context) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
 		coordinator.ifActive(active) {

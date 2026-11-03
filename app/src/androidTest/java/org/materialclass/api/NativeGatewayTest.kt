@@ -9,11 +9,12 @@ import java.net.URL
 
 @RunWith(AndroidJUnit4::class)
 class NativeGatewayTest {
-	private val loginResponse = """{"success":true,"access_token":"synthetic-token","user_info":{"userId":123,"role":"student"}}"""
+	private val loginResponse = """{"success":true,"access_token":"synthetic-token","user_info":{"userId":123,"role":"student","school_id":1,"group":{"id":2},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}}"""
+	private val profile = JSONObject(loginResponse).getJSONObject("user_info")
 	private val diaryResponse = """{"data":{"date":"01.02.2026","days":[{"day":"Monday","date":"01.02.2026","subjects":[{"label":"Math","type":"lesson","scheduleUuid":"synthetic","homeworkType":"none","homeworkBody":null,"homeworkUuid":null,"hasBooks":false,"hasFiles":true}]}]}}"""
 
 	@Test
-	fun loginAndDiaryUseObservedContractWithoutVerifiedIdentity() {
+	fun loginAndDiaryUseObservedContractWithVerifiedIdentity() {
 		var count = 0
 		val gateway = NativeGateway(Exchange { request ->
 			count++
@@ -40,7 +41,7 @@ class NativeGatewayTest {
 		assertFalse(session.identityVerified)
 		assertEquals("123", session.identityCandidate)
 		assertFalse(session.toString().contains("synthetic-token"))
-		val diary = (gateway.diary(session, DiaryContext(1, 2026, 2, "01.02.2026")) as GatewayResult.Success).value
+		val diary = (gateway.diary(VerifiedDiarySession.compare(session, profile)!!, DiaryContext(1, 2026, 2, "01.02.2026")) as GatewayResult.Success).value
 		assertEquals("Math", diary.days.single().subjects.single().label)
 		assertEquals(2, count)
 	}
@@ -52,10 +53,17 @@ class NativeGatewayTest {
 		val remote = UnverifiedSession("synthetic-token", "123", "student", SchoolContext(1, 2026, 2))
 		val method = NativeGateway::class.java.methods.single { it.name == "diary" && it.parameterTypes.size == 2 }
 		assertEquals(VerifiedDiarySession::class.java, method.parameterTypes[0])
-		val profile = JSONObject("""{"userId":123,"role":"student","school_id":1,"group":{"id":2},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}""")
+		try {
+			method.invoke(gateway, remote, DiaryContext(1, 2026, 2, "01.02.2026"))
+			fail("Unverified session must not be accepted")
+		} catch (_: IllegalArgumentException) {
+		}
+		assertNull(VerifiedDiarySession.compare(remote, JSONObject("{}")))
+		assertNull(VerifiedDiarySession.compare(remote, JSONObject(profile.toString()).put("userId", 124)))
 		val verified = VerifiedDiarySession.compare(remote, profile)!!
-		val mismatch = method.invoke(gateway, verified, DiaryContext(99, 2026, 2, "01.02.2026"))
-		assertTrue(mismatch is GatewayResult.Failure)
+		for (context in listOf(DiaryContext(99, 2026, 2, "01.02.2026"), DiaryContext(1, 2025, 2, "01.02.2026"), DiaryContext(1, 2026, 3, "01.02.2026"))) {
+			assertTrue(gateway.diary(verified, context) is GatewayResult.Failure)
+		}
 		assertEquals(0, calls)
 	}
 
@@ -86,9 +94,9 @@ class NativeGatewayTest {
 		for (response in listOf("{}", loginResponse.replace("student", "parent"), loginResponse.replace("true", "\"true\""))) {
 			assertTrue(NativeGateway(Exchange { Response(200, response) }).login("x", charArrayOf('x')) is GatewayResult.Failure)
 		}
-		val session = UnverifiedSession("token", null, "student")
+		val session = UnverifiedSession("token", "123", "student", SchoolContext(1, 2026, 2))
 		val gateway = NativeGateway(Exchange { Response(200, diaryResponse.replace("\"hasFiles\":true", "\"hasFiles\":\"true\"")) })
-		assertTrue(gateway.diary(session, DiaryContext(1, 2026, 2, "01.02.2026")) is GatewayResult.Failure)
+		assertTrue(gateway.diary(VerifiedDiarySession.compare(session, profile)!!, DiaryContext(1, 2026, 2, "01.02.2026")) is GatewayResult.Failure)
 	}
 
 	@Test

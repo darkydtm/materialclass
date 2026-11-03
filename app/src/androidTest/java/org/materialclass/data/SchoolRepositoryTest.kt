@@ -25,7 +25,7 @@ class SchoolRepositoryTest {
 		var entered: CountDownLatch? = null
 		var release: CountDownLatch? = null
 		override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", identity, role, SchoolContext(1, 2026, 2)))
-		override fun diary(session: UnverifiedSession, context: DiaryContext): GatewayResult<Diary> {
+		override fun diary(session: VerifiedDiarySession, context: DiaryContext): GatewayResult<Diary> {
 			entered?.countDown()
 			release?.let { check(it.await(10, TimeUnit.SECONDS)) }
 			return result
@@ -52,7 +52,7 @@ class SchoolRepositoryTest {
 		var calls = 0
 		val gateway = object : SchoolGateway {
 			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", "1", "student", SchoolContext(1, 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
-			override fun diary(session: UnverifiedSession, context: DiaryContext): GatewayResult<Diary> { calls++; return GatewayResult.Success(Diary(context.date, emptyList())) }
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext): GatewayResult<Diary> { calls++; return GatewayResult.Success(Diary(context.date, emptyList())) }
 		}
 		val events = mutableListOf<DiaryState>()
 		val repository = SchoolRepository(gateway, IdentityVerifier { proof(it) }, coordinator, FakeCache(), { 1L }, events::add, store)
@@ -98,7 +98,7 @@ class SchoolRepositoryTest {
 		val entered = CountDownLatch(1); val release = CountDownLatch(1)
 		val gateway = object : SchoolGateway {
 			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", login, "student", SchoolContext(1, 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
-			override fun diary(session: UnverifiedSession, context: DiaryContext): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
 			override fun schedule(session: VerifiedScheduleSession, date: String): GatewayResult<Schedule> {
 				entered.countDown(); check(release.await(10, TimeUnit.SECONDS))
 				return GatewayResult.Success(Schedule(emptyList()))
@@ -123,7 +123,7 @@ class SchoolRepositoryTest {
 		val entered = CountDownLatch(1); val release = CountDownLatch(1)
 		val gateway = object : SchoolGateway {
 			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", "1", "student", SchoolContext(1, 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
-			override fun diary(session: UnverifiedSession, context: DiaryContext): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
 			override fun schedule(session: VerifiedScheduleSession, date: String): GatewayResult<Schedule> {
 				entered.countDown(); check(release.await(10, TimeUnit.SECONDS))
 				return GatewayResult.Success(Schedule(emptyList()))
@@ -145,7 +145,7 @@ class SchoolRepositoryTest {
 		val entered = CountDownLatch(1); val release = CountDownLatch(1)
 		val gateway = object : SchoolGateway {
 			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", "1", "student", SchoolContext(1, 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
-			override fun diary(session: UnverifiedSession, context: DiaryContext): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
 			override fun schedule(session: VerifiedScheduleSession, date: String): GatewayResult<Schedule> {
 				if (date == "01.01.2026") { entered.countDown(); check(release.await(10, TimeUnit.SECONDS)) }
 				return GatewayResult.Success(Schedule(emptyList()))
@@ -175,7 +175,7 @@ class SchoolRepositoryTest {
 				check((if (login == "older") releaseOld else releaseNew).await(10, TimeUnit.SECONDS))
 				return GatewayResult.Success(UnverifiedSession("synthetic-token", if (login == "older") "1" else "2", "student", SchoolContext(1, 2026, 2)))
 			}
-			override fun diary(session: UnverifiedSession, context: DiaryContext): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
 		}
 		val cache = FakeCache(); val events = mutableListOf<DiaryState>()
 		val repository = SchoolRepository(gateway, IdentityVerifier { proof(it) }, coordinator, cache, { 1L }, events::add, store)
@@ -257,7 +257,7 @@ class SchoolRepositoryTest {
 	fun cancellationIsNotConvertedToUnavailable() {
 		val gateway = object : SchoolGateway {
 			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = throw java.util.concurrent.CancellationException()
-			override fun diary(session: UnverifiedSession, context: DiaryContext): GatewayResult<Diary> = error("unexpected")
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext): GatewayResult<Diary> = error("unexpected")
 		}
 		val repository = SchoolRepository(gateway, IdentityVerifier { SessionVerification.Retry }, coordinator, FakeCache(), { 0L }, {}, store)
 		val password = charArrayOf('x')
@@ -310,7 +310,7 @@ class SchoolRepositoryTest {
 		val entered = CountDownLatch(1); val release = CountDownLatch(1)
 		val gateway = object : SchoolGateway {
 			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", "1", "student", SchoolContext(1, 2026, 2)))
-			override fun diary(session: UnverifiedSession, context: DiaryContext): GatewayResult<Diary> {
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext): GatewayResult<Diary> {
 				if (Thread.currentThread().name == "older") {
 					entered.countDown()
 					check(release.await(10, TimeUnit.SECONDS))
@@ -363,7 +363,7 @@ class SchoolRepositoryTest {
 				}
 				return GatewayResult.Success(UnverifiedSession("synthetic-token", if (login == "older") "1" else "2", "student", SchoolContext(1, 2026, 2)))
 			}
-			override fun diary(session: UnverifiedSession, context: DiaryContext): GatewayResult<Diary> = GatewayResult.Failure(AppError.SESSION_EXPIRED)
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext): GatewayResult<Diary> = GatewayResult.Failure(AppError.SESSION_EXPIRED)
 		}
 		val events = mutableListOf<DiaryState>()
 		val repository = SchoolRepository(gateway, IdentityVerifier { proof(it) }, coordinator, FakeCache(), { 1L }, events::add, store)
@@ -383,8 +383,8 @@ class SchoolRepositoryTest {
 		val entered = CountDownLatch(1); val release = CountDownLatch(1)
 		val gateway = object : SchoolGateway {
 			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", if (login == "older") "1" else "2", "student", SchoolContext(1, 2026, 2)))
-			override fun diary(session: UnverifiedSession, context: DiaryContext): GatewayResult<Diary> {
-				if (session.identityCandidate == "1") {
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext): GatewayResult<Diary> {
+				if (session.remote.identityCandidate == "1") {
 					entered.countDown()
 					check(release.await(10, TimeUnit.SECONDS))
 					return GatewayResult.Failure(AppError.SESSION_EXPIRED)
