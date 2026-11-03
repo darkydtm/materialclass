@@ -47,6 +47,63 @@ class SchoolRepositoryTest {
 		return SessionVerification.Verified(AccountId(id), true, VerifiedScheduleSession.compare(session, profile), VerifiedDiarySession.compare(session, profile))
 	}
 
+	private fun pendingLoginRejectsPreparedRequest(kind: Int) {
+		val prepared = CountDownLatch(1); val releaseRequest = CountDownLatch(1)
+		val loginEntered = CountDownLatch(1); val releaseLogin = CountDownLatch(1)
+		val calls = java.util.concurrent.atomic.AtomicInteger()
+		val gateway = object : TestSchoolGateway() {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> {
+				if (login == "new") { loginEntered.countDown(); check(releaseLogin.await(20, TimeUnit.SECONDS)) }
+				return GatewayResult.Success(UnverifiedSession("synthetic-token", "1", "student", SchoolContext(1, 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
+			}
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> { calls.incrementAndGet(); return GatewayResult.Success(Diary(context.date, emptyList())) }
+			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> { calls.incrementAndGet(); return GatewayResult.Success(context.date) }
+			override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> { calls.incrementAndGet(); return GatewayResult.Success(Schedule(emptyList())) }
+		}
+		val events = mutableListOf<DiaryState>(); val cache = FakeCache()
+		val repo = SchoolRepository(gateway, IdentityVerifier { session, _ -> proof(session) }, coordinator, cache, { 1L }, events::add, store)
+		assertTrue(repo.login("old", charArrayOf('x')) is GatewayResult.Success)
+		repo.beforeRequestAdmission = { prepared.countDown(); check(releaseRequest.await(20, TimeUnit.SECONDS)) }
+		var delivered = false
+		val worker = thread {
+			when (kind) {
+				0 -> repo.refresh(context)
+				1 -> repo.refreshCurrent()
+				2 -> repo.schedule(context.date) { delivered = true }
+				else -> repo.currentWeek { delivered = true }
+			}
+		}
+		var login: Thread? = null
+		try {
+			assertTrue(prepared.await(10, TimeUnit.SECONDS))
+			login = thread { repo.login("new", charArrayOf('x')) }
+			assertTrue(loginEntered.await(10, TimeUnit.SECONDS))
+			val count = events.size
+			releaseRequest.countDown(); worker.join(10000)
+			assertFalse(worker.isAlive)
+			assertEquals(0, calls.get()); assertEquals(count, events.size)
+			assertEquals(0, cache.accesses); assertFalse(delivered)
+		} finally {
+			releaseRequest.countDown(); releaseLogin.countDown()
+			worker.join(10000); login?.join(10000)
+		}
+	}
+
+	@Test fun pendingLoginRejectsPreparedRefresh() = pendingLoginRejectsPreparedRequest(0)
+	@Test fun pendingLoginRejectsPreparedCurrentRefresh() = pendingLoginRejectsPreparedRequest(1)
+	@Test fun pendingLoginRejectsPreparedSchedule() = pendingLoginRejectsPreparedRequest(2)
+	@Test fun pendingLoginRejectsPreparedCurrentWeek() = pendingLoginRejectsPreparedRequest(3)
+
+	@Test
+	fun failedSessionEncodingRevokesActivation() {
+		val gateway = object : TestSchoolGateway() {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("x".repeat(70000), "1", "student", SchoolContext(1, 2026, 2)))
+		}
+		val repo = SchoolRepository(gateway, IdentityVerifier { session, _ -> proof(session) }, coordinator, FakeCache(), { 1L }, {}, store)
+		assertTrue(repo.login("synthetic", charArrayOf('x')) is GatewayResult.Failure)
+		assertTrue("Failed activation must not remain active", coordinator.logoutIfNoActive())
+	}
+
 	@Test
 	fun startingLoginSuppressesCancelledDiaryAndScheduleResults() {
 		val diaryEntered = CountDownLatch(1); val scheduleEntered = CountDownLatch(1); val release = CountDownLatch(1)

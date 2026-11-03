@@ -48,6 +48,29 @@ class RepositorySessionTest {
 	fun cleanup() { coordinator.logout() }
 
 	@Test
+	fun failedRestoreActivationCallbackRevokesSession() {
+		saved()
+		val repo = repository(IdentityVerifier { session, _ -> proof(session) })
+		repo.afterRestoreActivation = { throw IllegalStateException("synthetic failure") }
+		try { repo.restore(); fail("Callback failure must propagate") } catch (_: IllegalStateException) { }
+		assertTrue("Failed restore must not remain active", coordinator.logoutIfNoActive())
+		assertFalse(File(context.noBackupFilesDir, "session").exists())
+	}
+
+	@Test
+	fun failedRestoreEmissionRevokesAndClearsRepository() {
+		saved()
+		var fail = true
+		val repo = SchoolRepository(gateway, IdentityVerifier { session, _ -> proof(session) }, coordinator, cache, { 1L }, { if (fail) throw IllegalStateException("synthetic failure") }, store)
+		try { repo.restore(); fail("Emission failure must propagate") } catch (_: IllegalStateException) { }
+		fail = false
+		assertTrue("Failed restore must not remain active", coordinator.logoutIfNoActive())
+		repo.refresh(diaryContext)
+		assertEquals(0, accesses)
+		assertFalse(File(context.noBackupFilesDir, "session").exists())
+	}
+
+	@Test
 	fun logoutBeforeLoginAdmissionPreventsGatewayCall() {
 		val entered = CountDownLatch(1)
 		val release = CountDownLatch(1)
