@@ -47,6 +47,30 @@ class NativeUiControllerTest {
 	}
 	private fun editables(node: AccessibilityNodeInfo): List<AccessibilityNodeInfo> = (if (node.isEditable) listOf(node) else emptyList()) + (0 until node.childCount).flatMap { node.getChild(it)?.let(::editables) ?: emptyList() }
 
+	@Test fun expiryIsAccessibleAndDistinctFromTransientLoginError() {
+		val context = ApplicationProvider.getApplicationContext<Context>()
+		context.getSharedPreferences("appearance", 0).edit().putBoolean("warning_seen", true).putString("language", "en").commit()
+		val fake = object : NativeUiController {
+			override var state by mutableStateOf(NativeUiState(error = AppError.SESSION_EXPIRED))
+			override fun start() { }
+			override fun login(username: String, password: CharArray) { password.fill('\u0000') }
+			override fun refresh() { }
+			override fun logout() { }
+			override fun close() { }
+		}
+		val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
+		try {
+			instrumentation.runOnMainSync { activity.setContent { MaterialClassApp(nativeEnabled = true, controllerFactory = { fake }) } }
+			waitFor("Your session has expired. Sign in again.")
+			instrumentation.runOnMainSync { fake.state = NativeUiState(error = AppError.OFFLINE) }
+			waitFor(context.getString(R.string.operation_error, "OFFLINE"))
+			assertNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, "Your session has expired. Sign in again.") })
+		} finally {
+			activity.finish()
+			context.getSharedPreferences("appearance", 0).edit().clear().commit()
+		}
+	}
+
 	@Test fun injectedControllerDrivesVisibleUi() {
 		val context = ApplicationProvider.getApplicationContext<Context>()
 		context.getSharedPreferences("appearance", 0).edit().putBoolean("warning_seen", true).commit()
