@@ -118,7 +118,7 @@ class NativeGatewayTest {
 	fun rejectsUntrustedDestinationsBeforeConnecting() {
 		for (url in listOf("http://api.bilimclass.kz/", "https://example.com/", "https://api.bilimclass.kz:444/")) {
 			try {
-				HttpsExchange().execute(Request(URL(url), "GET", emptyMap(), null))
+				HttpsExchange().execute(Request(URL(url), "GET", emptyMap(), null, org.materialclass.session.RequestLease()))
 				fail("Destination must be rejected")
 			} catch (_: IllegalArgumentException) {
 			}

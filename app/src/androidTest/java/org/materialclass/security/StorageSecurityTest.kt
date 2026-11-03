@@ -49,7 +49,7 @@ class StorageSecurityTest {
 		var verified = false
 		try {
 			try {
-				store.restore { verified = true; SessionVerification.Verified(AccountId("synthetic-legacy"), true) }
+				store.restore { _, _ -> verified = true; SessionVerification.Verified(AccountId("synthetic-legacy"), true) }
 				fail("Legacy session must not restore")
 			} catch (_: StorageUnreadableException) { }
 			assertFalse(verified)
@@ -64,19 +64,19 @@ class StorageSecurityTest {
 		val old = coordinator.activate(account)
 		store.write(old, "synthetic-material".toByteArray())
 		resetProcessSession()
-		assertEquals(RestoreResult.Retry, store.restore { SessionVerification.Retry })
+		assertEquals(RestoreResult.Retry, store.restore { _, _ -> SessionVerification.Retry })
 		assertTrue(File(context.noBackupFilesDir, "session").exists())
-		assertEquals(RestoreResult.Invalid, store.restore { SessionVerification.Verified(AccountId("synthetic-other"), true) })
+		assertEquals(RestoreResult.Invalid, store.restore { _, _ -> SessionVerification.Verified(AccountId("synthetic-other"), true) })
 		assertFalse(File(context.noBackupFilesDir, "session").exists())
 		val next = coordinator.activate(account)
 		store.write(next, byteArrayOf(7))
 		resetProcessSession()
-		assertEquals(RestoreResult.Invalid, store.restore { SessionVerification.Expired })
+		assertEquals(RestoreResult.Invalid, store.restore { _, _ -> SessionVerification.Expired })
 		assertFalse(File(context.noBackupFilesDir, "session").exists())
 		val third = coordinator.activate(account)
 		store.write(third, byteArrayOf(8))
 		resetProcessSession()
-		assertEquals(RestoreResult.Invalid, store.restore { SessionVerification.Verified(account, false) })
+		assertEquals(RestoreResult.Invalid, store.restore { _, _ -> SessionVerification.Verified(account, false) })
 		assertFalse(File(context.noBackupFilesDir, "session").exists())
 		coordinator.logout()
 	}
@@ -94,7 +94,7 @@ class StorageSecurityTest {
 		val finished = CountDownLatch(1)
 		var expired: RestoreResult? = null
 		val first = thread {
-			expired = store.restore {
+			expired = store.restore { _, _ ->
 				entered.countDown()
 				check(release.await(10, TimeUnit.SECONDS))
 				SessionVerification.Expired
@@ -103,7 +103,7 @@ class StorageSecurityTest {
 		check(entered.await(10, TimeUnit.SECONDS))
 		val second = thread {
 			started.countDown()
-			try { SessionStore(context, SessionCoordinator(context)).restore { SessionVerification.Retry } }
+			try { SessionStore(context, SessionCoordinator(context)).restore { _, _ -> SessionVerification.Retry } }
 			finally { finished.countDown() }
 		}
 		check(started.await(10, TimeUnit.SECONDS))
@@ -130,7 +130,7 @@ class StorageSecurityTest {
 		val release = CountDownLatch(1)
 		var result: RestoreResult? = null
 		val worker = thread {
-			result = store.restore {
+			result = store.restore { _, _ ->
 				entered.countDown()
 				check(release.await(10, TimeUnit.SECONDS))
 				SessionVerification.Expired
@@ -159,7 +159,7 @@ class StorageSecurityTest {
 		val release = CountDownLatch(1)
 		var result: RestoreResult? = null
 		val worker = thread {
-			result = store.restore {
+			result = store.restore { _, _ ->
 				entered.countDown()
 				check(release.await(10, TimeUnit.SECONDS))
 				SessionVerification.Verified(account, true)
@@ -214,7 +214,7 @@ class StorageSecurityTest {
 		val restarted = SessionCoordinator(context)
 		val restoredStore = SessionStore(context, restarted)
 		val restore = SessionStore::class.java.getMethod("restore")
-		val result = restoredStore.restore(SessionVerifier { material ->
+		val result = restoredStore.restore(SessionVerifier { material, _ ->
 			assertArrayEquals("synthetic-restored-token".toByteArray(), material)
 			SessionVerification.Verified(AccountId("synthetic-restored-account"), true)
 		})
@@ -258,7 +258,7 @@ class StorageSecurityTest {
 		allowed.setBoolean(null, true)
 		var verifierCalled = false
 		try {
-			assertEquals(RestoreResult.Absent, SessionStore(context, SessionCoordinator(context)).restore {
+			assertEquals(RestoreResult.Absent, SessionStore(context, SessionCoordinator(context)).restore { _, _ ->
 				verifierCalled = true
 				SessionVerification.Retry
 			})

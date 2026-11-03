@@ -80,7 +80,7 @@ internal class SchoolRepository(
 				throw error
 			} catch (_: Exception) {
 				GatewayResult.Failure(AppError.UNAVAILABLE)
-			} finally { coordinator.finish(lease) }
+			} finally { password.fill('\u0000'); coordinator.finish(lease) }
 			if (result is GatewayResult.Failure) return result
 			val candidate = (result as GatewayResult.Success).value
 			beforeIdentityAdmission()
@@ -147,12 +147,12 @@ internal class SchoolRepository(
 		} ?: return
 		beforeRequestAdmission()
 		val lease = coordinator.admit(active) ?: return
-		val result = try {
-			if (request.first == null) GatewayResult.Failure(AppError.UNAVAILABLE) else try { gateway.schedule(request.first!!, date, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
+		try {
+			val result = if (request.first == null) GatewayResult.Failure(AppError.UNAVAILABLE) else try { gateway.schedule(request.first!!, date, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
+			coordinator.ifActive(active) {
+				if (!lease.cancelled && request.second == scheduleRevision) deliver(result)
+			}
 		} finally { coordinator.finish(lease) }
-		coordinator.ifActive(active) {
-			if (request.second == scheduleRevision) deliver(result)
-		}
 	}
 
 	fun refresh(context: DiaryContext) {
@@ -170,35 +170,35 @@ internal class SchoolRepository(
 		} ?: return
 		beforeRequestAdmission()
 		val lease = coordinator.admit(active) ?: return
-		val result = try {
-			try { gateway.diary(request.first, context, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
-		} finally { coordinator.finish(lease) }
-		coordinator.ifActive(active) {
-			if (request.second != refreshRevision) return@ifActive
-			if (result is GatewayResult.Failure && result.error == AppError.SESSION_EXPIRED) {
-				remote = null
-				scheduleSession = null
-				diarySession = null
-				session = null
-				coordinator.revokeIfActive(active)
-				emit(DiaryState.Error(AppError.SESSION_EXPIRED))
-				return@ifActive
-			}
-			try {
-				when (result) {
-					is GatewayResult.Success -> {
-						if (result.value.date != context.date) {
-							emitFailure(active, context, AppError.INCOMPATIBLE_RESPONSE)
-						} else {
-							val snapshot = DiarySnapshot(result.value, clock())
-							check(cache.write(active, encode(context, snapshot)))
-							emit(DiaryState.Ready(snapshot))
-						}
-					}
-					is GatewayResult.Failure -> emitFailure(active, context, result.error)
+		try {
+			val result = try { gateway.diary(request.first, context, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
+			coordinator.ifActive(active) {
+				if (lease.cancelled || request.second != refreshRevision) return@ifActive
+				if (result is GatewayResult.Failure && result.error == AppError.SESSION_EXPIRED) {
+					remote = null
+					scheduleSession = null
+					diarySession = null
+					session = null
+					coordinator.revokeIfActive(active)
+					emit(DiaryState.Error(AppError.SESSION_EXPIRED))
+					return@ifActive
 				}
-			} catch (error: CancellationException) { throw error } catch (_: Exception) { emit(DiaryState.Error(AppError.CACHE_UNREADABLE)) }
-		}
+				try {
+					when (result) {
+						is GatewayResult.Success -> {
+							if (result.value.date != context.date) {
+								emitFailure(active, context, AppError.INCOMPATIBLE_RESPONSE)
+							} else {
+								val snapshot = DiarySnapshot(result.value, clock())
+								check(cache.write(active, encode(context, snapshot)))
+								emit(DiaryState.Ready(snapshot))
+							}
+						}
+						is GatewayResult.Failure -> emitFailure(active, context, result.error)
+					}
+				} catch (error: CancellationException) { throw error } catch (_: Exception) { emit(DiaryState.Error(AppError.CACHE_UNREADABLE)) }
+			}
+		} finally { coordinator.finish(lease) }
 	}
 
 	private fun emitFailure(active: ActiveSession, context: DiaryContext, error: AppError) {

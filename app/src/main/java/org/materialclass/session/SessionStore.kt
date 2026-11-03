@@ -17,7 +17,7 @@ import java.security.MessageDigest
 import java.util.concurrent.CancellationException
 
 fun interface SessionVerifier {
-	fun verify(material: ByteArray): SessionVerification
+	fun verify(material: ByteArray, lease: RequestLease): SessionVerification
 }
 
 sealed class SessionVerification {
@@ -115,7 +115,7 @@ class SessionStore(context: Context, private val coordinator: SessionCoordinator
 
 	fun restore(verifier: SessionVerifier): RestoreResult = restore(verifier) {}
 
-	internal fun restore(verifier: SessionVerifier, onRestored: (ActiveSession) -> Unit): RestoreResult = synchronized(restoreLock) { restoreLeased({}, { material, _ -> verifier.verify(material) }, onRestored) }
+	internal fun restore(verifier: SessionVerifier, onRestored: (ActiveSession) -> Unit): RestoreResult = synchronized(restoreLock) { restoreLeased({}, { material, lease -> verifier.verify(material, lease) }, onRestored) }
 
 	internal fun restoreLeased(beforeAdmission: () -> Unit, verifier: (ByteArray, RequestLease) -> SessionVerification, onRestored: (ActiveSession) -> Unit): RestoreResult {
 		val revision = coordinator.beginRestore() ?: return RestoreResult.Cancelled

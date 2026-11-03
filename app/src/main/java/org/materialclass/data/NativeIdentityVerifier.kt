@@ -15,11 +15,9 @@ import java.net.URL
 import java.util.concurrent.CancellationException
 
 internal class NativeIdentityVerifier(private val exchange: Exchange = HttpsExchange()) : IdentityVerifier {
-	fun verify(session: UnverifiedSession): SessionVerification = verifyRequest(session, null)
-
 	override fun verify(session: UnverifiedSession, lease: RequestLease): SessionVerification = verifyRequest(session, lease)
 
-	private fun verifyRequest(session: UnverifiedSession, lease: RequestLease?): SessionVerification {
+	private fun verifyRequest(session: UnverifiedSession, lease: RequestLease): SessionVerification {
 		val candidate = session.identityCandidate?.takeIf { it.toLongOrNull()?.let { id -> id > 0 && id.toString() == it } == true } ?: return SessionVerification.Invalid
 		val school = session.context?.schoolId ?: return SessionVerification.Retry
 		if (school <= 0 || session.token.isEmpty() || session.role != "student") return SessionVerification.Retry

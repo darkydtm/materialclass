@@ -90,7 +90,7 @@ class Diary(val date: String, val days: List<DiaryDay>)
 class DiaryDay(val day: String, val date: String, val subjects: List<DiarySubject>)
 class DiarySubject(val label: String, val type: String, val scheduleUuid: String, val homeworkType: String, val homeworkBody: String?, val homeworkUuid: String?, val hasBooks: Boolean, val hasFiles: Boolean)
 
-internal class Request(val url: URL, val method: String, val headers: Map<String, String>, val body: ByteArray?, val lease: RequestLease? = null)
+internal class Request(val url: URL, val method: String, val headers: Map<String, String>, val body: ByteArray?, val lease: RequestLease)
 internal class Response(val status: Int, val body: String)
 internal fun interface Exchange {
 	fun execute(request: Request): Response
@@ -101,11 +101,9 @@ class NativeGateway internal constructor(private val exchange: Exchange) : Schoo
 
 	private val deviceId = UUID.randomUUID().toString()
 
-	internal fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = loginRequest(login, password, null)
-
 	override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = loginRequest(login, password, lease)
 
-	private fun loginRequest(login: String, password: CharArray, lease: RequestLease?): GatewayResult<UnverifiedSession> {
+	private fun loginRequest(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> {
 		return try {
 			val body = JSONObject().put("login", login).put("password", String(password)).toString().toByteArray(Charsets.UTF_8)
 			val response = try {
@@ -134,13 +132,9 @@ class NativeGateway internal constructor(private val exchange: Exchange) : Schoo
 		}
 	}
 
-	internal fun diary(session: VerifiedDiarySession, context: DiaryContext): GatewayResult<Diary> {
-		return diaryRequest(session, context, null)
-	}
-
 	override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = diaryRequest(session, context, lease)
 
-	private fun diaryRequest(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease?): GatewayResult<Diary> {
+	private fun diaryRequest(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> {
 		return try {
 			val remote = session.remote
 			if (session.account != remote.identityCandidate || remote.token.isEmpty() || remote.role != "student" || !session.permits(context) || context.schoolId <= 0 || context.groupId <= 0 || context.eduYear <= 0 || !context.date.matches(Regex("[0-9]{2}\\.[0-9]{2}\\.[0-9]{4}"))) return GatewayResult.Failure(AppError.INCOMPATIBLE_RESPONSE)
@@ -164,13 +158,9 @@ class NativeGateway internal constructor(private val exchange: Exchange) : Schoo
 		}
 	}
 
-	internal fun schedule(session: VerifiedScheduleSession, date: String): GatewayResult<Schedule> {
-		return scheduleRequest(session, date, null)
-	}
-
 	override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> = scheduleRequest(session, date, lease)
 
-	private fun scheduleRequest(session: VerifiedScheduleSession, date: String, lease: RequestLease?): GatewayResult<Schedule> {
+	private fun scheduleRequest(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> {
 		return try {
 			val remote = session.remote
 			val context = remote.context ?: return GatewayResult.Failure(AppError.INCOMPATIBLE_RESPONSE)
@@ -205,7 +195,7 @@ class NativeGateway internal constructor(private val exchange: Exchange) : Schoo
 		}
 	}
 
-	private fun request(path: String, method: String, extra: Map<String, String>, body: ByteArray?, lease: RequestLease? = null): Request {
+	private fun request(path: String, method: String, extra: Map<String, String>, body: ByteArray?, lease: RequestLease): Request {
 		val headers = mapOf("Accept" to "application/json", "Content-Type" to "application/json", "X-Localization" to "ru", "X-Mathrix" to deviceId, "Origin" to "https://www.bilimclass.kz", "Referer" to "https://www.bilimclass.kz/", "User-Agent" to "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36") + extra
 		return Request(URL("https://api.bilimclass.kz$path"), method, headers, body, lease)
 	}
@@ -216,12 +206,12 @@ internal class HttpsExchange(private val open: (URL) -> HttpsURLConnection = { i
 	override fun execute(request: Request): Response {
 		val url = request.url
 		require(url.protocol == "https" && url.host == "api.bilimclass.kz" && (url.port == -1 || url.port == 443) && url.userInfo == null)
-		if (request.lease?.isCancelled() == true) throw java.io.IOException("Request cancelled")
+		if (request.lease.isCancelled()) throw java.io.IOException("Request cancelled")
 		val connection = open(url)
 		try {
-			if (request.lease?.register { connection.disconnect() } == false) throw java.io.IOException("Request cancelled")
+			if (!request.lease.register { connection.disconnect() }) throw java.io.IOException("Request cancelled")
 			afterRegistration()
-			if (request.lease?.isCancelled() == true) throw java.io.IOException("Request cancelled")
+			if (request.lease.isCancelled()) throw java.io.IOException("Request cancelled")
 			connection.instanceFollowRedirects = false
 			connection.connectTimeout = 15000
 			connection.readTimeout = 15000
@@ -230,13 +220,13 @@ internal class HttpsExchange(private val open: (URL) -> HttpsURLConnection = { i
 			request.headers.forEach { (name, value) -> connection.setRequestProperty(name, value) }
 			request.body?.let {
 				connection.doOutput = true
-				if (request.lease?.isCancelled() == true) throw java.io.IOException("Request cancelled")
+				if (request.lease.isCancelled()) throw java.io.IOException("Request cancelled")
 				connection.outputStream.use { output ->
-					if (request.lease?.isCancelled() == true) throw java.io.IOException("Request cancelled")
+					if (request.lease.isCancelled()) throw java.io.IOException("Request cancelled")
 					output.write(it)
 				}
 			}
-			if (request.lease?.isCancelled() == true) throw java.io.IOException("Request cancelled")
+			if (request.lease.isCancelled()) throw java.io.IOException("Request cancelled")
 			val status = connection.responseCode
 			if (status != 200) return Response(status, "")
 			val bytes = connection.inputStream.use { input ->
@@ -252,7 +242,7 @@ internal class HttpsExchange(private val open: (URL) -> HttpsURLConnection = { i
 			}
 			return Response(status, String(bytes, Charsets.UTF_8))
 		} finally {
-			request.lease?.unregister()
+			request.lease.unregister()
 			connection.disconnect()
 		}
 	}
