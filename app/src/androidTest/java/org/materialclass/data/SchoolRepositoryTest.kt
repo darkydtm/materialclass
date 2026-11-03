@@ -701,6 +701,9 @@ class SchoolRepositoryTest {
 			fail("Storage failure must propagate")
 		} catch (_: java.io.IOException) {
 			assertEquals(DiaryState.Cleared, events.last())
+		} finally {
+			failClear = false
+			failingCoordinator.pendingLogoutTicket()?.let { failingCoordinator.logout(it) }
 		}
 	}
 
