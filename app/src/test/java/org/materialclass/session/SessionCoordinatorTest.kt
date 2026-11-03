@@ -10,6 +10,31 @@ import kotlin.concurrent.thread
 
 class SessionCoordinatorTest {
 	@Test
+	fun failedTicketCanBeRecoveredAcrossCoordinatorsWithoutReleasingNewerTicket() {
+		var fail = false
+		val first = SessionCoordinator { if (fail) throw IllegalStateException("synthetic failure") }
+		first.activate(AccountId("synthetic-retry-ticket"))
+		val ticket = first.cancelInFlightNow()
+		fail = true
+		try { first.logout(ticket); throw AssertionError("Expected cleanup failure") } catch (_: IllegalStateException) { }
+		val second = SessionCoordinator { }
+		try {
+			val method = SessionCoordinator::class.java.methods.firstOrNull { it.name == "pendingLogoutTicket" && it.parameterCount == 0 }
+			assertNotNull("Pending logout must be recoverable after recreation", method)
+			assertEquals(ticket, method!!.invoke(second))
+			val newer = second.cancelInFlightNow()
+			second.logout(ticket)
+			assertEquals(newer, method.invoke(second))
+			assertNull(second.admit(second.beginLogin()))
+			second.logout(newer)
+			assertNull(method.invoke(second))
+		} finally {
+			fail = false
+			first.logout(ticket)
+			second.logout()
+		}
+	}
+	@Test
 	fun immediateCancellationRejectsNestedPublication() {
 		val coordinator = SessionCoordinator { }
 		val session = coordinator.activate(AccountId("synthetic-publication"))
