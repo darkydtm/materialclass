@@ -39,6 +39,8 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		private var active: ActiveSession? = null
 		private var restorationAllowed = true
 		private var revision = 0L
+		private var revocationEpoch = 0L
+		private val observers = mutableSetOf<(Long) -> Unit>()
 		private val pending = mutableSetOf<Any>()
 		private val leases = mutableSetOf<RequestLease>()
 		private val disconnectExecutor = Executors.newCachedThreadPool()
@@ -61,20 +63,38 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 
 	private val ownPending = ArrayDeque<Any>()
 
+	internal fun observeRevocations(observer: (Long) -> Unit): Pair<Long, Boolean> = synchronized(CancellationLock) {
+		observers.add(observer)
+		Pair(revocationEpoch, pending.isNotEmpty())
+	}
+	internal fun removeRevocationObserver(observer: (Long) -> Unit) = synchronized(CancellationLock) { observers.remove(observer) }
+	internal fun revocationEpoch(): Long = synchronized(CancellationLock) { revocationEpoch }
+	private fun notifyRevocation(epoch: Long, callbacks: List<(Long) -> Unit>) {
+		callbacks.forEach { observer -> try { observer(epoch) } catch (_: Exception) { } }
+	}
+	private fun notifyAfterStorage(epoch: Long, callbacks: List<(Long) -> Unit>) {
+		disconnectExecutor.execute {
+			synchronized(StorageLock) { }
+			notifyRevocation(epoch, callbacks)
+		}
+	}
+
+
 	fun pendingLogoutTicket(): Any? = synchronized(CancellationLock) { pending.firstOrNull() }
 	internal fun isPendingLogout(token: Any): Boolean = synchronized(CancellationLock) { token in pending }
 
 	fun cancelInFlightNow(): Any {
 		val token = Any()
-		val disconnects = synchronized(CancellationLock) {
+		val (disconnects, epoch, callbacks) = synchronized(CancellationLock) {
 			pending.add(token)
 			ownPending.addLast(token)
 			revision++
 			leases.forEach { it.cancelled = true }
 			val callbacks = leases.mapNotNull { lease -> lease.disconnect.also { lease.disconnect = null } }
 			leases.clear()
-			callbacks
+			Triple(callbacks, ++revocationEpoch, observers.toList())
 		}
+		if (Thread.holdsLock(StorageLock)) notifyAfterStorage(epoch, callbacks) else notifyRevocation(epoch, callbacks)
 		disconnects.forEach { disconnect -> disconnectExecutor.execute { try { disconnect() } catch (_: Exception) { } } }
 		return token
 	}
@@ -113,10 +133,13 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		}
 	}
 	internal fun revokeIfActive(session: ActiveSession): Boolean = synchronized(StorageLock) {
-		val revoked = synchronized(CancellationLock) {
-			if (active !== session) false else { active = null; restorationAllowed = false; true }
-		}
-		if (!revoked) return@synchronized false
+		val event = synchronized(CancellationLock) {
+			if (active !== session) null else {
+				active = null; restorationAllowed = false; revision++
+				Pair(++revocationEpoch, observers.toList())
+			}
+		} ?: return@synchronized false
+		notifyAfterStorage(event.first, event.second)
 		cancelRequests(session)
 		clearSession()
 		true
@@ -156,18 +179,23 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 	}
 	fun logout(token: Any? = null) = synchronized(StorageLock) {
 		if (token != null && !isPendingLogout(token)) return@synchronized
-		val ownedToken = synchronized(CancellationLock) {
+		val (ownedToken, event) = synchronized(CancellationLock) {
 			val owned = token ?: ownPending.firstOrNull { it in pending }
 			active = null; revision++; restorationAllowed = false
-			owned
+			Pair(owned, if (owned == null) Pair(++revocationEpoch, observers.toList()) else null)
 		}
+		if (event != null) notifyAfterStorage(event.first, event.second)
 		cancelRequests()
 		clearSession()
 		if (ownedToken != null) finishImmediateLogout(ownedToken)
 	}
-	internal fun finishImmediateLogout(token: Any) = synchronized(CancellationLock) {
-		ownPending.remove(token)
-		pending.remove(token)
+	internal fun finishImmediateLogout(token: Any) {
+		val (epoch, callbacks) = synchronized(CancellationLock) {
+			ownPending.remove(token)
+			pending.remove(token)
+			Pair(revocationEpoch, observers.toList())
+		}
+		notifyAfterStorage(epoch, callbacks)
 	}
 	fun <T> ifActive(session: ActiveSession, action: () -> T): T? = synchronized(StorageLock) {
 		if (!synchronized(CancellationLock) { active === session && pending.isEmpty() }) return@synchronized null

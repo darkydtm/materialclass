@@ -316,6 +316,9 @@ internal class SchoolRepository(
 
 	fun cancelInFlightNow() = coordinator.cancelInFlightNow()
 	fun pendingLogoutTicket() = coordinator.pendingLogoutTicket()
+	internal fun observeRevocations(observer: (Long) -> Unit) = coordinator.observeRevocations(observer)
+	internal fun removeRevocationObserver(observer: (Long) -> Unit) = coordinator.removeRevocationObserver(observer)
+	internal fun revocationEpoch() = coordinator.revocationEpoch()
 
 	fun logout(token: Any? = null) = synchronized(StorageLock) {
 		if (token != null && !coordinator.isPendingLogout(token)) return@synchronized

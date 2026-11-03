@@ -10,6 +10,24 @@ import kotlin.concurrent.thread
 
 class SessionCoordinatorTest {
 	@Test
+	fun revocationsPersistAcrossCoordinatorsAndObserversCanUnsubscribe() {
+		val first = SessionCoordinator { }
+		val second = SessionCoordinator { }
+		val events = mutableListOf<Long>()
+		val observer: (Long) -> Unit = { events.add(it) }
+		val initial = second.observeRevocations(observer).first
+		val token = first.cancelInFlightNow()
+		assertEquals(listOf(initial + 1), events)
+		assertEquals(initial + 1, second.revocationEpoch())
+		second.removeRevocationObserver(observer)
+		first.logout(token)
+		val next = first.cancelInFlightNow()
+		assertEquals(listOf(initial + 1), events)
+		assertEquals(initial + 2, second.revocationEpoch())
+		first.logout(next)
+	}
+
+	@Test
 	fun failedTicketCanBeRecoveredAcrossCoordinatorsWithoutReleasingNewerTicket() {
 		var fail = false
 		val first = SessionCoordinator { if (fail) throw IllegalStateException("synthetic failure") }

@@ -43,23 +43,26 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 	private val logoutExecutor = Executors.newSingleThreadExecutor()
 	private var logoutPending = false
 	private val handler = Handler(Looper.getMainLooper())
-	private val observeLogout = object : Runnable {
-		override fun run() {
-			if (closed) return
-			val pending = repository.pendingLogoutTicket() != null
-			if (pending && !state.logoutPending) {
-				generation++
-				state = NativeUiState(logoutPending = true)
-			} else if (!pending && state.logoutPending && !logoutPending) {
-				state = NativeUiState()
+	@Volatile private var observedEpoch = 0L
+	private val observeLogout: (Long) -> Unit = { epoch ->
+		val apply = {
+			if (!closed && epoch == repository.revocationEpoch()) {
+				if (epoch != observedEpoch) {
+					observedEpoch = epoch
+					generation++
+					state = NativeUiState(logoutPending = repository.pendingLogoutTicket() != null)
+				} else if (state.logoutPending && !logoutPending && repository.pendingLogoutTicket() == null) {
+					state = NativeUiState()
+				}
 			}
-			handler.postDelayed(this, 200)
 		}
+		if (Looper.myLooper() == Looper.getMainLooper()) apply() else handler.post { apply() }
 	}
 	@Volatile private var generation = 0L
 	@Volatile private var closed = false
 	private var started = false
 	private var currentTaskGeneration = 0L
+	@Volatile private var currentTaskEpoch = 0L
 	override var state by mutableStateOf(NativeUiState())
 		private set
 	private val repository = repositoryFactory { diary ->
@@ -70,23 +73,31 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 		}
 	}
 
+	init {
+		val snapshot = repository.observeRevocations(observeLogout)
+		observedEpoch = snapshot.first
+		if (snapshot.second) state = NativeUiState(logoutPending = true)
+	}
+
 	private fun post(task: Long, action: () -> Unit) {
-		handler.post { if (!closed && generation == task) action() }
+		val epoch = currentTaskEpoch
+		handler.post { if (!closed && generation == task && repository.revocationEpoch() == epoch) action() }
 	}
 
 	override fun start() {
 		if (started || closed) return
 		started = true
-		handler.post(observeLogout)
 		if (repository.pendingLogoutTicket() != null) {
 			state = NativeUiState(logoutPending = true)
 			return
 		}
 		val task = ++generation
+		val epoch = observedEpoch
 		state = state.copy(busy = true)
 		executor.execute {
 			if (closed || generation != task) return@execute
 			currentTaskGeneration = task
+			currentTaskEpoch = epoch
 			val result = try { repository.restore() } catch (_: Exception) { RestoreResult.Retry }
 			post(task) {
 				state = state.copy(busy = false, signedIn = result is RestoreResult.Restored, error = if (result is RestoreResult.Retry) AppError.UNAVAILABLE else null)
@@ -98,11 +109,13 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 	override fun login(username: String, password: CharArray) {
 		if (closed || logoutPending || repository.pendingLogoutTicket() != null) { password.fill('\u0000'); return }
 		val task = ++generation
+		val epoch = observedEpoch
 		state = NativeUiState(busy = true)
 		try {
 			executor.execute {
 				if (closed || generation != task) { password.fill('\u0000'); return@execute }
 				currentTaskGeneration = task
+			currentTaskEpoch = epoch
 				val result = try { repository.login(username, password) } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) } finally { password.fill('\u0000') }
 				post(task) {
 					state = state.copy(busy = false, signedIn = result is GatewayResult.Success, error = (result as? GatewayResult.Failure)?.error)
@@ -115,10 +128,12 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 	override fun refresh() {
 		if (closed || !state.signedIn) return
 		val task = ++generation
+		val epoch = observedEpoch
 		state = state.copy(error = null)
 		executor.execute {
 			if (closed || generation != task) return@execute
 			currentTaskGeneration = task
+			currentTaskEpoch = epoch
 			try {
 				repository.refreshCurrent()
 				repository.currentWeek { week ->
@@ -138,23 +153,26 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 
 	override fun logout() {
 		if (closed || logoutPending) return
-		val task = ++generation
 		logoutPending = true
-		state = NativeUiState(busy = true, logoutPending = true)
 		val token = repository.pendingLogoutTicket() ?: repository.cancelInFlightNow()
+		val task = ++generation
+		val epoch = repository.revocationEpoch()
+		state = NativeUiState(busy = true, logoutPending = true)
 		logoutExecutor.execute {
 			val error = try { repository.logout(token); null } catch (_: Exception) { AppError.UNAVAILABLE }
-			post(task) {
+			handler.post {
 				logoutPending = false
-				val pending = repository.pendingLogoutTicket() != null
-				state = NativeUiState(logoutPending = pending, error = error)
+				if (!closed && generation == task && repository.revocationEpoch() == epoch) {
+					val pending = repository.pendingLogoutTicket() != null
+					state = NativeUiState(logoutPending = pending, error = error)
+				}
 			}
 		}
 	}
 
 	override fun close() {
 		closed = true
-		handler.removeCallbacks(observeLogout)
+		repository.removeRevocationObserver(observeLogout)
 		generation++
 		executor.shutdown()
 		logoutExecutor.shutdown()
