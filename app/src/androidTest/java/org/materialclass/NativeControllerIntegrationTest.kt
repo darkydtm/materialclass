@@ -37,6 +37,47 @@ class NativeControllerIntegrationTest {
 		coordinator.logout()
 	}
 
+	@Test fun failedLogoutCanBeRetriedAfterControllerRecreation() {
+		var failCleanup = false
+		val entered = CountDownLatch(1)
+		val release = CountDownLatch(1)
+		val shared = SessionCoordinator {
+			if (failCleanup) throw IllegalStateException("synthetic failure")
+			entered.countDown()
+			check(release.await(10, TimeUnit.SECONDS))
+		}
+		val gateway = object : SchoolGateway {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Failure(AppError.UNAVAILABLE)
+			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = GatewayResult.Failure(AppError.UNAVAILABLE)
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = GatewayResult.Failure(AppError.UNAVAILABLE)
+			override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> = GatewayResult.Failure(AppError.UNAVAILABLE)
+		}
+		val cache = object : DiaryCache {
+			override fun read(session: ActiveSession): ByteArray? = null
+			override fun write(session: ActiveSession, bytes: ByteArray) = true
+		}
+		val verifier = IdentityVerifier { _, _ -> SessionVerification.Retry }
+		fun create() = NativeController { emit -> SchoolRepository(gateway, verifier, shared, cache, { 1L }, emit, SessionStore(context, shared)) }
+		failCleanup = true
+		main { controller = create(); controller!!.logout() }
+		await { controller!!.state.logoutPending && !controller!!.state.busy }
+		val ticket = shared.pendingLogoutTicket()
+		assertNotNull(ticket)
+		main { controller!!.close(); controller = create(); controller!!.start(); assertTrue(controller!!.state.logoutPending) }
+		val password = charArrayOf('x')
+		main { controller!!.login("synthetic", password) }
+		assertEquals('\u0000', password[0])
+		failCleanup = false
+		try {
+			main { controller!!.logout(); assertTrue(controller!!.state.busy) }
+			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			main { assertTrue(controller!!.state.busy); assertTrue(controller!!.state.logoutPending) }
+			assertEquals(ticket, shared.pendingLogoutTicket())
+		} finally { release.countDown() }
+		await { !controller!!.state.logoutPending && !controller!!.state.busy }
+		assertNull(shared.pendingLogoutTicket())
+	}
+
 	@Test fun loginRefreshErrorsLogoutAndStaleDelivery() {
 		val entered = CountDownLatch(1)
 		val release = CountDownLatch(1)
