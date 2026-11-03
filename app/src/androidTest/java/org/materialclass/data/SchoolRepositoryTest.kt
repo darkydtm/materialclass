@@ -301,6 +301,30 @@ class SchoolRepositoryTest {
 		assertTrue(coordinator.logoutIfNoActive())
 	}
 
+	private fun expiredTerminalStateIsGuarded(current: Boolean) {
+		val gateway = object : TestSchoolGateway() {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic", login, "student", SchoolContext(1, 2026, 2)))
+			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = if (current) GatewayResult.Failure(AppError.SESSION_EXPIRED) else GatewayResult.Success(context.date)
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = GatewayResult.Failure(AppError.SESSION_EXPIRED)
+		}
+		val events = mutableListOf<DiaryState>(); val held = mutableListOf<Boolean>()
+		val repo = SchoolRepository(gateway, IdentityVerifier { session, _ -> proof(session) }, coordinator, FakeCache(), { 1L }, {
+			if (it is DiaryState.Error) held.add(Thread.holdsLock(org.materialclass.security.StorageLock))
+			events.add(it)
+		}, store)
+		assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+		if (current) repo.refreshCurrent() else repo.refresh(context)
+		val expired = events.last() as DiaryState.Error
+		assertEquals(AppError.SESSION_EXPIRED, expired.error)
+		assertEquals(listOf(false), held)
+		assertTrue(repo.acceptsDiary(expired))
+		assertTrue(repo.login("2", charArrayOf('x')) is GatewayResult.Success)
+		assertFalse(repo.acceptsDiary(expired))
+	}
+
+	@Test fun refreshExpiryRejectsNewSession() = expiredTerminalStateIsGuarded(false)
+	@Test fun currentRefreshExpiryRejectsNewSession() = expiredTerminalStateIsGuarded(true)
+
 	@Test fun refreshReadyAllowsReentrantLogout() = reentrantTerminalLogout(false, false)
 	@Test fun refreshErrorAllowsReentrantLogout() = reentrantTerminalLogout(false, true)
 	@Test fun currentRefreshReadyAllowsReentrantLogout() = reentrantTerminalLogout(true, false)
