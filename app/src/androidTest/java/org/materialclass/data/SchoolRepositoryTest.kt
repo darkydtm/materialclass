@@ -98,6 +98,7 @@ class SchoolRepositoryTest {
 	fun failedSessionEncodingRevokesActivation() {
 		val gateway = object : TestSchoolGateway() {
 			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("x".repeat(70000), "1", "student", SchoolContext(1, 2026, 2)))
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = error("unexpected")
 		}
 		val repo = SchoolRepository(gateway, IdentityVerifier { session, _ -> proof(session) }, coordinator, FakeCache(), { 1L }, {}, store)
 		assertTrue(repo.login("synthetic", charArrayOf('x')) is GatewayResult.Failure)
