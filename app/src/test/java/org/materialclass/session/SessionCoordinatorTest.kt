@@ -10,6 +10,30 @@ import kotlin.concurrent.thread
 
 class SessionCoordinatorTest {
 	@Test
+	fun immediateCancellationRejectsCapturedAdmissionWhileStorageIsBlocked() {
+		val coordinator = SessionCoordinator { }
+		val session = coordinator.activate(AccountId("synthetic-cancel"))
+		val revision = coordinator.requestRevision()
+		val lease = coordinator.admit(session, revision)!!
+		val entered = CountDownLatch(1)
+		val release = CountDownLatch(1)
+		val cancelled = CountDownLatch(1)
+		val method = SessionCoordinator::class.java.methods.firstOrNull { it.name == "cancelInFlightNow" && it.parameterCount == 0 }
+		assertNotNull("Immediate cancellation must be available", method)
+		val writer = thread {
+			coordinator.ifActive(session) { entered.countDown(); check(release.await(10, TimeUnit.SECONDS)) }
+		}
+		check(entered.await(10, TimeUnit.SECONDS))
+		try {
+			thread { method!!.invoke(coordinator); cancelled.countDown() }
+			assertEquals(true, cancelled.await(2, TimeUnit.SECONDS))
+			assertEquals(true, lease.isCancelled())
+		} finally { release.countDown(); writer.join(10000) }
+		assertNull(coordinator.admit(session, revision))
+		coordinator.logout()
+	}
+
+	@Test
 	fun retriesRestorationAfterTransientFailure() {
 		val active = SessionCoordinator::class.java.getDeclaredField("active")
 		active.isAccessible = true
