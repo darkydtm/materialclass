@@ -223,6 +223,41 @@ class SchoolRepositoryTest {
 		assertTrue(coordinator.logoutIfNoActive())
 	}
 
+	private fun terminalCallbackDoesNotBlockLogout(current: Boolean, failure: Boolean) {
+		val entered = CountDownLatch(1); val release = CountDownLatch(1); val loggedOut = CountDownLatch(1)
+		val held = java.util.concurrent.atomic.AtomicBoolean(true)
+		val gateway = object : TestSchoolGateway() {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic", "1", "student", SchoolContext(1, 2026, 2)))
+			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = GatewayResult.Success(context.date)
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = if (failure) GatewayResult.Failure(AppError.OFFLINE) else GatewayResult.Success(Diary(context.date, emptyList()))
+		}
+		val repo = SchoolRepository(gateway, IdentityVerifier { session, _ -> proof(session) }, coordinator, FakeCache(), { 1L }, {
+			if (it is DiaryState.Ready || it is DiaryState.Error) {
+				held.set(Thread.holdsLock(org.materialclass.security.StorageLock))
+				entered.countDown()
+				check(release.await(20, TimeUnit.SECONDS))
+			}
+		}, store)
+		assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+		val worker = thread { if (current) repo.refreshCurrent() else repo.refresh(context) }
+		var logout: Thread? = null
+		try {
+			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			logout = thread { repo.logout(); loggedOut.countDown() }
+			assertTrue("Logout must proceed during a terminal callback", loggedOut.await(5, TimeUnit.SECONDS))
+			assertFalse("Terminal callback must run outside StorageLock", held.get())
+		} finally {
+			release.countDown(); worker.join(10000); logout?.join(10000)
+		}
+		assertFalse(worker.isAlive)
+		assertFalse(logout!!.isAlive)
+	}
+
+	@Test fun refreshReadyDoesNotBlockLogout() = terminalCallbackDoesNotBlockLogout(false, false)
+	@Test fun refreshErrorDoesNotBlockLogout() = terminalCallbackDoesNotBlockLogout(false, true)
+	@Test fun currentRefreshReadyDoesNotBlockLogout() = terminalCallbackDoesNotBlockLogout(true, false)
+	@Test fun currentRefreshErrorDoesNotBlockLogout() = terminalCallbackDoesNotBlockLogout(true, true)
+
 	@Test fun refreshLoadingDoesNotBlockLogout() = loadingCallbackDoesNotBlockLogout(false)
 	@Test fun currentRefreshLoadingDoesNotBlockLogout() = loadingCallbackDoesNotBlockLogout(true)
 	@Test fun refreshLoadingCanLogoutReentrantly() = reentrantLoadingLogout(false)
