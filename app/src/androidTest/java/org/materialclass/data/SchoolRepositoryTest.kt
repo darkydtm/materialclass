@@ -89,6 +89,38 @@ class SchoolRepositoryTest {
 		}
 	}
 
+	private fun cancelledCacheWriteDoesNotPublish(current: Boolean) {
+		val entered = CountDownLatch(1); val release = CountDownLatch(1)
+		val events = java.util.Collections.synchronizedList(mutableListOf<DiaryState>())
+		val gateway = FakeGateway()
+		val cache = object : DiaryCache {
+			override fun read(session: ActiveSession): ByteArray? = null
+			override fun write(session: ActiveSession, bytes: ByteArray): Boolean {
+				entered.countDown()
+				check(release.await(20, TimeUnit.SECONDS))
+				return true
+			}
+		}
+		val repo = SchoolRepository(gateway, IdentityVerifier { session, _ -> proof(session) }, coordinator, cache, { 1L }, events::add, store)
+		assertTrue(repo.login("old", charArrayOf('x')) is GatewayResult.Success)
+		val worker = thread { if (current) repo.refreshCurrent() else repo.refresh(context) }
+		var token: Any? = null
+		try {
+			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			token = repo.cancelInFlightNow()
+			val count = events.size
+			release.countDown(); worker.join(10000)
+			assertFalse(worker.isAlive)
+			assertEquals("Cancelled cache write must not publish", count, events.size)
+		} finally {
+			release.countDown(); worker.join(10000)
+			if (token != null) repo.logout(token)
+		}
+	}
+
+	@Test fun cancelledCacheWriteDoesNotPublishRefresh() = cancelledCacheWriteDoesNotPublish(false)
+	@Test fun cancelledCacheWriteDoesNotPublishCurrentRefresh() = cancelledCacheWriteDoesNotPublish(true)
+
 	@Test fun pendingLoginRejectsPreparedRefresh() = pendingLoginRejectsPreparedRequest(0)
 	@Test fun pendingLoginRejectsPreparedCurrentRefresh() = pendingLoginRejectsPreparedRequest(1)
 	@Test fun pendingLoginRejectsPreparedSchedule() = pendingLoginRejectsPreparedRequest(2)
