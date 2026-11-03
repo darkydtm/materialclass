@@ -58,6 +58,7 @@ internal class SchoolRepository(
 	private var remote: UnverifiedSession? = null
 	private var refreshRevision = 0L
 	@Volatile private var loginRevision: Long? = null
+	internal var afterRestoreActivation: () -> Unit = {}
 
 	fun login(username: String, password: CharArray): GatewayResult<Unit> {
 		val revision = synchronized(StorageLock) {
@@ -108,6 +109,7 @@ internal class SchoolRepository(
 			verification
 		}
 		if (result is RestoreResult.Restored) {
+			afterRestoreActivation()
 			coordinator.ifActive(result.session) {
 				session = result.session
 				remote = candidate

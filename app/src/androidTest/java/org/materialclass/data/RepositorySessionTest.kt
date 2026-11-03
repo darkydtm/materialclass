@@ -146,6 +146,41 @@ class RepositorySessionTest {
 	}
 
 	@Test
+	fun logoutAtRestoreActivationRevokesRestoredSession() {
+		saved()
+		val activated = CountDownLatch(1); val release = CountDownLatch(1)
+		val logoutStarted = CountDownLatch(1); val logoutFinished = CountDownLatch(1)
+		val events = java.util.Collections.synchronizedList(mutableListOf<DiaryState>())
+		val repo = SchoolRepository(gateway, IdentityVerifier { SessionVerification.Verified(AccountId("synthetic-account"), true) }, coordinator, cache, { 1L }, events::add, store)
+		repo.afterRestoreActivation = {
+			activated.countDown()
+			check(release.await(10, TimeUnit.SECONDS))
+		}
+		var result: RestoreResult? = null
+		val restoring = thread { result = repo.restore() }
+		check(activated.await(10, TimeUnit.SECONDS))
+		val loggingOut = thread {
+			logoutStarted.countDown()
+			try { repo.logout() } finally { logoutFinished.countDown() }
+		}
+		try {
+			check(logoutStarted.await(10, TimeUnit.SECONDS))
+			logoutFinished.await(1, TimeUnit.SECONDS)
+		} finally {
+			release.countDown()
+			restoring.join(10000)
+			loggingOut.join(10000)
+		}
+		assertFalse(restoring.isAlive)
+		assertFalse(loggingOut.isAlive)
+		assertTrue(result is RestoreResult.Cancelled || result is RestoreResult.Restored)
+		repo.refresh(diaryContext)
+		assertEquals(0, accesses)
+		assertFalse(File(context.noBackupFilesDir, "session").exists())
+		assertEquals(DiaryState.Cleared, events.lastOrNull())
+	}
+
+	@Test
 	fun logoutCancelsPendingRestore() {
 		saved()
 		val entered = CountDownLatch(1); val release = CountDownLatch(1)
