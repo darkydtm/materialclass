@@ -49,8 +49,9 @@ internal class SchoolRepository(
 	private val clock: () -> Long,
 	private val emit: (DiaryState) -> Unit,
 ) {
-	private var session: ActiveSession? = null
+	@Volatile private var session: ActiveSession? = null
 	private var remote: UnverifiedSession? = null
+	private var refreshRevision = 0L
 	@Volatile private var loginRevision: Long? = null
 
 	fun login(username: String, password: CharArray): GatewayResult<Unit> {
@@ -77,12 +78,15 @@ internal class SchoolRepository(
 
 	fun refresh(context: DiaryContext) {
 		val active = session ?: return
-		val authenticated = coordinator.ifActive(active) {
+		val request = coordinator.ifActive(active) {
+			val authenticated = remote ?: return@ifActive null
+			val revision = ++refreshRevision
 			emit(DiaryState.Loading)
-			remote
+			authenticated to revision
 		} ?: return
-		val result = try { gateway.diary(authenticated, context) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
+		val result = try { gateway.diary(request.first, context) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
 		coordinator.ifActive(active) {
+			if (request.second != refreshRevision) return@ifActive
 			if (result is GatewayResult.Failure && result.error == AppError.SESSION_EXPIRED) {
 				remote = null
 				session = null
