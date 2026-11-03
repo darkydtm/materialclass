@@ -10,6 +10,34 @@ import kotlin.concurrent.thread
 
 class SessionCoordinatorTest {
 	@Test
+	fun immediateCancellationRejectsNestedPublication() {
+		val coordinator = SessionCoordinator { }
+		val session = coordinator.activate(AccountId("synthetic-publication"))
+		try {
+			coordinator.ifActive(session) {
+				coordinator.cancelInFlightNow()
+				assertNull(coordinator.ifActive(session) { "stale" })
+			}
+		} finally {
+			coordinator.logout()
+		}
+	}
+
+	@Test
+	fun cancellationBeforeActivationRejectsLogin() {
+		val coordinator = SessionCoordinator { }
+		val revision = coordinator.beginLogin()
+		try {
+			val session = coordinator.activateIfUnchanged(revision, AccountId("synthetic-activation")) {
+				coordinator.cancelInFlightNow()
+			}
+			assertNull(session)
+		} finally {
+			coordinator.logout()
+		}
+	}
+
+	@Test
 	fun overlappingImmediateLogoutsKeepAdmissionClosedUntilBothFinish() {
 		val first = SessionCoordinator { }
 		val second = SessionCoordinator { }
