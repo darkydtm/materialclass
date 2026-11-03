@@ -145,8 +145,13 @@ class SessionStore(context: Context, private val coordinator: SessionCoordinator
 						RestoreResult.Invalid
 					} else {
 						val active = coordinator.acceptRestore(verification.account, candidate.namespace)
-						onRestored(active)
-						RestoreResult.Restored(active)
+						try {
+							onRestored(active)
+							RestoreResult.Restored(active)
+						} catch (error: Exception) {
+							try { coordinator.revokeIfActive(active) } catch (cleanup: Exception) { error.addSuppressed(cleanup) }
+							throw error
+						}
 					}
 				}
 			}

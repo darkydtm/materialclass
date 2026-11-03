@@ -97,13 +97,13 @@ internal class SchoolRepository(
 						diarySession = null
 						emit(DiaryState.Cleared)
 					} ?: return@synchronized GatewayResult.Failure(AppError.UNAVAILABLE)
-					val material = encodeSession(candidate)
 					try {
-						check(store.write(active, material))
+						val material = encodeSession(candidate)
+						try { check(store.write(active, material)) } finally { material.fill(0) }
 					} catch (error: Exception) {
-						coordinator.revokeIfActive(active)
+						try { coordinator.revokeIfActive(active) } catch (cleanup: Exception) { error.addSuppressed(cleanup) }
 						throw error
-					} finally { material.fill(0) }
+					}
 					session = active
 					remote = candidate
 					scheduleSession = verification.scheduleSession
@@ -129,25 +129,31 @@ internal class SchoolRepository(
 			if (verification is SessionVerification.Verified && verification.pupil) { candidate = remote; scheduleCandidate = verification.scheduleSession; diaryCandidate = verification.diarySession }
 			verification
 		}) { active ->
-			afterRestoreActivation()
-			session = active
-			remote = candidate
-			scheduleSession = scheduleCandidate
-			diarySession = diaryCandidate
-			emit(DiaryState.Cleared)
+			try {
+				afterRestoreActivation()
+				session = active
+				remote = candidate
+				scheduleSession = scheduleCandidate
+				diarySession = diaryCandidate
+				emit(DiaryState.Cleared)
+			} catch (error: Exception) {
+				if (session === active) { session = null; remote = null; scheduleSession = null; diarySession = null }
+				throw error
+			}
 		}
 	}
 
 	fun currentWeek(deliver: (GatewayResult<String>) -> Unit) {
 		val active = session ?: return
 		val request = coordinator.ifActive(active) {
+			val requestRevision = coordinator.requestRevision()
 			val revision = ++weekRevision
 			val candidate = remote
 			val verified = diarySession?.takeIf { candidate != null && candidate.identityCandidate == active.account.value && it.remote === candidate && it.account == active.account.value }
-			verified to revision
+			Triple(verified, revision, requestRevision)
 		} ?: return
 		beforeRequestAdmission()
-		val lease = coordinator.admit(active) ?: return
+		val lease = coordinator.admit(active, request.third) ?: return
 		try {
 			val result = if (request.first == null) GatewayResult.Failure(AppError.UNAVAILABLE) else try { gateway.currentWeek(request.first!!, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
 			coordinator.ifActive(active) {
@@ -159,13 +165,14 @@ internal class SchoolRepository(
 	fun schedule(date: String, deliver: (GatewayResult<Schedule>) -> Unit) {
 		val active = session ?: return
 		val request = coordinator.ifActive(active) {
+			val requestRevision = coordinator.requestRevision()
 			val revision = ++scheduleRevision
 			val candidate = remote
 			val verified = scheduleSession?.takeIf { candidate != null && candidate.identityCandidate == active.account.value && it.remote === candidate && it.account == active.account.value }
-			verified to revision
+			Triple(verified, revision, requestRevision)
 		} ?: return
 		beforeRequestAdmission()
-		val lease = coordinator.admit(active) ?: return
+		val lease = coordinator.admit(active, request.third) ?: return
 		try {
 			val result = if (request.first == null) GatewayResult.Failure(AppError.UNAVAILABLE) else try { gateway.schedule(request.first!!, date, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
 			coordinator.ifActive(active) {
@@ -177,6 +184,7 @@ internal class SchoolRepository(
 	fun refreshCurrent() {
 		val active = session ?: return
 		val request = coordinator.ifActive(active) {
+			val requestRevision = coordinator.requestRevision()
 			val revision = ++refreshRevision
 			val candidate = remote
 			val proof = diarySession?.takeIf { candidate != null && it.remote === candidate && it.account == active.account.value && candidate.identityCandidate == active.account.value }
@@ -185,10 +193,10 @@ internal class SchoolRepository(
 				return@ifActive null
 			}
 			emit(DiaryState.Loading)
-			proof to revision
+			Triple(proof, revision, requestRevision)
 		} ?: return
 		beforeRequestAdmission()
-		val lease = coordinator.admit(active) ?: return
+		val lease = coordinator.admit(active, request.third) ?: return
 		try {
 			val week = try { gateway.currentWeek(request.first, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
 			if (week is GatewayResult.Failure) {
@@ -225,6 +233,7 @@ internal class SchoolRepository(
 	fun refresh(context: DiaryContext) {
 		val active = session ?: return
 		val request = coordinator.ifActive(active) {
+			val requestRevision = coordinator.requestRevision()
 			val revision = ++refreshRevision
 			val authenticated = remote
 			val proof = diarySession
@@ -233,10 +242,10 @@ internal class SchoolRepository(
 				return@ifActive null
 			}
 			emit(DiaryState.Loading)
-			proof to revision
+			Triple(proof, revision, requestRevision)
 		} ?: return
 		beforeRequestAdmission()
-		val lease = coordinator.admit(active) ?: return
+		val lease = coordinator.admit(active, request.third) ?: return
 		try {
 			val result = try { gateway.diary(request.first, context, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
 			coordinator.ifActive(active) {

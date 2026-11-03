@@ -66,6 +66,12 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		if (active !== session) null else RequestLease(session).also { leases.add(it) }
 	}
 
+	internal fun requestRevision(): Long = synchronized(StorageLock) { revision }
+
+	internal fun admit(session: ActiveSession, expected: Long): RequestLease? = synchronized(StorageLock) {
+		if (active !== session || revision != expected) null else RequestLease(session).also { leases.add(it) }
+	}
+
 	internal fun finish(lease: RequestLease) = synchronized(StorageLock) {
 		leases.remove(lease)
 		lease.cancelled = true
