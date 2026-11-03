@@ -89,28 +89,33 @@ internal class SchoolRepository(
 			val verification = try { verifier.verify(candidate, profileLease) } catch (error: CancellationException) { throw error } catch (_: Exception) { SessionVerification.Retry } finally { coordinator.finish(profileLease) }
 			if (candidate.role != "student" || verification !is SessionVerification.Verified || !verification.pupil) return GatewayResult.Failure(AppError.UNAVAILABLE)
 			return try {
-				synchronized(StorageLock) {
-					val active = coordinator.activateIfUnchanged(revision, verification.account) {
+				val active = synchronized(StorageLock) {
+					val activated = coordinator.activateIfUnchanged(revision, verification.account) {
 						session = null
 						remote = null
 						scheduleSession = null
 						diarySession = null
-					} ?: return@synchronized GatewayResult.Failure(AppError.UNAVAILABLE)
-					try {
-						session = active
-						remote = candidate
-						scheduleSession = verification.scheduleSession
-						diarySession = verification.diarySession
-						emit(DiaryState.Cleared)
+					} ?: return@synchronized null
+					session = activated
+					remote = candidate
+					scheduleSession = verification.scheduleSession
+					diarySession = verification.diarySession
+					activated
+				} ?: return GatewayResult.Failure(AppError.UNAVAILABLE)
+				try {
+					emit(DiaryState.Cleared)
+					synchronized(StorageLock) {
 						if (coordinator.ifActive(active) { session === active } != true) return@synchronized GatewayResult.Failure(AppError.UNAVAILABLE)
 						val material = encodeSession(candidate)
 						try { check(store.write(active, material)) } finally { material.fill(0) }
-					} catch (error: Exception) {
+						GatewayResult.Success(Unit)
+					}
+				} catch (error: Exception) {
+					synchronized(StorageLock) {
 						if (session === active) { session = null; remote = null; scheduleSession = null; diarySession = null }
 						try { coordinator.revokeIfActive(active) } catch (cleanup: Exception) { error.addSuppressed(cleanup) }
-						throw error
 					}
-					GatewayResult.Success(Unit)
+					throw error
 				}
 			} catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
 		} finally {
@@ -322,36 +327,38 @@ internal class SchoolRepository(
 	internal fun sessionEvent() = coordinator.event()
 	internal fun ownedEpoch() = coordinator.ownedEpoch(session)
 
-	fun logout(token: Any? = null) = synchronized(StorageLock) {
-		if (token != null && !coordinator.isPendingLogout(token)) return@synchronized
-		if (token != null) {
-			loginRevision = null
-			session = null
-			remote = null
-			scheduleSession = null
-			diarySession = null
-			try { coordinator.logout(token) } finally { emit(DiaryState.Cleared) }
-			return@synchronized
+	fun logout(token: Any? = null) {
+		val outcome: Result<Boolean> = synchronized(StorageLock) {
+			if (token != null && !coordinator.isPendingLogout(token)) return@synchronized Result.success(false)
+			runCatching {
+				if (token != null) {
+					loginRevision = null
+					session = null
+					remote = null
+					scheduleSession = null
+					diarySession = null
+					coordinator.logout(token)
+				} else {
+					val pending = loginRevision
+					loginRevision = null
+					val active = session
+					if (active == null) {
+						if (!coordinator.logoutIfNoActive()) pending?.let { coordinator.cancelLogin(it) }
+					} else {
+						remote = null
+						scheduleSession = null
+						diarySession = null
+						session = null
+						val revoked = coordinator.revokeIfActive(active)
+						if (!revoked) coordinator.logoutIfNoActive()
+						pending?.let { coordinator.cancelLogin(it) }
+					}
+				}
+				true
+			}
 		}
-		val pending = loginRevision
-		loginRevision = null
-		val active = session
-		if (active == null) {
-			try {
-				if (!coordinator.logoutIfNoActive(token)) pending?.let { coordinator.cancelLogin(it) }
-			} finally { emit(DiaryState.Cleared) }
-		} else {
-			remote = null
-			scheduleSession = null
-			diarySession = null
-			session = null
-			try {
-				val revoked = coordinator.revokeIfActive(active)
-				if (!revoked) coordinator.logoutIfNoActive(token)
-				pending?.let { coordinator.cancelLogin(it) }
-			} finally { emit(DiaryState.Cleared) }
-		}
-		if (token != null) coordinator.finishImmediateLogout(token)
+		if (outcome.isFailure || outcome.getOrNull() == true) emit(DiaryState.Cleared)
+		outcome.getOrThrow()
 	}
 }
 
