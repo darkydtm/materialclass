@@ -10,6 +10,9 @@ import org.junit.runner.RunWith
 import org.materialclass.api.*
 import org.materialclass.session.*
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
 
 @RunWith(AndroidJUnit4::class)
 class RepositorySessionTest {
@@ -20,10 +23,22 @@ class RepositorySessionTest {
 		override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", "synthetic-account", "student"))
 		override fun diary(session: UnverifiedSession, context: DiaryContext): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
 	}
+	private var accesses = 0
 	private val cache = object : DiaryCache {
-		override fun read(session: ActiveSession): ByteArray? = null
-		override fun write(session: ActiveSession, bytes: ByteArray): Boolean = true
+		override fun read(session: ActiveSession): ByteArray? { accesses++; return null }
+		override fun write(session: ActiveSession, bytes: ByteArray): Boolean { accesses++; return true }
 	}
+	private val diaryContext = DiaryContext(1, 2026, 2, "01.01.2026")
+	private fun repository(verifier: IdentityVerifier) = SchoolRepository(gateway, verifier, coordinator, cache, { 1L }, {}, store)
+	private fun restart() {
+		SessionCoordinator::class.java.getDeclaredField("active").apply { isAccessible = true }.set(null, null)
+		SessionCoordinator::class.java.getDeclaredField("restorationAllowed").apply { isAccessible = true }.setBoolean(null, true)
+	}
+	private fun saved() {
+		assertTrue(repository(IdentityVerifier { SessionVerification.Verified(AccountId("synthetic-account"), true) }).login("synthetic", charArrayOf('x')) is GatewayResult.Success)
+		restart()
+	}
+
 
 	@After
 	fun cleanup() { coordinator.logout() }
@@ -35,10 +50,70 @@ class RepositorySessionTest {
 		}
 		assertNotNull("Repository must accept the secure session store", constructor)
 		constructor!!.isAccessible = true
-		val repository = constructor.newInstance(gateway, IdentityVerifier { AccountId("synthetic-account") }, coordinator, cache, { 1L }, { _: DiaryState -> }, store) as SchoolRepository
+		val repository = constructor.newInstance(gateway, IdentityVerifier { SessionVerification.Verified(AccountId("synthetic-account"), true) }, coordinator, cache, { 1L }, { _: DiaryState -> }, store) as SchoolRepository
 		assertTrue(repository.login("synthetic", charArrayOf('x')) is GatewayResult.Success)
 		val bytes = File(context.noBackupFilesDir, "session").readBytes().toString(Charsets.ISO_8859_1)
 		assertFalse(bytes.contains("synthetic-token"))
 		assertFalse(bytes.contains("synthetic-account"))
 	}
+	@Test
+	fun restoreRequiresVerifiedMatchingStudent() {
+		saved()
+		val repo = repository(IdentityVerifier { SessionVerification.Verified(AccountId("synthetic-account"), true) })
+		assertTrue(repo.restore() is RestoreResult.Restored)
+		repo.refresh(diaryContext)
+		assertEquals(1, accesses)
+		repo.logout()
+		assertFalse(File(context.noBackupFilesDir, "session").exists())
+	}
+
+	@Test
+	fun offlineRestoreCannotOpenCache() {
+		saved()
+		val repo = repository(IdentityVerifier { SessionVerification.Retry })
+		assertEquals(RestoreResult.Retry, repo.restore())
+		repo.refresh(diaryContext)
+		assertEquals(0, accesses)
+	}
+
+	@Test
+	fun mismatchedIdentityCannotOpenCache() {
+		saved()
+		val repo = repository(IdentityVerifier { SessionVerification.Verified(AccountId("other"), true) })
+		assertEquals(RestoreResult.Invalid, repo.restore())
+		repo.refresh(diaryContext)
+		assertEquals(0, accesses)
+		assertFalse(File(context.noBackupFilesDir, "session").exists())
+	}
+
+	@Test
+	fun nonStudentCannotOpenCache() {
+		saved()
+		val repo = repository(IdentityVerifier { SessionVerification.Verified(AccountId("synthetic-account"), false) })
+		assertEquals(RestoreResult.Invalid, repo.restore())
+		repo.refresh(diaryContext)
+		assertEquals(0, accesses)
+	}
+
+	@Test
+	fun logoutCancelsPendingRestore() {
+		saved()
+		val entered = CountDownLatch(1); val release = CountDownLatch(1)
+		val repo = repository(IdentityVerifier {
+			entered.countDown()
+			check(release.await(10, TimeUnit.SECONDS))
+			SessionVerification.Verified(AccountId("synthetic-account"), true)
+		})
+		var result: RestoreResult? = null
+		val worker = thread { result = repo.restore() }
+		check(entered.await(10, TimeUnit.SECONDS))
+		repo.logout()
+		release.countDown(); worker.join(10000)
+		assertFalse(worker.isAlive)
+		assertEquals(RestoreResult.Cancelled, result)
+		repo.refresh(diaryContext)
+		assertEquals(0, accesses)
+		assertFalse(File(context.noBackupFilesDir, "session").exists())
+	}
+
 }

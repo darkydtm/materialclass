@@ -12,6 +12,9 @@ import org.materialclass.cache.EncryptedCache
 import org.materialclass.session.AccountId
 import org.materialclass.session.ActiveSession
 import org.materialclass.session.SessionCoordinator
+import org.materialclass.session.SessionStore
+import org.materialclass.session.SessionVerification
+import org.materialclass.session.RestoreResult
 import org.materialclass.security.StorageLock
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -20,7 +23,7 @@ import java.io.DataOutputStream
 import java.util.concurrent.CancellationException
 
 internal fun interface IdentityVerifier {
-	fun verifiedAccount(session: UnverifiedSession): AccountId?
+	fun verify(session: UnverifiedSession): SessionVerification
 }
 
 internal interface DiaryCache {
@@ -49,6 +52,7 @@ internal class SchoolRepository(
 	private val cache: DiaryCache,
 	private val clock: () -> Long,
 	private val emit: (DiaryState) -> Unit,
+	private val store: SessionStore,
 ) {
 	@Volatile private var session: ActiveSession? = null
 	private var remote: UnverifiedSession? = null
@@ -66,17 +70,42 @@ internal class SchoolRepository(
 		} finally { password.fill('\u0000') }
 		if (result is GatewayResult.Failure) return result
 		val candidate = (result as GatewayResult.Success).value
-		val account = try { verifier.verifiedAccount(candidate) } catch (error: CancellationException) { throw error } catch (_: Exception) { null }
-		if (candidate.role != "student" || account == null) return GatewayResult.Failure(AppError.UNAVAILABLE)
+		val verification = try { verifier.verify(candidate) } catch (error: CancellationException) { throw error } catch (_: Exception) { SessionVerification.Retry }
+		if (candidate.role != "student" || verification !is SessionVerification.Verified || !verification.pupil) return GatewayResult.Failure(AppError.UNAVAILABLE)
 		return try {
 			synchronized(StorageLock) {
-				val active = coordinator.activateIfUnchanged(revision, account) ?: return@synchronized GatewayResult.Failure(AppError.UNAVAILABLE)
+				val active = coordinator.activateIfUnchanged(revision, verification.account) ?: return@synchronized GatewayResult.Failure(AppError.UNAVAILABLE)
+				val material = candidate.token.toByteArray(Charsets.UTF_8)
+				try {
+					check(store.write(active, material))
+				} catch (error: Exception) {
+					coordinator.revokeIfActive(active)
+					throw error
+				} finally { material.fill(0) }
 				session = active
 				remote = candidate
 				emit(DiaryState.Cleared)
 				GatewayResult.Success(Unit)
 			}
 		} catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
+	}
+
+	fun restore(): RestoreResult {
+		var candidate: UnverifiedSession? = null
+		val result = store.restore { material ->
+			val remote = UnverifiedSession(material.toString(Charsets.UTF_8), null, "student")
+			val verification = verifier.verify(remote)
+			if (verification is SessionVerification.Verified && verification.pupil) candidate = remote
+			verification
+		}
+		if (result is RestoreResult.Restored) {
+			coordinator.ifActive(result.session) {
+				session = result.session
+				remote = candidate
+				emit(DiaryState.Cleared)
+			} ?: return RestoreResult.Cancelled
+		}
+		return result
 	}
 
 	fun refresh(context: DiaryContext) {
@@ -124,7 +153,7 @@ internal class SchoolRepository(
 		loginRevision = null
 		val active = session
 		if (active == null) {
-			pending?.let { coordinator.cancelLogin(it) }
+			if (pending != null) coordinator.cancelLogin(pending) else coordinator.logout()
 		} else {
 			coordinator.ifActive(active) {
 				remote = null
