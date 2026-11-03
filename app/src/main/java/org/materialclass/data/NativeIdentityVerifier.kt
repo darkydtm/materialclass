@@ -5,7 +5,6 @@ import org.materialclass.api.Exchange
 import org.materialclass.api.HttpsExchange
 import org.materialclass.api.Request
 import org.materialclass.api.UnverifiedSession
-import org.materialclass.api.schoolContext
 import org.materialclass.session.AccountId
 import org.materialclass.session.SessionVerification
 import java.io.IOException
@@ -27,11 +26,6 @@ internal class NativeIdentityVerifier(private val exchange: Exchange = HttpsExch
 			if (raw !is Int && raw !is Long) return SessionVerification.Retry
 			val id = raw.toString()
 			if (candidate != id) return SessionVerification.Invalid
-			val context = session.context
-			if (context?.studentSchoolUuid != null) {
-				val profile = schoolContext(data) ?: return SessionVerification.Retry
-				if (context.schoolId != profile.schoolId || context.eduYear != profile.eduYear || context.groupId != profile.groupId || context.studentSchoolUuid != profile.studentSchoolUuid) return SessionVerification.Retry
-			}
 			SessionVerification.Verified(AccountId(id), true)
 		} catch (error: CancellationException) {
 			throw error

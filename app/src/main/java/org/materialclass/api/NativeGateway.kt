@@ -203,7 +203,7 @@ private fun calendarDate(value: String): Long? {
 	return parsed.time.takeIf { position.index == value.length && format.format(parsed) == value }
 }
 
-internal fun schoolContext(user: JSONObject): SchoolContext? {
+private fun schoolContext(user: JSONObject): SchoolContext? {
 	val schoolId = user.opt("school_id").integerValue() ?: return null
 	val groupId = user.optJSONObject("group")?.opt("id").integerValue() ?: return null
 	val years = user.optJSONObject("school")?.optJSONArray("eduYears") ?: return null
@@ -211,9 +211,7 @@ internal fun schoolContext(user: JSONObject): SchoolContext? {
 	if (current.size != 1) return null
 	val year = current.single().opt("eduYear").integerValue() ?: return null
 	if (schoolId <= 0 || groupId <= 0 || year <= 0 || year > Int.MAX_VALUE) return null
-	val uuid = (user.optJSONObject("studentInfo")?.opt("studentSchoolUuid") as? String)
-		?.takeIf { it.matches(Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")) }
-	return SchoolContext(schoolId, year.toInt(), groupId, uuid)
+	return SchoolContext(schoolId, year.toInt(), groupId)
 }
 
 private fun Any?.integerValue(): Long? = when (this) {
