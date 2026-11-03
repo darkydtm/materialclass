@@ -26,6 +26,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import org.materialclass.cache.EncryptedCache
 import org.materialclass.session.SessionCoordinator
+import org.materialclass.data.DiaryState
 import java.util.Locale
 
 internal data class ExampleData(val diary: List<String>, val schedule: List<String>)
@@ -41,8 +42,14 @@ internal fun blackColors() = darkColorScheme(
 )
 
 @Composable
-internal fun MaterialClassApp(example: ExampleData? = null) {
+internal fun MaterialClassApp(example: ExampleData? = null, nativeEnabled: Boolean = BuildConfig.NATIVE_UI_ENABLED, controllerFactory: (android.content.Context) -> NativeUiController = ::createNativeController) {
 	val base = LocalContext.current
+	val controller = remember(nativeEnabled) { if (nativeEnabled) controllerFactory(base) else null }
+	DisposableEffect(controller) {
+		controller?.start()
+		onDispose { controller?.close() }
+	}
+	val nativeState = controller?.state
 	val preferences = remember { base.getSharedPreferences("appearance", 0) }
 	var language by remember { mutableStateOf(preferences.getString("language", "system") ?: "system") }
 	var theme by remember { mutableStateOf(preferences.getString("theme", "system") ?: "system") }
@@ -69,7 +76,8 @@ internal fun MaterialClassApp(example: ExampleData? = null) {
 			Surface(modifier = Modifier.fillMaxSize()) {
 				Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 					Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium)
-					Text(stringResource(R.string.backend_unavailable), color = MaterialTheme.colorScheme.error)
+					if (controller == null) Text(stringResource(R.string.backend_unavailable), color = MaterialTheme.colorScheme.error)
+					nativeState?.error?.let { Text(stringResource(R.string.operation_error, it.name), color = MaterialTheme.colorScheme.error) }
 					if (warning) {
 						Text(stringResource(R.string.warning_title), style = MaterialTheme.typography.titleMedium)
 						Text(stringResource(R.string.warning_text))
@@ -81,10 +89,23 @@ internal fun MaterialClassApp(example: ExampleData? = null) {
 						}
 					}
 					when (screen) {
-						"login" -> LoginScreen()
+						"login" -> LoginScreen(controller, nativeState)
 						"diary", "schedule" -> {
 							Text(stringResource(if (screen == "diary") R.string.diary else R.string.schedule), style = MaterialTheme.typography.headlineSmall)
-							if (example == null) Text(stringResource(R.string.data_unavailable)) else {
+							if (nativeState != null) {
+								if (!nativeState.signedIn) Text(stringResource(R.string.data_unavailable))
+								else if (screen == "diary") {
+									when (val diary = nativeState.diary) {
+										is DiaryState.Ready -> {
+											diary.staleError?.let { Text(stringResource(R.string.stale_data, it.name)) }
+											diary.snapshot.diary.days.forEach { day -> Text(day.date); day.subjects.forEach { subject -> Text(subject.label); subject.homeworkBody?.let { Text(it) } } }
+										}
+										DiaryState.Loading -> Text(stringResource(R.string.loading))
+										else -> Text(stringResource(R.string.data_unavailable))
+									}
+								} else nativeState.schedule?.days?.forEach { day -> Text(day.dateFormat); day.lessons.forEach { Text(it.themeLabel) } } ?: Text(stringResource(R.string.data_unavailable))
+								if (nativeState.signedIn) Button(onClick = { controller?.refresh() }) { Text(stringResource(R.string.refresh)) }
+							} else if (example == null) Text(stringResource(R.string.data_unavailable)) else {
 								Text(stringResource(R.string.example_only))
 								(screen.let { if (it == "diary") example.diary else example.schedule }).forEach { Text(it) }
 							}
@@ -116,11 +137,15 @@ internal fun MaterialClassApp(example: ExampleData? = null) {
 }
 
 @Composable
-private fun LoginScreen() {
+private fun LoginScreen(controller: NativeUiController?, state: NativeUiState?) {
 	var login by remember { mutableStateOf("") }
 	var password by remember { mutableStateOf("") }
 	Text(stringResource(R.string.login), style = MaterialTheme.typography.headlineSmall)
+	if (state?.signedIn == true) {
+		Button(onClick = { controller?.logout() }) { Text(stringResource(R.string.logout)) }
+		return
+	}
 	OutlinedTextField(value = login, onValueChange = { login = it }, label = { Text(stringResource(R.string.username)) }, singleLine = true)
 	OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text(stringResource(R.string.password)) }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), visualTransformation = PasswordVisualTransformation())
-	Button(onClick = {}, enabled = false) { Text(stringResource(R.string.sign_in)) }
+	Button(onClick = { val secret = password.toCharArray(); password = ""; controller?.login(login, secret) ?: secret.fill('\u0000') }, enabled = controller != null && state?.busy == false) { Text(stringResource(R.string.sign_in)) }
 }
