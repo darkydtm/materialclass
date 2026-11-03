@@ -10,6 +10,22 @@ import kotlin.concurrent.thread
 
 class SessionCoordinatorTest {
 	@Test
+	fun overlappingImmediateLogoutsKeepAdmissionClosedUntilBothFinish() {
+		val first = SessionCoordinator { }
+		val second = SessionCoordinator { }
+		first.activate(AccountId("synthetic-overlap"))
+		first.cancelInFlightNow()
+		second.cancelInFlightNow()
+		first.logout()
+		try {
+			val revision = second.beginLogin()
+			assertNull(second.admit(revision))
+		} finally {
+			second.logout()
+		}
+	}
+
+	@Test
 	fun immediateCancellationRejectsCapturedAdmissionWhileStorageIsBlocked() {
 		val coordinator = SessionCoordinator { }
 		val session = coordinator.activate(AccountId("synthetic-cancel"))
