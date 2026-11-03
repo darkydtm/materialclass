@@ -160,7 +160,16 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 			if (pending.isNotEmpty() || revision != expected) null else { active = null; restorationAllowed = false; ++revision }
 		} ?: return null
 		cancelRequests()
-		clearSession()
+		try {
+			clearSession()
+		} catch (error: Exception) {
+			val event = synchronized(CancellationLock) {
+				lastEvent = SessionEvent(++revocationEpoch, SessionChange.LOGOUT, null)
+				Pair(revocationEpoch, observers.toList())
+			}
+			notifyAfterStorage(event.first, event.second)
+			throw error
+		}
 		val candidate = ActiveSession(account, CacheNamespace.create())
 		val event = synchronized(CancellationLock) {
 			if (pending.isNotEmpty() || revision != activationRevision) null else {

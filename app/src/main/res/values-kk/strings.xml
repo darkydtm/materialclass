@@ -2,6 +2,7 @@
 	<string name="logout">Шығу</string>
 	<string name="refresh">Жаңарту</string>
 	<string name="loading">Жүктелуде</string>
+	<string name="session_expired">Сеанс мерзімі аяқталды. Қайта кіріңіз.</string>
 	<string name="operation_error">Әрекет қатесі: %1$s</string>
 	<string name="stale_data">Сақталған деректер - жаңарту қатесі: %1$s</string>
 	<string name="app_name">MaterialClass</string>

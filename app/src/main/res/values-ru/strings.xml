@@ -2,6 +2,7 @@
 	<string name="logout">Выйти</string>
 	<string name="refresh">Обновить</string>
 	<string name="loading">Загрузка</string>
+	<string name="session_expired">Срок действия сеанса истёк. Войдите снова.</string>
 	<string name="operation_error">Ошибка операции: %1$s</string>
 	<string name="stale_data">Сохраненные данные - ошибка обновления: %1$s</string>
 	<string name="app_name">MaterialClass</string>

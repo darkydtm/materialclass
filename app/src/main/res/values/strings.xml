@@ -13,6 +13,7 @@
 	<string name="logout">Sign out</string>
 	<string name="refresh">Refresh</string>
 	<string name="loading">Loading</string>
+	<string name="session_expired">Your session has expired. Sign in again.</string>
 	<string name="operation_error">Operation failed: %1$s</string>
 	<string name="stale_data">Cached data - refresh failed: %1$s</string>
 	<string name="language">Language</string>

@@ -24,6 +24,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import org.materialclass.api.AppError
 import org.materialclass.cache.EncryptedCache
 import org.materialclass.session.SessionCoordinator
 import org.materialclass.data.DiaryState
@@ -77,7 +78,7 @@ internal fun MaterialClassApp(example: ExampleData? = null, nativeEnabled: Boole
 				Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 					Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium)
 					if (controller == null) Text(stringResource(R.string.backend_unavailable), color = MaterialTheme.colorScheme.error)
-					nativeState?.error?.let { Text(stringResource(R.string.operation_error, it.name), color = MaterialTheme.colorScheme.error) }
+					nativeState?.error?.let { Text(if (it == AppError.SESSION_EXPIRED) stringResource(R.string.session_expired) else stringResource(R.string.operation_error, it.name), color = MaterialTheme.colorScheme.error) }
 					if (warning) {
 						Text(stringResource(R.string.warning_title), style = MaterialTheme.typography.titleMedium)
 						Text(stringResource(R.string.warning_text))
