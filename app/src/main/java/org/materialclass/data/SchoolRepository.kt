@@ -224,9 +224,11 @@ internal class SchoolRepository(
 				emit(DiaryState.Error(AppError.UNAVAILABLE))
 				return@ifActive null
 			}
-			emit(DiaryState.Loading)
 			Triple(proof, revision, requestRevision)
 		} ?: return
+		if (coordinator.ifActive(active) { request.second == refreshRevision && request.third == coordinator.requestRevision() } != true) return
+		emit(DiaryState.Loading)
+		if (coordinator.ifActive(active) { request.second == refreshRevision } != true) return
 		beforeRequestAdmission()
 		val lease = coordinator.admit(active, request.third) ?: return
 		try {
@@ -291,9 +293,11 @@ internal class SchoolRepository(
 				emit(DiaryState.Error(AppError.UNAVAILABLE))
 				return@ifActive null
 			}
-			emit(DiaryState.Loading)
 			Triple(proof, revision, requestRevision)
 		} ?: return
+		if (coordinator.ifActive(active) { request.second == refreshRevision && request.third == coordinator.requestRevision() } != true) return
+		emit(DiaryState.Loading)
+		if (coordinator.ifActive(active) { request.second == refreshRevision } != true) return
 		beforeRequestAdmission()
 		val lease = coordinator.admit(active, request.third) ?: return
 		try {
