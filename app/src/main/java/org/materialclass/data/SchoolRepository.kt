@@ -163,13 +163,17 @@ internal class SchoolRepository(
 		val lease = coordinator.admit(active, request.third) ?: return
 		try {
 			val result = if (request.first == null) GatewayResult.Failure(AppError.UNAVAILABLE) else try { gateway.currentWeek(request.first!!, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
-			coordinator.ifActive(active) {
-				if (!lease.cancelled && request.second == weekRevision) {
-					if (result is GatewayResult.Failure && result.error == AppError.SESSION_EXPIRED) {
-						remote = null; scheduleSession = null; diarySession = null; session = null
-						try { coordinator.revokeIfActive(active, expired = true) } finally { emit(DiaryState.Error(result.error)) }
-					} else deliver(result)
-				}
+			val outcome = coordinator.ifActive(active) {
+				if (lease.cancelled || request.second != weekRevision) null
+				else if (result is GatewayResult.Failure && result.error == AppError.SESSION_EXPIRED) {
+					remote = null; scheduleSession = null; diarySession = null; session = null
+					Pair(true, runCatching { coordinator.revokeIfActive(active, expired = true) })
+				} else Pair(false, null)
+			}
+			if (outcome != null) {
+				if (outcome.first) {
+					try { outcome.second!!.getOrThrow() } finally { emit(DiaryState.Error(AppError.SESSION_EXPIRED)) }
+				} else deliver(result)
 			}
 		} finally { coordinator.finish(lease) }
 	}
@@ -187,13 +191,17 @@ internal class SchoolRepository(
 		val lease = coordinator.admit(active, request.third) ?: return
 		try {
 			val result = if (request.first == null) GatewayResult.Failure(AppError.UNAVAILABLE) else try { gateway.schedule(request.first!!, date, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
-			coordinator.ifActive(active) {
-				if (!lease.cancelled && request.second == scheduleRevision) {
-					if (result is GatewayResult.Failure && result.error == AppError.SESSION_EXPIRED) {
-						remote = null; scheduleSession = null; diarySession = null; session = null
-						try { coordinator.revokeIfActive(active, expired = true) } finally { emit(DiaryState.Error(result.error)) }
-					} else deliver(result)
-				}
+			val outcome = coordinator.ifActive(active) {
+				if (lease.cancelled || request.second != scheduleRevision) null
+				else if (result is GatewayResult.Failure && result.error == AppError.SESSION_EXPIRED) {
+					remote = null; scheduleSession = null; diarySession = null; session = null
+					Pair(true, runCatching { coordinator.revokeIfActive(active, expired = true) })
+				} else Pair(false, null)
+			}
+			if (outcome != null) {
+				if (outcome.first) {
+					try { outcome.second!!.getOrThrow() } finally { emit(DiaryState.Error(AppError.SESSION_EXPIRED)) }
+				} else deliver(result)
 			}
 		} finally { coordinator.finish(lease) }
 	}

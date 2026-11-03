@@ -150,6 +150,7 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 			try {
 				repository.refreshCurrent()
 				repository.currentWeek { week ->
+					if (closed || generation != task || repository.revocationEpoch() != epoch) return@currentWeek
 					when (week) {
 						is GatewayResult.Success -> repository.schedule(week.value) { result ->
 							post(task) { state = when (result) {
