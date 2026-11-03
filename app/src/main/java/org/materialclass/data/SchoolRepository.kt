@@ -59,6 +59,7 @@ internal class SchoolRepository(
 	@Volatile private var session: ActiveSession? = null
 	private var remote: UnverifiedSession? = null
 	private var refreshRevision = 0L
+	private var scheduleRevision = 0L
 	@Volatile private var loginRevision: Long? = null
 	internal var afterRestoreActivation: () -> Unit = {}
 
@@ -117,15 +118,17 @@ internal class SchoolRepository(
 		}
 	}
 
-	fun schedule(date: String): GatewayResult<Schedule> {
-		val active = session ?: return GatewayResult.Failure(AppError.UNAVAILABLE)
-		val verified = coordinator.ifActive(active) {
+	fun schedule(date: String, deliver: (GatewayResult<Schedule>) -> Unit) {
+		val active = session ?: return
+		val request = coordinator.ifActive(active) {
 			val candidate = remote ?: return@ifActive null
 			if (candidate.identityCandidate != active.account.value) return@ifActive null
-			VerifiedScheduleSession(candidate, active.account.value)
-		} ?: return GatewayResult.Failure(AppError.UNAVAILABLE)
-		val result = try { gateway.schedule(verified, date) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
-		return coordinator.ifActive(active) { result } ?: GatewayResult.Failure(AppError.UNAVAILABLE)
+			VerifiedScheduleSession(candidate, active.account.value) to ++scheduleRevision
+		} ?: return
+		val result = try { gateway.schedule(request.first, date) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
+		coordinator.ifActive(active) {
+			if (request.second == scheduleRevision) deliver(result)
+		}
 	}
 
 	fun refresh(context: DiaryContext) {

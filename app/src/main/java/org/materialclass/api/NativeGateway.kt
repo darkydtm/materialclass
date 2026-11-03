@@ -5,6 +5,10 @@ import org.json.JSONObject
 import java.net.SocketTimeoutException
 import java.net.URL
 import java.net.URLEncoder
+import java.text.ParsePosition
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.TimeZone
 import java.util.UUID
 import javax.net.ssl.HttpsURLConnection
 
@@ -120,6 +124,7 @@ class NativeGateway internal constructor(private val exchange: Exchange) : Schoo
 			val context = remote.context ?: return GatewayResult.Failure(AppError.INCOMPATIBLE_RESPONSE)
 			val uuid = context.studentSchoolUuid ?: return GatewayResult.Failure(AppError.INCOMPATIBLE_RESPONSE)
 			if (session.account != remote.identityCandidate || remote.role != "student" || remote.token.isEmpty() || context.schoolId <= 0 || context.eduYear <= 0 || context.groupId <= 0 || !uuid.matches(Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")) || !date.matches(Regex("[0-9]{2}\\.[0-9]{2}\\.[0-9]{4}"))) return GatewayResult.Failure(AppError.INCOMPATIBLE_RESPONSE)
+			val requested = calendarDate(date) ?: return GatewayResult.Failure(AppError.INCOMPATIBLE_RESPONSE)
 			val query = listOf("schoolId" to context.schoolId.toString(), "eduYear" to context.eduYear.toString(), "studentSchoolUuid" to uuid, "date" to date, "groupId" to context.groupId.toString()).joinToString("&") { (key, value) -> "$key=${URLEncoder.encode(value, "UTF-8")}" }
 			val response = exchange.execute(request("/api/v4/os/clientoffice/schedule?$query", "GET", mapOf("Authorization" to "Bearer ${remote.token}", "x-school-id" to context.schoolId.toString()), null))
 			if (response.status != 200) return GatewayResult.Failure(AppError.UNAVAILABLE)
@@ -136,6 +141,8 @@ class NativeGateway internal constructor(private val exchange: Exchange) : Schoo
 				})
 			}
 			if (days.size != 7 || days.none { it.lessons.isNotEmpty() }) return GatewayResult.Failure(AppError.INCOMPATIBLE_RESPONSE)
+			val dates = days.map { calendarDate(it.dateFormat) ?: throw IllegalArgumentException() }
+			if (requested !in dates || dates.zipWithNext().any { (first, second) -> second - first != 86_400_000L }) return GatewayResult.Failure(AppError.INCOMPATIBLE_RESPONSE)
 			GatewayResult.Success(Schedule(days))
 		} catch (_: SocketTimeoutException) {
 			GatewayResult.Failure(AppError.TIMEOUT)
@@ -185,6 +192,17 @@ internal class HttpsExchange : Exchange {
 	}
 }
 
+private fun calendarDate(value: String): Long? {
+	if (!value.matches(Regex("[0-9]{2}\\.[0-9]{2}\\.[0-9]{4}"))) return null
+	val format = SimpleDateFormat("dd.MM.yyyy", Locale.ROOT).apply {
+		isLenient = false
+		timeZone = TimeZone.getTimeZone("UTC")
+	}
+	val position = ParsePosition(0)
+	val parsed = format.parse(value, position) ?: return null
+	return parsed.time.takeIf { position.index == value.length && format.format(parsed) == value }
+}
+
 private fun schoolContext(user: JSONObject): SchoolContext? {
 	val schoolId = user.opt("school_id").integerValue() ?: return null
 	val groupId = user.optJSONObject("group")?.opt("id").integerValue() ?: return null
@@ -193,7 +211,7 @@ private fun schoolContext(user: JSONObject): SchoolContext? {
 	if (current.size != 1) return null
 	val year = current.single().opt("eduYear").integerValue() ?: return null
 	if (schoolId <= 0 || groupId <= 0 || year <= 0 || year > Int.MAX_VALUE) return null
-	return SchoolContext(schoolId, year.toInt(), groupId, user.optJSONObject("studentInfo")?.opt("studentSchoolUuid") as? String)
+	return SchoolContext(schoolId, year.toInt(), groupId)
 }
 
 private fun Any?.integerValue(): Long? = when (this) {

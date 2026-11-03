@@ -32,7 +32,9 @@ class NativeScheduleTest {
 		val responses = listOf(
 			body.replace("29.12.2025", "32.12.2025"),
 			body.replace("29.12.2025", "30.12.2025"),
-			body.replace("29.12.2025", "29.11.2025")
+			body.replace("29.12.2025", "29.11.2025"),
+			body.replace("29.12.2025", "TEMP").replace("30.12.2025", "29.12.2025").replace("TEMP", "30.12.2025"),
+			body.replace("01.01.2026", "08.01.2026")
 		)
 		responses.forEach { response ->
 			val gateway = NativeGateway(Exchange { Response(200, response) })
