@@ -167,6 +167,67 @@ class SchoolRepositoryTest {
 		assertFalse("Consumer must reject a result after logout", applied.get())
 	}
 
+	private fun loadingCallbackDoesNotBlockLogout(current: Boolean) {
+		val entered = CountDownLatch(1); val release = CountDownLatch(1); val loggedOut = CountDownLatch(1)
+		val held = java.util.concurrent.atomic.AtomicBoolean(true)
+		val applied = java.util.concurrent.atomic.AtomicBoolean(false)
+		val calls = java.util.concurrent.atomic.AtomicInteger()
+		val gateway = object : TestSchoolGateway() {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic", "1", "student", SchoolContext(1, 2026, 2)))
+			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> { calls.incrementAndGet(); return GatewayResult.Success(context.date) }
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> { calls.incrementAndGet(); return GatewayResult.Success(Diary(context.date, emptyList())) }
+		}
+		lateinit var repo: SchoolRepository
+		var epoch = 0L
+		repo = SchoolRepository(gateway, IdentityVerifier { session, _ -> proof(session) }, coordinator, FakeCache(), { 1L }, {
+			if (it == DiaryState.Loading) {
+				held.set(Thread.holdsLock(org.materialclass.security.StorageLock))
+				entered.countDown()
+				check(release.await(20, TimeUnit.SECONDS))
+				if (repo.revocationEpoch() == epoch) applied.set(true)
+			}
+		}, store)
+		assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+		epoch = repo.revocationEpoch()
+		val worker = thread { if (current) repo.refreshCurrent() else repo.refresh(context) }
+		var logout: Thread? = null
+		try {
+			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			logout = thread { repo.logout(); loggedOut.countDown() }
+			assertTrue("Logout must proceed while Loading is blocked", loggedOut.await(5, TimeUnit.SECONDS))
+			assertFalse("Loading must run outside StorageLock", held.get())
+		} finally {
+			release.countDown(); worker.join(10000); logout?.join(10000)
+		}
+		assertFalse(worker.isAlive)
+		assertFalse("Consumer must reject stale Loading", applied.get())
+		assertEquals(0, calls.get())
+	}
+
+	private fun reentrantLoadingLogout(current: Boolean) {
+		val calls = java.util.concurrent.atomic.AtomicInteger()
+		val gateway = object : TestSchoolGateway() {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic", "1", "student", SchoolContext(1, 2026, 2)))
+			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> { calls.incrementAndGet(); return GatewayResult.Success(context.date) }
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> { calls.incrementAndGet(); return GatewayResult.Success(Diary(context.date, emptyList())) }
+		}
+		lateinit var repo: SchoolRepository
+		var held = true
+		repo = SchoolRepository(gateway, IdentityVerifier { session, _ -> proof(session) }, coordinator, FakeCache(), { 1L }, {
+			if (it == DiaryState.Loading) { held = Thread.holdsLock(org.materialclass.security.StorageLock); repo.logout() }
+		}, store)
+		assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+		if (current) repo.refreshCurrent() else repo.refresh(context)
+		assertFalse(held)
+		assertEquals(0, calls.get())
+		assertTrue(coordinator.logoutIfNoActive())
+	}
+
+	@Test fun refreshLoadingDoesNotBlockLogout() = loadingCallbackDoesNotBlockLogout(false)
+	@Test fun currentRefreshLoadingDoesNotBlockLogout() = loadingCallbackDoesNotBlockLogout(true)
+	@Test fun refreshLoadingCanLogoutReentrantly() = reentrantLoadingLogout(false)
+	@Test fun currentRefreshLoadingCanLogoutReentrantly() = reentrantLoadingLogout(true)
+
 	@Test fun scheduleCallbackDoesNotHoldStorageLock() = callbackDoesNotHoldStorageLock(true, false)
 	@Test fun weekCallbackDoesNotHoldStorageLock() = callbackDoesNotHoldStorageLock(false, false)
 	@Test fun expiredScheduleCallbackDoesNotHoldStorageLock() = callbackDoesNotHoldStorageLock(true, true)
