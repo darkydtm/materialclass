@@ -111,7 +111,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 	}
 	internal fun revokeIfActive(session: ActiveSession): Boolean = synchronized(StorageLock) {
 		val revoked = synchronized(CancellationLock) {
-			if (active !== session) false else { active = null; restorationAllowed = false; revision++; true }
+			if (active !== session) false else { active = null; restorationAllowed = false; true }
 		}
 		if (!revoked) return@synchronized false
 		cancelRequests(session)
