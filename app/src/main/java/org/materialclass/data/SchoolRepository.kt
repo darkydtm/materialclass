@@ -319,6 +319,15 @@ internal class SchoolRepository(
 
 	fun logout(token: Any? = null) = synchronized(StorageLock) {
 		if (token != null && !coordinator.isPendingLogout(token)) return@synchronized
+		if (token != null) {
+			loginRevision = null
+			session = null
+			remote = null
+			scheduleSession = null
+			diarySession = null
+			try { coordinator.logout(token) } finally { emit(DiaryState.Cleared) }
+			return@synchronized
+		}
 		val pending = loginRevision
 		loginRevision = null
 		val active = session

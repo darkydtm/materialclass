@@ -35,6 +35,18 @@ class SessionCoordinatorTest {
 		}
 	}
 	@Test
+	fun staleTicketCannotRevokeNewSession() {
+		val coordinator = SessionCoordinator { }
+		val token = coordinator.cancelInFlightNow()
+		coordinator.logout(token)
+		val active = coordinator.activate(AccountId("synthetic-after-retry"))
+		try {
+			coordinator.logout(token)
+			assertEquals("active", coordinator.ifActive(active) { "active" })
+		} finally { coordinator.logout() }
+	}
+
+	@Test
 	fun immediateCancellationRejectsNestedPublication() {
 		val coordinator = SessionCoordinator { }
 		val session = coordinator.activate(AccountId("synthetic-publication"))
