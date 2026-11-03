@@ -46,6 +46,20 @@ class NativeGatewayTest {
 	}
 
 	@Test
+	fun diaryRejectsUnverifiedAndMismatchedContextsBeforeNetwork() {
+		var calls = 0
+		val gateway = NativeGateway(Exchange { calls++; Response(200, diaryResponse) })
+		val remote = UnverifiedSession("synthetic-token", "123", "student", SchoolContext(1, 2026, 2))
+		val method = NativeGateway::class.java.methods.single { it.name == "diary" && it.parameterTypes.size == 2 }
+		assertEquals(VerifiedDiarySession::class.java, method.parameterTypes[0])
+		val profile = JSONObject("""{"userId":123,"role":"student","school_id":1,"group":{"id":2},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}""")
+		val verified = VerifiedDiarySession.compare(remote, profile)!!
+		val mismatch = method.invoke(gateway, verified, DiaryContext(99, 2026, 2, "01.02.2026"))
+		assertTrue(mismatch is GatewayResult.Failure)
+		assertEquals(0, calls)
+	}
+
+	@Test
 	fun mapsOnlyExplicitUnambiguousSchoolContext() {
 		val user = """{"success":true,"access_token":"token","user_info":{"userId":123,"role":"student","school_id":1,"group":{"id":2},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}}"""
 		val session = (NativeGateway(Exchange { Response(200, user) }).login("x", charArrayOf('x')) as GatewayResult.Success).value
