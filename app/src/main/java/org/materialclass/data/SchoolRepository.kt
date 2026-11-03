@@ -95,19 +95,21 @@ internal class SchoolRepository(
 						remote = null
 						scheduleSession = null
 						diarySession = null
-						emit(DiaryState.Cleared)
 					} ?: return@synchronized GatewayResult.Failure(AppError.UNAVAILABLE)
 					try {
 						val material = encodeSession(candidate)
 						try { check(store.write(active, material)) } finally { material.fill(0) }
+						session = active
+						remote = candidate
+						scheduleSession = verification.scheduleSession
+						diarySession = verification.diarySession
+						emit(DiaryState.Cleared)
+						if (coordinator.ifActive(active) { session === active } != true) return@synchronized GatewayResult.Failure(AppError.UNAVAILABLE)
 					} catch (error: Exception) {
+						if (session === active) { session = null; remote = null; scheduleSession = null; diarySession = null }
 						try { coordinator.revokeIfActive(active) } catch (cleanup: Exception) { error.addSuppressed(cleanup) }
 						throw error
 					}
-					session = active
-					remote = candidate
-					scheduleSession = verification.scheduleSession
-					diarySession = verification.diarySession
 					GatewayResult.Success(Unit)
 				}
 			} catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }

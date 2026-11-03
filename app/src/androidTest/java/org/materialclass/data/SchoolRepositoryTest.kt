@@ -512,6 +512,53 @@ class SchoolRepositoryTest {
 	}
 
 	@Test
+	fun failedSwitchStorageRevocationPrecedesCallback() {
+		var failClear = false
+		var callbacks = 0
+		val failingCoordinator = SessionCoordinator {
+			if (failClear) throw java.io.IOException("synthetic failure")
+			SessionStore.clear(androidContext)
+		}
+		val failingStore = SessionStore(androidContext, failingCoordinator)
+		val gateway = FakeGateway()
+		val repo = SchoolRepository(gateway, IdentityVerifier { session, _ -> proof(session) }, failingCoordinator, FakeCache(), { 1L }, { callbacks++ }, failingStore)
+		assertTrue(repo.login("old", charArrayOf('x')) is GatewayResult.Success)
+		gateway.identity = "2"
+		failClear = true
+		assertTrue(repo.login("new", charArrayOf('x')) is GatewayResult.Failure)
+		assertEquals(1, callbacks)
+		assertFalse(repo.restore() is RestoreResult.Restored)
+		failClear = false
+		repo.logout()
+		assertFalse(java.io.File(androidContext.noBackupFilesDir, "session").exists())
+	}
+
+	@Test
+	fun reentrantNewLoginSurvivesThrowingOlderCallback() {
+		val gateway = FakeGateway()
+		val newer = repository(gateway, FakeCache(), mutableListOf())
+		var switch = false
+		val older = SchoolRepository(gateway, IdentityVerifier { session, _ -> proof(session) }, coordinator, FakeCache(), { 1L }, {
+			if (switch && it == DiaryState.Cleared) {
+				gateway.identity = "3"
+				assertTrue(newer.login("newer", charArrayOf('x')) is GatewayResult.Success)
+				throw IllegalStateException("synthetic callback failure")
+			}
+		}, store)
+		assertTrue(older.login("old", charArrayOf('x')) is GatewayResult.Success)
+		gateway.identity = "2"
+		switch = true
+		assertTrue(older.login("switch", charArrayOf('x')) is GatewayResult.Failure)
+		switch = false
+		older.logout()
+		var delivered = false
+		newer.refresh(context)
+		newer.currentWeek { delivered = true }
+		assertTrue(delivered)
+		assertFalse(coordinator.logoutIfNoActive())
+	}
+
+	@Test
 	fun switchingAccountsClearsPreviouslyEmittedDiary() {
 		val gateway = FakeGateway(); val events = mutableListOf<DiaryState>()
 		val repository = repository(gateway, FakeCache(), events)
