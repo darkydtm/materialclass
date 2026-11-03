@@ -133,6 +133,41 @@ class SchoolRepositoryTest {
 	}
 
 	@Test
+	fun offlineCurrentWeekRetainsVerifiedAccountCache() {
+		var offline = false
+		val gateway = object : TestSchoolGateway() {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", "1", "student", SchoolContext(1, 2026, 2)))
+			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = if (offline) GatewayResult.Failure(AppError.OFFLINE) else GatewayResult.Success(context.date)
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
+		}
+		val events = mutableListOf<DiaryState>()
+		val repo = SchoolRepository(gateway, IdentityVerifier { session, _ -> proof(session) }, coordinator, FakeCache(), { 1234L }, events::add, store)
+		assertTrue(repo.login("synthetic", charArrayOf('x')) is GatewayResult.Success)
+		repo.refreshCurrent()
+		offline = true
+		repo.refreshCurrent()
+		assertTrue(events.last() is DiaryState.Ready)
+		val state = events.last() as DiaryState.Ready
+		assertEquals(AppError.OFFLINE, state.staleError)
+		assertEquals(context.date, state.snapshot.diary.date)
+		assertEquals(1234L, state.snapshot.lastSuccessMillis)
+	}
+
+	@Test
+	fun expiredCurrentWeekRevokesSessionAndHidesCache() {
+		val gateway = object : TestSchoolGateway() {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", "1", "student", SchoolContext(1, 2026, 2)))
+			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = GatewayResult.Failure(AppError.SESSION_EXPIRED)
+		}
+		val events = mutableListOf<DiaryState>()
+		val repo = SchoolRepository(gateway, IdentityVerifier { session, _ -> proof(session) }, coordinator, FakeCache(), { 1L }, events::add, store)
+		assertTrue(repo.login("synthetic", charArrayOf('x')) is GatewayResult.Success)
+		repo.refreshCurrent()
+		assertEquals(AppError.SESSION_EXPIRED, (events.last() as DiaryState.Error).error)
+		assertTrue(coordinator.logoutIfNoActive())
+	}
+
+	@Test
 	fun currentRefreshPublishesOnlyLatestVerifiedWeekAndDiary() {
 		val entered = CountDownLatch(1); val release = CountDownLatch(1)
 		var calls = 0
