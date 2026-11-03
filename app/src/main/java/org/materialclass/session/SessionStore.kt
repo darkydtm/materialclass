@@ -41,6 +41,8 @@ class SessionStore(context: Context, private val coordinator: SessionCoordinator
 	private val marker = File(context.noBackupFilesDir, "session-revoked")
 
 	companion object {
+		private val restoreLock = Any()
+
 		private fun syncDirectory(directory: File) {
 			val descriptor = Os.open(directory.absolutePath, OsConstants.O_RDONLY, 0)
 			try { Os.fsync(descriptor) } finally { Os.close(descriptor) }
@@ -107,12 +109,12 @@ class SessionStore(context: Context, private val coordinator: SessionCoordinator
 
 	fun restore(): ActiveSession? = null
 
-	fun restore(verifier: SessionVerifier): RestoreResult {
-		val revision = coordinator.beginRestore() ?: return RestoreResult.Cancelled
+	fun restore(verifier: SessionVerifier): RestoreResult = synchronized(restoreLock) {
+		val revision = coordinator.beginRestore() ?: return@synchronized RestoreResult.Cancelled
 		val candidate = coordinator.finishRestore(revision) {
 			if (marker.exists() || File(marker.path + ".bak").exists() || File(marker.path + ".new").exists()) null
 			else file.read()?.let { bytes -> try { decode(bytes) } finally { bytes.fill(0) } }
-		} ?: return RestoreResult.Absent
+		} ?: return@synchronized RestoreResult.Absent
 		val verification = try {
 			verifier.verify(candidate.second)
 		} catch (error: CancellationException) {
@@ -122,7 +124,7 @@ class SessionStore(context: Context, private val coordinator: SessionCoordinator
 		} finally {
 			candidate.second.fill(0)
 		}
-		return coordinator.finishRestore(revision) {
+		coordinator.finishRestore(revision) {
 			when (verification) {
 				SessionVerification.Retry -> RestoreResult.Retry
 				SessionVerification.Expired -> { coordinator.rejectRestore(); RestoreResult.Invalid }
