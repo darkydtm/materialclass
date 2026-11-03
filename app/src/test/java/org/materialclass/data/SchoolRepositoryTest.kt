@@ -187,6 +187,62 @@ class SchoolRepositoryTest {
 	}
 
 	@Test
+	fun expiredOldSessionDoesNotCancelPendingNewLogin() {
+		val entered = CountDownLatch(1); val release = CountDownLatch(1)
+		val gateway = object : SchoolGateway {
+			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> {
+				if (login == "newer") {
+					entered.countDown()
+					check(release.await(10, TimeUnit.SECONDS))
+				}
+				return GatewayResult.Success(UnverifiedSession("synthetic-token", login, "student"))
+			}
+			override fun diary(session: UnverifiedSession, context: DiaryContext): GatewayResult<Diary> = GatewayResult.Failure(AppError.SESSION_EXPIRED)
+		}
+		val events = mutableListOf<DiaryState>()
+		val repository = SchoolRepository(gateway, IdentityVerifier { it.identityCandidate?.let(::AccountId) }, SessionCoordinator { }, FakeCache(), { 1L }, events::add)
+		assertTrue(repository.login("older", charArrayOf('x')) is GatewayResult.Success)
+		var newer: GatewayResult<Unit>? = null
+		val worker = thread { newer = repository.login("newer", charArrayOf('x')) }
+		check(entered.await(10, TimeUnit.SECONDS))
+		repository.refresh(context)
+		release.countDown(); worker.join(10000)
+		assertFalse(worker.isAlive)
+		assertTrue(newer is GatewayResult.Success)
+		repository.logout()
+	}
+
+	@Test
+	fun expiredResponseFromOldSessionCannotRevokeNewLogin() {
+		val entered = CountDownLatch(1); val release = CountDownLatch(1)
+		val gateway = object : SchoolGateway {
+			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", login, "student"))
+			override fun diary(session: UnverifiedSession, context: DiaryContext): GatewayResult<Diary> {
+				if (session.identityCandidate == "older") {
+					entered.countDown()
+					check(release.await(10, TimeUnit.SECONDS))
+					return GatewayResult.Failure(AppError.SESSION_EXPIRED)
+				}
+				return GatewayResult.Success(Diary(context.date, emptyList()))
+			}
+		}
+		val cache = FakeCache(); val events = mutableListOf<DiaryState>()
+		val repository = SchoolRepository(gateway, IdentityVerifier { it.identityCandidate?.let(::AccountId) }, SessionCoordinator { }, cache, { 1L }, events::add)
+		assertTrue(repository.login("older", charArrayOf('x')) is GatewayResult.Success)
+		val worker = thread { repository.refresh(context) }
+		check(entered.await(10, TimeUnit.SECONDS))
+		assertTrue(repository.login("newer", charArrayOf('x')) is GatewayResult.Success)
+		val count = events.size
+		release.countDown(); worker.join(10000)
+		assertFalse(worker.isAlive)
+		assertEquals(count, events.size)
+		repository.refresh(context)
+		assertTrue(events.last() is DiaryState.Ready)
+		assertEquals(setOf(AccountId("newer")), cache.values.keys)
+		repository.logout()
+	}
+
+	@Test
 	fun delayedResponseCannotWriteOrEmitAfterAccountSwitch() {
 		val gateway = FakeGateway(); val cache = FakeCache(); val events = mutableListOf<DiaryState>()
 		val first = repository(gateway, cache, events)
