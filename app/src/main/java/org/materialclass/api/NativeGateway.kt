@@ -135,6 +135,7 @@ class NativeGateway internal constructor(private val exchange: Exchange) : Schoo
 					ScheduleLesson(lesson.strictString("type"), cabinet, lesson.getJSONObject("theme").strictString("label"))
 				})
 			}
+			if (days.size != 7 || days.none { it.lessons.isNotEmpty() }) return GatewayResult.Failure(AppError.INCOMPATIBLE_RESPONSE)
 			GatewayResult.Success(Schedule(days))
 		} catch (_: SocketTimeoutException) {
 			GatewayResult.Failure(AppError.TIMEOUT)

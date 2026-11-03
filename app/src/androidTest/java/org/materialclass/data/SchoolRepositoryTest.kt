@@ -42,6 +42,30 @@ class SchoolRepositoryTest {
 	)
 
 	@Test
+	fun scheduleCannotPublishAcrossAccountSwitch() {
+		val entered = CountDownLatch(1); val release = CountDownLatch(1)
+		val gateway = object : SchoolGateway {
+			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", login, "student"))
+			override fun diary(session: UnverifiedSession, context: DiaryContext): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
+			override fun schedule(session: VerifiedScheduleSession, date: String): GatewayResult<Schedule> {
+				entered.countDown(); check(release.await(10, TimeUnit.SECONDS))
+				return GatewayResult.Success(Schedule(emptyList()))
+			}
+		}
+		val repository = SchoolRepository(gateway, IdentityVerifier { SessionVerification.Verified(AccountId(it.identityCandidate!!), true) }, coordinator, FakeCache(), { 1L }, {}, store)
+		assertTrue(repository.schedule("01.01.2026") is GatewayResult.Failure)
+		assertTrue(repository.login("a", charArrayOf('x')) is GatewayResult.Success)
+		var result: GatewayResult<Schedule>? = null
+		val worker = thread { result = repository.schedule("01.01.2026") }
+		check(entered.await(10, TimeUnit.SECONDS))
+		assertTrue(repository.login("b", charArrayOf('x')) is GatewayResult.Success)
+		release.countDown(); worker.join(10000)
+		assertFalse(worker.isAlive)
+		assertTrue(result is GatewayResult.Failure)
+		repository.logout()
+	}
+
+	@Test
 	fun olderLoginCannotPublishAfterNewerLoginStarts() {
 		val enteredOld = CountDownLatch(1); val entered = CountDownLatch(2); val releaseOld = CountDownLatch(1); val releaseNew = CountDownLatch(1)
 		val gateway = object : SchoolGateway {

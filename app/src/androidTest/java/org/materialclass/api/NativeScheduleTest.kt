@@ -5,7 +5,7 @@ import org.junit.Test
 
 class NativeScheduleTest {
 	private val uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
-	private val body = """{"data":{"weeks":{"next":"02.01.2026","prev":"01.01.2026","next_time":2,"prev_time":1},"days":[{"date":1,"dateFormat":"01.01.2026","isCurrent":true,"isHoliday":false,"schedule":[{"type":"regular","cabinet":{"id":1},"theme":{"label":"Synthetic"}}]}]}}"""
+	private val body = """{"data":{"weeks":{"next":"02.01.2026","prev":"01.01.2026","next_time":2,"prev_time":1},"days":[""" + List(7) { """{"date":1,"dateFormat":"01.01.2026","isCurrent":true,"isHoliday":false,"schedule":[{"type":"regular","cabinet":{"id":1},"theme":{"label":"Synthetic"}}]}""" }.joinToString(",") + """ ]}}"""
 	private fun session(id: String = "1", schoolUuid: String? = uuid) = VerifiedScheduleSession(UnverifiedSession("token", id, "student", SchoolContext(1, 2026, 2, schoolUuid)), id)
 
 	@Test
@@ -19,7 +19,7 @@ class NativeScheduleTest {
 		var captured: Request? = null
 		val gateway = NativeGateway(Exchange { captured = it; Response(200, body) })
 		val result = gateway.schedule(session(), "01.01.2026") as GatewayResult.Success
-		assertEquals("Synthetic", result.value.days.single().lessons.single().themeLabel)
+		assertEquals("Synthetic", result.value.days.first().lessons.single().themeLabel)
 		assertEquals("GET", captured!!.method)
 		assertEquals("api.bilimclass.kz", captured!!.url.host)
 		assertTrue(captured!!.url.query.contains("studentSchoolUuid=$uuid"))
