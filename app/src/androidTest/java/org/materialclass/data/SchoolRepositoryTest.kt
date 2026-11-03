@@ -48,6 +48,34 @@ class SchoolRepositoryTest {
 	}
 
 	@Test
+	fun unverifiedDiaryContextCannotReachGateway() {
+		var calls = 0
+		val gateway = object : SchoolGateway {
+			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", "1", "student", SchoolContext(1, 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
+			override fun diary(session: UnverifiedSession, context: DiaryContext): GatewayResult<Diary> { calls++; return GatewayResult.Success(Diary(context.date, emptyList())) }
+		}
+		val events = mutableListOf<DiaryState>()
+		val repository = SchoolRepository(gateway, IdentityVerifier { proof(it) }, coordinator, FakeCache(), { 1L }, events::add, store)
+		assertTrue(repository.login("1", charArrayOf('x')) is GatewayResult.Success)
+		listOf(DiaryContext(9, 2026, 2, context.date), DiaryContext(1, 2026, 9, context.date), DiaryContext(1, 2027, 2, context.date)).forEach {
+			repository.refresh(it)
+			assertTrue(events.last() is DiaryState.Error)
+		}
+		assertEquals(0, calls)
+	}
+
+	@Test
+	fun missingScheduleProofDeliversUnavailableOnce() {
+		val events = mutableListOf<DiaryState>()
+		val repository = repository(FakeGateway(), FakeCache(), events)
+		assertTrue(repository.login("a", charArrayOf('x')) is GatewayResult.Success)
+		val results = mutableListOf<GatewayResult<Schedule>>()
+		repository.schedule("01.01.2026", results::add)
+		assertEquals(1, results.size)
+		assertEquals(AppError.UNAVAILABLE, (results.single() as GatewayResult.Failure).error)
+	}
+
+	@Test
 	fun scheduleCannotPublishAcrossAccountSwitch() {
 		val entered = CountDownLatch(1); val release = CountDownLatch(1)
 		val gateway = object : SchoolGateway {
