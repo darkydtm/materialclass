@@ -10,6 +10,40 @@ import kotlin.concurrent.thread
 
 class SessionCoordinatorTest {
 	@Test
+	fun failedReplacementRevokesGloballyAndCanRetryCleanup() {
+		var fail = false
+		val first = SessionCoordinator { if (fail) throw IllegalStateException("synthetic failure") }
+		val second = SessionCoordinator { if (fail) throw IllegalStateException("synthetic failure") }
+		val old = first.activate(AccountId("synthetic-old"))
+		val initial = second.revocationEpoch()
+		val delivered = CountDownLatch(1)
+		var callbackHeldStorage = true
+		val observer: (Long) -> Unit = { epoch ->
+			if (epoch > initial) {
+				callbackHeldStorage = Thread.holdsLock(org.materialclass.security.StorageLock)
+				delivered.countDown()
+			}
+		}
+		second.observeRevocations(observer)
+		try {
+			fail = true
+			try { first.activate(AccountId("synthetic-new")); throw AssertionError("Expected cleanup failure") } catch (_: IllegalStateException) { }
+			assertEquals(true, delivered.await(10, TimeUnit.SECONDS))
+			assertEquals(false, callbackHeldStorage)
+			assertEquals(SessionChange.LOGOUT, second.event().change)
+			assertNull(second.ifActive(old) { "stale" })
+			try { second.activate(AccountId("synthetic-new")); throw AssertionError("Expected cleanup failure") } catch (_: IllegalStateException) { }
+			assertNull(second.beginRestore())
+			fail = false
+			val current = second.activate(AccountId("synthetic-new"))
+			assertEquals("current", first.ifActive(current) { "current" })
+		} finally {
+			fail = false
+			second.removeRevocationObserver(observer)
+			second.logout()
+		}
+	}
+	@Test
 	fun delayedExpiryCannotDescribeNewlyActivatedSession() {
 		val coordinator = SessionCoordinator { }
 		val old = coordinator.activate(AccountId("synthetic-expired"))
