@@ -142,7 +142,8 @@ private fun LoginScreen(controller: NativeUiController?, state: NativeUiState?) 
 	var password by remember { mutableStateOf("") }
 	Text(stringResource(R.string.login), style = MaterialTheme.typography.headlineSmall)
 	if (state?.logoutPending == true) {
-		Text(stringResource(if (state.busy) R.string.loading else R.string.cache_error))
+		Text(stringResource(if (state.busy) R.string.loading else R.string.logout_cleanup_failed))
+		if (!state.busy) Button(onClick = { controller?.logout() }) { Text(stringResource(R.string.retry_logout)) }
 		return
 	}
 	if (state?.signedIn == true) {

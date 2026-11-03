@@ -61,6 +61,9 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 
 	private val ownPending = ArrayDeque<Any>()
 
+	fun pendingLogoutTicket(): Any? = synchronized(CancellationLock) { pending.firstOrNull() }
+	internal fun isPendingLogout(token: Any): Boolean = synchronized(CancellationLock) { token in pending }
+
 	fun cancelInFlightNow(): Any {
 		val token = Any()
 		val disconnects = synchronized(CancellationLock) {
@@ -152,8 +155,9 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		clearSession()
 	}
 	fun logout(token: Any? = null) = synchronized(StorageLock) {
+		if (token != null && !isPendingLogout(token)) return@synchronized
 		val ownedToken = synchronized(CancellationLock) {
-			val owned = token ?: ownPending.firstOrNull()
+			val owned = token ?: ownPending.firstOrNull { it in pending }
 			active = null; revision++; restorationAllowed = false
 			owned
 		}

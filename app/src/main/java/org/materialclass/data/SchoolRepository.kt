@@ -315,8 +315,10 @@ internal class SchoolRepository(
 	}
 
 	fun cancelInFlightNow() = coordinator.cancelInFlightNow()
+	fun pendingLogoutTicket() = coordinator.pendingLogoutTicket()
 
 	fun logout(token: Any? = null) = synchronized(StorageLock) {
+		if (token != null && !coordinator.isPendingLogout(token)) return@synchronized
 		val pending = loginRevision
 		loginRevision = null
 		val active = session

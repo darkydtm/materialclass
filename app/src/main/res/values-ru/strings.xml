@@ -30,4 +30,6 @@
 	<string name="warning_title">Информация</string>
 	<string name="warning_text">Некоторые действия могут изменять данные на сервере. Сейчас действия с сервером недоступны.</string>
 	<string name="ok">Понятно</string>
+	<string name="logout_cleanup_failed">Очистка после выхода не завершена. Повторите попытку перед входом.</string>
+	<string name="retry_logout">Повторить выход</string>
 </resources>

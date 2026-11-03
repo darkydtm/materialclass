@@ -43,6 +43,19 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 	private val logoutExecutor = Executors.newSingleThreadExecutor()
 	private var logoutPending = false
 	private val handler = Handler(Looper.getMainLooper())
+	private val observeLogout = object : Runnable {
+		override fun run() {
+			if (closed) return
+			val pending = repository.pendingLogoutTicket() != null
+			if (pending && !state.logoutPending) {
+				generation++
+				state = NativeUiState(logoutPending = true)
+			} else if (!pending && state.logoutPending && !logoutPending) {
+				state = NativeUiState()
+			}
+			handler.postDelayed(this, 200)
+		}
+	}
 	@Volatile private var generation = 0L
 	@Volatile private var closed = false
 	private var started = false
@@ -64,6 +77,11 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 	override fun start() {
 		if (started || closed) return
 		started = true
+		handler.post(observeLogout)
+		if (repository.pendingLogoutTicket() != null) {
+			state = NativeUiState(logoutPending = true)
+			return
+		}
 		val task = ++generation
 		state = state.copy(busy = true)
 		executor.execute {
@@ -78,7 +96,7 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 	}
 
 	override fun login(username: String, password: CharArray) {
-		if (closed || logoutPending) { password.fill('\u0000'); return }
+		if (closed || logoutPending || repository.pendingLogoutTicket() != null) { password.fill('\u0000'); return }
 		val task = ++generation
 		state = NativeUiState(busy = true)
 		try {
@@ -123,15 +141,20 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 		val task = ++generation
 		logoutPending = true
 		state = NativeUiState(busy = true, logoutPending = true)
-		val token = repository.cancelInFlightNow()
+		val token = repository.pendingLogoutTicket() ?: repository.cancelInFlightNow()
 		logoutExecutor.execute {
 			val error = try { repository.logout(token); null } catch (_: Exception) { AppError.UNAVAILABLE }
-			post(task) { logoutPending = error != null; state = NativeUiState(busy = false, logoutPending = error != null, error = error) }
+			post(task) {
+				logoutPending = false
+				val pending = repository.pendingLogoutTicket() != null
+				state = NativeUiState(logoutPending = pending, error = error)
+			}
 		}
 	}
 
 	override fun close() {
 		closed = true
+		handler.removeCallbacks(observeLogout)
 		generation++
 		executor.shutdown()
 		logoutExecutor.shutdown()
