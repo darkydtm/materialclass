@@ -249,11 +249,13 @@ internal class SchoolRepository(
 						is GatewayResult.Success -> if (result.value.date != date) emitFailure(active, context, AppError.INCOMPATIBLE_RESPONSE) else {
 							val snapshot = DiarySnapshot(result.value, clock())
 							check(cache.write(active, encode(context, snapshot)))
-							emit(DiaryState.Ready(snapshot))
+							if (!lease.cancelled && coordinator.ifActive(active) { request.second == refreshRevision } == true) emit(DiaryState.Ready(snapshot))
 						}
 						is GatewayResult.Failure -> emitFailure(active, context, result.error)
 					}
-				} catch (error: CancellationException) { throw error } catch (_: Exception) { emit(DiaryState.Error(AppError.CACHE_UNREADABLE)) }
+				} catch (error: CancellationException) { throw error } catch (_: Exception) {
+					if (!lease.cancelled && coordinator.ifActive(active) { request.second == refreshRevision } == true) emit(DiaryState.Error(AppError.CACHE_UNREADABLE))
+				}
 			}
 		} finally { coordinator.finish(lease) }
 	}
@@ -295,12 +297,14 @@ internal class SchoolRepository(
 							} else {
 								val snapshot = DiarySnapshot(result.value, clock())
 								check(cache.write(active, encode(context, snapshot)))
-								emit(DiaryState.Ready(snapshot))
+								if (!lease.cancelled && coordinator.ifActive(active) { request.second == refreshRevision } == true) emit(DiaryState.Ready(snapshot))
 							}
 						}
 						is GatewayResult.Failure -> emitFailure(active, context, result.error)
 					}
-				} catch (error: CancellationException) { throw error } catch (_: Exception) { emit(DiaryState.Error(AppError.CACHE_UNREADABLE)) }
+				} catch (error: CancellationException) { throw error } catch (_: Exception) {
+					if (!lease.cancelled && coordinator.ifActive(active) { request.second == refreshRevision } == true) emit(DiaryState.Error(AppError.CACHE_UNREADABLE))
+				}
 			}
 		} finally { coordinator.finish(lease) }
 	}
