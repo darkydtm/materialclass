@@ -57,6 +57,43 @@ class StorageSecurityTest {
 	}
 
 	@Test
+	fun concurrentRetryCannotDiscardExpiredRestore() {
+		val coordinator = SessionCoordinator(context)
+		val store = SessionStore(context, coordinator)
+		val old = coordinator.activate(AccountId("synthetic-concurrent"))
+		store.write(old, byteArrayOf(1))
+		resetProcessSession()
+		val entered = CountDownLatch(1)
+		val release = CountDownLatch(1)
+		val started = CountDownLatch(1)
+		val finished = CountDownLatch(1)
+		var expired: RestoreResult? = null
+		val first = thread {
+			expired = store.restore {
+				entered.countDown()
+				check(release.await(10, TimeUnit.SECONDS))
+				SessionVerification.Expired
+			}
+		}
+		check(entered.await(10, TimeUnit.SECONDS))
+		val second = thread {
+			started.countDown()
+			try { SessionStore(context, SessionCoordinator(context)).restore { SessionVerification.Retry } }
+			finally { finished.countDown() }
+		}
+		check(started.await(10, TimeUnit.SECONDS))
+		finished.await(2, TimeUnit.SECONDS)
+		release.countDown()
+		first.join(10000)
+		second.join(10000)
+		assertFalse(first.isAlive)
+		assertFalse(second.isAlive)
+		assertEquals(RestoreResult.Invalid, expired)
+		assertFalse(File(context.noBackupFilesDir, "session").exists())
+		coordinator.logout()
+	}
+
+	@Test
 	fun logoutCancelsPendingVerification() {
 		val coordinator = SessionCoordinator(context)
 		val store = SessionStore(context, coordinator)
