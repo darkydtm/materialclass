@@ -45,9 +45,11 @@ internal data class DiarySnapshot(val diary: Diary, val lastSuccessMillis: Long)
 internal sealed class DiaryState {
 	data object Loading : DiaryState()
 	data object Cleared : DiaryState()
-	data class Ready(val snapshot: DiarySnapshot, val staleError: AppError? = null) : DiaryState()
-	data class Error(val error: AppError) : DiaryState()
+	data class Ready(val snapshot: DiarySnapshot, val staleError: AppError? = null, val guard: DiaryGuard? = null) : DiaryState()
+	data class Error(val error: AppError, val guard: DiaryGuard? = null) : DiaryState()
 }
+
+internal data class DiaryGuard(val epoch: Long, val revision: Long, val requestRevision: Long, val active: ActiveSession, val expired: Boolean)
 
 internal class SchoolRepository(
 	private val gateway: SchoolGateway,
@@ -213,6 +215,29 @@ internal class SchoolRepository(
 		} finally { coordinator.finish(lease) }
 	}
 
+	private fun guarded(state: DiaryState, active: ActiveSession, revision: Long, requestRevision: Long, expired: Boolean = false): DiaryState {
+		val guard = DiaryGuard(coordinator.revocationEpoch(), revision, requestRevision, active, expired)
+		return when (state) {
+			is DiaryState.Ready -> state.copy(guard = guard)
+			is DiaryState.Error -> state.copy(guard = guard)
+			else -> state
+		}
+	}
+
+	internal fun acceptsDiary(state: DiaryState): Boolean {
+		val guard = when (state) {
+			is DiaryState.Ready -> state.guard
+			is DiaryState.Error -> state.guard
+			else -> null
+		} ?: return true
+		return synchronized(StorageLock) {
+			val event = coordinator.event()
+			guard.epoch == event.epoch && guard.revision == refreshRevision && guard.requestRevision == coordinator.requestRevision() &&
+				if (guard.expired) event.change == org.materialclass.session.SessionChange.EXPIRED && event.session === guard.active
+				else coordinator.ifActive(guard.active) { session === guard.active } == true
+		}
+	}
+
 	fun refreshCurrent() {
 		val active = session ?: return
 		val request = coordinator.ifActive(active) {
@@ -220,65 +245,50 @@ internal class SchoolRepository(
 			val revision = ++refreshRevision
 			val candidate = remote
 			val proof = diarySession?.takeIf { candidate != null && it.remote === candidate && it.account == active.account.value && candidate.identityCandidate == active.account.value }
-			if (proof == null) {
-				emit(DiaryState.Error(AppError.UNAVAILABLE))
-				return@ifActive null
-			}
 			Triple(proof, revision, requestRevision)
 		} ?: return
+		val proof = request.first
+		if (proof == null) {
+			val state = coordinator.ifActive(active) {
+				if (request.second != refreshRevision || request.third != coordinator.requestRevision()) null
+				else guarded(DiaryState.Error(AppError.UNAVAILABLE), active, request.second, request.third)
+			}
+			if (state != null) emit(state)
+			return
+		}
 		if (coordinator.ifActive(active) { request.second == refreshRevision && request.third == coordinator.requestRevision() } != true) return
 		emit(DiaryState.Loading)
 		if (coordinator.ifActive(active) { request.second == refreshRevision } != true) return
 		beforeRequestAdmission()
 		val lease = coordinator.admit(active, request.third) ?: return
 		try {
-			val week = try { gateway.currentWeek(request.first, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
+			val week = try { gateway.currentWeek(proof, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
 			if (week is GatewayResult.Failure) {
-				coordinator.ifActive(active) {
-					if (!lease.cancelled && request.second == refreshRevision) {
-						if (week.error == AppError.SESSION_EXPIRED) {
-							remote = null; scheduleSession = null; diarySession = null; session = null
-							coordinator.revokeIfActive(active, expired = true)
-							emit(DiaryState.Error(week.error))
-						} else if (week.error == AppError.OFFLINE || week.error == AppError.TIMEOUT) {
-							try {
-								val context = request.first.remote.context!!.diary("")
-								val saved = cache.read(active)?.let { decode(it, context) }
-								emit(if (saved == null) DiaryState.Error(week.error) else DiaryState.Ready(saved, week.error))
-							} catch (_: Exception) { emit(DiaryState.Error(AppError.CACHE_UNREADABLE)) }
-						} else {
-							emit(DiaryState.Error(week.error))
-						}
-					}
+				val state = coordinator.ifActive(active) {
+					if (lease.cancelled || request.second != refreshRevision) return@ifActive null
+					val expired = week.error == AppError.SESSION_EXPIRED
+					val value = if (expired) {
+						remote = null; scheduleSession = null; diarySession = null; session = null
+						coordinator.revokeIfActive(active, expired = true)
+						DiaryState.Error(week.error)
+					} else if (week.error == AppError.OFFLINE || week.error == AppError.TIMEOUT) {
+						try {
+							val context = proof.remote.context!!.diary("")
+							val saved = cache.read(active)?.let { decode(it, context) }
+							if (saved == null) DiaryState.Error(week.error) else DiaryState.Ready(saved, week.error)
+						} catch (_: Exception) { DiaryState.Error(AppError.CACHE_UNREADABLE) }
+					} else DiaryState.Error(week.error)
+					guarded(value, active, request.second, request.third, expired)
 				}
+				if (state != null) emit(state)
 				return
 			}
 			val date = (week as GatewayResult.Success).value
-			val context = request.first.remote.context?.diary(date) ?: return
-			val allowed = coordinator.ifActive(active) { !lease.cancelled && request.second == refreshRevision } == true
-			if (!allowed) return
-			val result = try { gateway.diary(request.first, context, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
-			coordinator.ifActive(active) {
-				if (lease.cancelled || request.second != refreshRevision) return@ifActive
-				if (result is GatewayResult.Failure && result.error == AppError.SESSION_EXPIRED) {
-					remote = null; scheduleSession = null; diarySession = null; session = null
-					coordinator.revokeIfActive(active, expired = true)
-					emit(DiaryState.Error(AppError.SESSION_EXPIRED))
-					return@ifActive
-				}
-				try {
-					when (result) {
-						is GatewayResult.Success -> if (result.value.date != date) emit(failureState(active, context, AppError.INCOMPATIBLE_RESPONSE)) else {
-							val snapshot = DiarySnapshot(result.value, clock())
-							check(cache.write(active, encode(context, snapshot)))
-							if (!lease.cancelled && coordinator.ifActive(active) { request.second == refreshRevision } == true) emit(DiaryState.Ready(snapshot))
-						}
-						is GatewayResult.Failure -> emit(failureState(active, context, result.error))
-					}
-				} catch (error: CancellationException) { throw error } catch (_: Exception) {
-					if (!lease.cancelled && coordinator.ifActive(active) { request.second == refreshRevision } == true) emit(DiaryState.Error(AppError.CACHE_UNREADABLE))
-				}
-			}
+			val context = proof.remote.context?.diary(date) ?: return
+			if (coordinator.ifActive(active) { !lease.cancelled && request.second == refreshRevision } != true) return
+			val result = try { gateway.diary(proof, context, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
+			val state = diaryResult(active, context, result, lease, request.second, request.third)
+			if (state != null) emit(state)
 		} finally { coordinator.finish(lease) }
 	}
 
@@ -288,49 +298,49 @@ internal class SchoolRepository(
 			val requestRevision = coordinator.requestRevision()
 			val revision = ++refreshRevision
 			val authenticated = remote
-			val proof = diarySession
-			if (authenticated == null || proof == null || proof.remote !== authenticated || proof.account != active.account.value || authenticated.identityCandidate != active.account.value || !proof.permits(context)) {
-				emit(DiaryState.Error(AppError.UNAVAILABLE))
-				return@ifActive null
-			}
+			val proof = diarySession?.takeIf { authenticated != null && it.remote === authenticated && it.account == active.account.value && authenticated.identityCandidate == active.account.value && it.permits(context) }
 			Triple(proof, revision, requestRevision)
 		} ?: return
+		val proof = request.first
+		if (proof == null) {
+			val state = coordinator.ifActive(active) {
+				if (request.second != refreshRevision || request.third != coordinator.requestRevision()) null
+				else guarded(DiaryState.Error(AppError.UNAVAILABLE), active, request.second, request.third)
+			}
+			if (state != null) emit(state)
+			return
+		}
 		if (coordinator.ifActive(active) { request.second == refreshRevision && request.third == coordinator.requestRevision() } != true) return
 		emit(DiaryState.Loading)
 		if (coordinator.ifActive(active) { request.second == refreshRevision } != true) return
 		beforeRequestAdmission()
 		val lease = coordinator.admit(active, request.third) ?: return
 		try {
-			val result = try { gateway.diary(request.first, context, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
-			coordinator.ifActive(active) {
-				if (lease.cancelled || request.second != refreshRevision) return@ifActive
-				if (result is GatewayResult.Failure && result.error == AppError.SESSION_EXPIRED) {
-					remote = null
-					scheduleSession = null
-					diarySession = null
-					session = null
-					coordinator.revokeIfActive(active, expired = true)
-					emit(DiaryState.Error(AppError.SESSION_EXPIRED))
-					return@ifActive
-				}
-				try {
-					when (result) {
-						is GatewayResult.Success -> {
-							if (result.value.date != context.date) {
-								emit(failureState(active, context, AppError.INCOMPATIBLE_RESPONSE))
-							} else {
-								val snapshot = DiarySnapshot(result.value, clock())
-								check(cache.write(active, encode(context, snapshot)))
-								if (!lease.cancelled && coordinator.ifActive(active) { request.second == refreshRevision } == true) emit(DiaryState.Ready(snapshot))
-							}
-						}
-						is GatewayResult.Failure -> emit(failureState(active, context, result.error))
-					}
-				} catch (error: CancellationException) { throw error } catch (_: Exception) {
-					if (!lease.cancelled && coordinator.ifActive(active) { request.second == refreshRevision } == true) emit(DiaryState.Error(AppError.CACHE_UNREADABLE))
-				}
-			}
+			val result = try { gateway.diary(proof, context, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
+			val state = diaryResult(active, context, result, lease, request.second, request.third)
+			if (state != null) emit(state)
 		} finally { coordinator.finish(lease) }
+	}
+
+	private fun diaryResult(active: ActiveSession, context: DiaryContext, result: GatewayResult<Diary>, lease: RequestLease, revision: Long, requestRevision: Long): DiaryState? = coordinator.ifActive(active) {
+		if (lease.cancelled || revision != refreshRevision) return@ifActive null
+		if (result is GatewayResult.Failure && result.error == AppError.SESSION_EXPIRED) {
+			remote = null; scheduleSession = null; diarySession = null; session = null
+			coordinator.revokeIfActive(active, expired = true)
+			return@ifActive guarded(DiaryState.Error(AppError.SESSION_EXPIRED), active, revision, requestRevision, true)
+		}
+		val state = try {
+			when (result) {
+				is GatewayResult.Success -> if (result.value.date != context.date) failureState(active, context, AppError.INCOMPATIBLE_RESPONSE) else {
+					val snapshot = DiarySnapshot(result.value, clock())
+					check(cache.write(active, encode(context, snapshot)))
+					DiaryState.Ready(snapshot)
+				}
+				is GatewayResult.Failure -> failureState(active, context, result.error)
+			}
+		} catch (error: CancellationException) { throw error } catch (_: Exception) { DiaryState.Error(AppError.CACHE_UNREADABLE) }
+		if (lease.cancelled || coordinator.ifActive(active) { revision == refreshRevision } != true) null
+		else guarded(state, active, revision, requestRevision)
 	}
 
 	private fun failureState(active: ActiveSession, context: DiaryContext, error: AppError): DiaryState {

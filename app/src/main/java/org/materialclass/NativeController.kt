@@ -77,6 +77,7 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 	private val repository = repositoryFactory { diary ->
 		val task = currentTaskGeneration
 		post(task) {
+			if (!repository.acceptsDiary(diary)) return@post
 			state = if (diary is DiaryState.Error && diary.error == AppError.SESSION_EXPIRED) NativeUiState(error = diary.error)
 			else state.copy(diary = diary, error = if (diary is DiaryState.Error) diary.error else state.error)
 		}

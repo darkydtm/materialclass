@@ -253,6 +253,64 @@ class SchoolRepositoryTest {
 		assertFalse(logout!!.isAlive)
 	}
 
+	private fun queuedTerminalStateIsRejected(current: Boolean, failure: Boolean) {
+		val gateway = object : TestSchoolGateway() {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic", login, "student", SchoolContext(1, 2026, 2)))
+			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = GatewayResult.Success(context.date)
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = if (failure) GatewayResult.Failure(AppError.OFFLINE) else GatewayResult.Success(Diary(context.date, emptyList()))
+		}
+		val events = mutableListOf<DiaryState>()
+		val repo = SchoolRepository(gateway, IdentityVerifier { session, _ -> proof(session) }, coordinator, FakeCache(), { 1L }, events::add, store)
+		assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+		if (current) repo.refreshCurrent() else repo.refresh(context)
+		val first = events.last()
+		assertTrue(if (failure) first is DiaryState.Error else first is DiaryState.Ready)
+		assertTrue(repo.acceptsDiary(first))
+		if (current) repo.refreshCurrent() else repo.refresh(context)
+		val second = events.last()
+		assertFalse(repo.acceptsDiary(first))
+		assertTrue(repo.acceptsDiary(second))
+		assertTrue(repo.login("2", charArrayOf('x')) is GatewayResult.Success)
+		assertFalse(repo.acceptsDiary(second))
+		if (current) repo.refreshCurrent() else repo.refresh(context)
+		val third = events.last()
+		assertTrue(repo.acceptsDiary(third))
+		repo.logout()
+		assertFalse(repo.acceptsDiary(third))
+		assertTrue(repo.acceptsDiary(DiaryState.Cleared))
+	}
+
+	private fun reentrantTerminalLogout(current: Boolean, failure: Boolean) {
+		val gateway = object : TestSchoolGateway() {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic", "1", "student", SchoolContext(1, 2026, 2)))
+			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = GatewayResult.Success(context.date)
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = if (failure) GatewayResult.Failure(AppError.OFFLINE) else GatewayResult.Success(Diary(context.date, emptyList()))
+		}
+		lateinit var repo: SchoolRepository
+		var called = false
+		repo = SchoolRepository(gateway, IdentityVerifier { session, _ -> proof(session) }, coordinator, FakeCache(), { 1L }, {
+			if (it is DiaryState.Ready || it is DiaryState.Error) {
+				assertFalse(Thread.holdsLock(org.materialclass.security.StorageLock))
+				called = true
+				repo.logout()
+			}
+		}, store)
+		assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+		if (current) repo.refreshCurrent() else repo.refresh(context)
+		assertTrue(called)
+		assertTrue(coordinator.logoutIfNoActive())
+	}
+
+	@Test fun refreshReadyAllowsReentrantLogout() = reentrantTerminalLogout(false, false)
+	@Test fun refreshErrorAllowsReentrantLogout() = reentrantTerminalLogout(false, true)
+	@Test fun currentRefreshReadyAllowsReentrantLogout() = reentrantTerminalLogout(true, false)
+	@Test fun currentRefreshErrorAllowsReentrantLogout() = reentrantTerminalLogout(true, true)
+
+	@Test fun refreshReadyRejectsStaleDelivery() = queuedTerminalStateIsRejected(false, false)
+	@Test fun refreshErrorRejectsStaleDelivery() = queuedTerminalStateIsRejected(false, true)
+	@Test fun currentRefreshReadyRejectsStaleDelivery() = queuedTerminalStateIsRejected(true, false)
+	@Test fun currentRefreshErrorRejectsStaleDelivery() = queuedTerminalStateIsRejected(true, true)
+
 	@Test fun refreshReadyDoesNotBlockLogout() = terminalCallbackDoesNotBlockLogout(false, false)
 	@Test fun refreshErrorDoesNotBlockLogout() = terminalCallbackDoesNotBlockLogout(false, true)
 	@Test fun currentRefreshReadyDoesNotBlockLogout() = terminalCallbackDoesNotBlockLogout(true, false)
