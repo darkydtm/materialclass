@@ -21,7 +21,7 @@ class SessionCoordinatorTest {
 		val first = coordinator.beginRestore()!!
 		assertNull(coordinator.finishRestore(first) { null })
 		val second = coordinator.beginRestore()!!
-		assertEquals(AccountId("synthetic-retry"), coordinator.finishRestore(second) { coordinator.acceptRestore(AccountId("synthetic-retry")) }?.account)
+		assertEquals(AccountId("synthetic-retry"), coordinator.finishRestore(second) { coordinator.acceptRestore(AccountId("synthetic-retry"), CacheNamespace.create()) }?.account)
 		coordinator.logout()
 	}
 	@Test

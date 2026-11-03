@@ -32,6 +32,31 @@ class StorageSecurityTest {
 	}
 
 	@Test
+	fun legacyEncryptedSessionWithoutNamespaceCannotRestore() {
+		val coordinator = SessionCoordinator(context)
+		val store = SessionStore(context, coordinator)
+		val session = coordinator.activate(AccountId("synthetic-legacy"))
+		assertTrue(store.write(session, byteArrayOf(1)))
+		val bytes = java.io.ByteArrayOutputStream()
+		java.io.DataOutputStream(bytes).use {
+			it.writeInt(1)
+			it.writeUTF("synthetic-legacy")
+			it.writeInt(1)
+			it.writeByte(1)
+		}
+		EncryptedFile(File(context.noBackupFilesDir, "session"), "session", KeystoreKeys(), org.materialclass.cache.CacheFiles(context)).write(bytes.toByteArray())
+		resetProcessSession()
+		var verified = false
+		try {
+			try {
+				store.restore { verified = true; SessionVerification.Verified(AccountId("synthetic-legacy"), true) }
+				fail("Legacy session must not restore")
+			} catch (_: StorageUnreadableException) { }
+			assertFalse(verified)
+		} finally { coordinator.logout() }
+	}
+
+	@Test
 	fun retryPreservesSessionButMismatchAndExpiryRevokeIt() {
 		val coordinator = SessionCoordinator(context)
 		val store = SessionStore(context, coordinator)
@@ -179,6 +204,7 @@ class StorageSecurityTest {
 		val bytes = File(context.noBackupFilesDir, "session").readBytes().toString(Charsets.ISO_8859_1)
 		assertFalse(bytes.contains("synthetic-restored-account"))
 		assertFalse(bytes.contains("synthetic-restored-token"))
+		assertFalse(bytes.contains(old.cacheNamespace.value))
 		val active = SessionCoordinator::class.java.getDeclaredField("active")
 		active.isAccessible = true
 		active.set(null, null)
@@ -193,6 +219,7 @@ class StorageSecurityTest {
 			SessionVerification.Verified(AccountId("synthetic-restored-account"), true)
 		})
 		val restored = (result as RestoreResult.Restored).session
+		assertEquals(old.cacheNamespace.value, restored.cacheNamespace.value)
 		assertArrayEquals("synthetic-restored-token".toByteArray(), restoredStore.read(restored))
 		assertArrayEquals(byteArrayOf(3, 4), EncryptedCache(context, restarted).read(restored))
 		assertNull(restore.invoke(restoredStore))
@@ -309,7 +336,7 @@ class StorageSecurityTest {
 		val account = AccountId("synthetic-wrong-key")
 		val session = coordinator.activate(account)
 		cache.write(session, byteArrayOf(4, 5))
-		val id = KeystoreKeys().namespace(account.value, false)
+		val id = KeystoreKeys().namespace(session.cacheNamespace.value, false)
 		val disk = File(context.filesDir, "backup-cache/$id")
 		val bytes = disk.readBytes()
 		val tempDir = File(context.noBackupFilesDir, "storage-tmp")
@@ -377,7 +404,7 @@ class StorageSecurityTest {
 		val cache = EncryptedCache(context, coordinator)
 		cache.reset(active)
 		assertTrue(cache.write(active, "synthetic-content".toByteArray()))
-		val id = KeystoreKeys().namespace(account.value, false)
+		val id = KeystoreKeys().namespace(active.cacheNamespace.value, false)
 		val disk = File(context.filesDir, "backup-cache/$id")
 		assertFalse(disk.readBytes().toString(Charsets.ISO_8859_1).contains("synthetic-content"))
 		val corrupt = disk.readBytes().apply { this[lastIndex] = (this[lastIndex].toInt() xor 1).toByte() }
@@ -406,8 +433,11 @@ class StorageSecurityTest {
 		try {
 			val firstUser = coordinator.activate(AccountId("synthetic-colliding-id"))
 			assertTrue(cache.write(firstUser, byteArrayOf(1)))
+			val retained = File(context.filesDir, "backup-cache").listFiles()!!.associate { it.name to it.readBytes().toList() }
 			coordinator.logout()
+			assertEquals(retained, File(context.filesDir, "backup-cache").listFiles()!!.associate { it.name to it.readBytes().toList() })
 			val secondUser = coordinator.activate(AccountId("synthetic-colliding-id"))
+			assertNotEquals(firstUser.cacheNamespace.value, secondUser.cacheNamespace.value)
 			assertNull(cache.read(secondUser))
 			assertTrue(cache.write(secondUser, byteArrayOf(2)))
 			coordinator.logout()
@@ -436,7 +466,7 @@ class StorageSecurityTest {
 		cache.write(b, byteArrayOf(2))
 		cache.reset(b)
 		val aAgain = coordinator.activate(AccountId("synthetic-a"))
-		assertArrayEquals(byteArrayOf(1), cache.read(aAgain))
+		assertNull(cache.read(aAgain))
 		cache.reset(aAgain)
 		val session = SessionStore(context, coordinator)
 		session.write(aAgain, "synthetic-token".toByteArray())

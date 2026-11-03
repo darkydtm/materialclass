@@ -2,6 +2,7 @@ package org.materialclass.session
 
 import android.content.Context
 import org.materialclass.security.StorageLock
+import java.security.SecureRandom
 
 @JvmInline
 value class AccountId(val value: String) {
@@ -12,7 +13,15 @@ value class AccountId(val value: String) {
 	override fun toString(): String = "AccountId([redacted])"
 }
 
-class ActiveSession internal constructor(val account: AccountId)
+internal class CacheNamespace(val value: String) {
+	init { require(value.matches(Regex("[0-9a-f]{64}"))) }
+	override fun toString(): String = "CacheNamespace([redacted])"
+	companion object {
+		fun create(): CacheNamespace = CacheNamespace(ByteArray(32).also { SecureRandom().nextBytes(it) }.joinToString("") { "%02x".format(it.toInt() and 255) })
+	}
+}
+
+class ActiveSession internal constructor(val account: AccountId, internal val cacheNamespace: CacheNamespace)
 
 class SessionCoordinator internal constructor(private val clearSession: () -> Unit) {
 	constructor(context: Context) : this({ SessionStore.clear(context) })
@@ -56,7 +65,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		revision++
 		restorationAllowed = false
 		clearSession()
-		ActiveSession(account).also { active = it }
+		ActiveSession(account, CacheNamespace.create()).also { active = it }
 	}
 
 	internal fun beginRestore(): Long? = synchronized(StorageLock) {
@@ -67,10 +76,10 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		if (active != null || !restorationAllowed || revision != expected) null else action()
 	}
 
-	internal fun acceptRestore(account: AccountId): ActiveSession {
+	internal fun acceptRestore(account: AccountId, namespace: CacheNamespace): ActiveSession {
 		restorationAllowed = false
 		revision++
-		return ActiveSession(account).also { active = it }
+		return ActiveSession(account, namespace).also { active = it }
 	}
 
 	internal fun rejectRestore() {

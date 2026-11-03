@@ -24,7 +24,7 @@ class EncryptedCache(context: Context, private val coordinator: SessionCoordinat
 		} else if (!java.security.MessageDigest.isEqual(guard, previous)) {
 			throw org.materialclass.security.StorageUnreadableException()
 		}
-		val id = keys.namespace(session.account.value, false)
+		val id = keys.namespace(session.cacheNamespace.value, false)
 		return EncryptedFile(File(files.directory, id), "cache-$id", keys, files)
 	}
 

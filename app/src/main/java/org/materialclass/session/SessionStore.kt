@@ -91,16 +91,19 @@ class SessionStore(context: Context, private val coordinator: SessionCoordinator
 		}
 	}
 
-	private fun decode(bytes: ByteArray): Pair<AccountId, ByteArray> {
+	private class StoredSession(val account: AccountId, val namespace: CacheNamespace, val material: ByteArray)
+
+	private fun decode(bytes: ByteArray): StoredSession {
 		try {
 			val input = DataInputStream(ByteArrayInputStream(bytes))
-			if (input.readInt() != 1) throw StorageUnreadableException()
+			if (input.readInt() != 2) throw StorageUnreadableException()
 			val account = AccountId(input.readUTF())
+			val namespace = CacheNamespace(input.readUTF())
 			val length = input.readInt()
 			if (length < 0 || length != input.available()) throw StorageUnreadableException()
 			val material = ByteArray(length)
 			input.readFully(material)
-			return account to material
+			return StoredSession(account, namespace, material)
 		} catch (error: StorageUnreadableException) {
 			throw error
 		} catch (error: Exception) {
@@ -119,25 +122,25 @@ class SessionStore(context: Context, private val coordinator: SessionCoordinator
 			else file.read()?.let { bytes -> try { decode(bytes) } finally { bytes.fill(0) } }
 		} ?: return@synchronized RestoreResult.Absent
 		val verification = try {
-			verifier.verify(candidate.second)
+			verifier.verify(candidate.material)
 		} catch (error: CancellationException) {
 			throw error
 		} catch (_: Exception) {
 			SessionVerification.Retry
 		} finally {
-			candidate.second.fill(0)
+			candidate.material.fill(0)
 		}
 		coordinator.finishRestore(revision) {
 			when (verification) {
 				SessionVerification.Retry -> RestoreResult.Retry
 				SessionVerification.Expired, SessionVerification.Invalid -> { coordinator.rejectRestore(); RestoreResult.Invalid }
 				is SessionVerification.Verified -> {
-					val matching = MessageDigest.isEqual(candidate.first.value.toByteArray(Charsets.UTF_8), verification.account.value.toByteArray(Charsets.UTF_8))
+					val matching = MessageDigest.isEqual(candidate.account.value.toByteArray(Charsets.UTF_8), verification.account.value.toByteArray(Charsets.UTF_8))
 					if (!matching || !verification.pupil) {
 						coordinator.rejectRestore()
 						RestoreResult.Invalid
 					} else {
-						val active = coordinator.acceptRestore(verification.account)
+						val active = coordinator.acceptRestore(verification.account, candidate.namespace)
 						onRestored(active)
 						RestoreResult.Restored(active)
 					}
@@ -147,18 +150,22 @@ class SessionStore(context: Context, private val coordinator: SessionCoordinator
 	}
 
 	fun read(session: ActiveSession): ByteArray? = coordinator.ifActive(session) {
-		file.read()?.let {
-			val (account, material) = decode(it)
-			if (account != session.account) throw StorageUnreadableException()
-			material
+		file.read()?.let { bytes ->
+			val stored = try { decode(bytes) } finally { bytes.fill(0) }
+			if (stored.account != session.account || stored.namespace.value != session.cacheNamespace.value) {
+				stored.material.fill(0)
+				throw StorageUnreadableException()
+			}
+			stored.material
 		}
 	}
 
 	fun write(session: ActiveSession, value: ByteArray): Boolean = coordinator.ifActive(session) {
 		val bytes = ByteArrayOutputStream()
 		DataOutputStream(bytes).use {
-			it.writeInt(1)
+			it.writeInt(2)
 			it.writeUTF(session.account.value)
+			it.writeUTF(session.cacheNamespace.value)
 			it.writeInt(value.size)
 			it.write(value)
 		}
