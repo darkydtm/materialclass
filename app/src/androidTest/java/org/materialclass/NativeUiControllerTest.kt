@@ -40,6 +40,7 @@ class NativeUiControllerTest {
 		assertTrue(node.performAction(AccessibilityNodeInfo.ACTION_CLICK))
 	}
 	private fun edit(node: AccessibilityNodeInfo, value: String) {
+		assertTrue(node.performAction(AccessibilityNodeInfo.ACTION_FOCUS))
 		val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, value) }
 		assertTrue(node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args))
 	}
@@ -68,6 +69,8 @@ class NativeUiControllerTest {
 			val fields = editables(instrumentation.uiAutomation.rootInActiveWindow)
 			edit(fields.first { !it.isPassword }, "synthetic")
 			edit(fields.first { it.isPassword }, "synthetic")
+			instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+			SystemClock.sleep(500)
 			click(context.getString(R.string.sign_in))
 			waitFor(context.getString(R.string.logout))
 			assertTrue(fake.secretCleared)
