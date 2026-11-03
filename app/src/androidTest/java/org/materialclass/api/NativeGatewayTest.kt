@@ -62,8 +62,8 @@ class NativeGatewayTest {
 		var calls = 0
 		val gateway = NativeGateway(Exchange { calls++; Response(200, user) })
 		val remote = (gateway.login("x", charArrayOf('x')) as GatewayResult.Success).value
-		assertNull(remote.context!!.studentSchoolUuid)
-		assertEquals(AppError.INCOMPATIBLE_RESPONSE, (gateway.schedule(VerifiedScheduleSession(remote, "123"), "01.01.2026") as GatewayResult.Failure).error)
+		assertNotNull(remote.context!!.studentSchoolUuid)
+		assertNull(VerifiedScheduleSession.compare(remote, JSONObject("{}")))
 		assertEquals(1, calls)
 	}
 

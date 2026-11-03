@@ -58,6 +58,7 @@ internal class SchoolRepository(
 ) {
 	@Volatile private var session: ActiveSession? = null
 	private var remote: UnverifiedSession? = null
+	private var scheduleSession: VerifiedScheduleSession? = null
 	private var refreshRevision = 0L
 	private var scheduleRevision = 0L
 	@Volatile private var loginRevision: Long? = null
@@ -82,6 +83,7 @@ internal class SchoolRepository(
 					val active = coordinator.activateIfUnchanged(revision, verification.account) {
 						session = null
 						remote = null
+						scheduleSession = null
 						emit(DiaryState.Cleared)
 					} ?: return@synchronized GatewayResult.Failure(AppError.UNAVAILABLE)
 					val material = encodeSession(candidate)
@@ -93,6 +95,7 @@ internal class SchoolRepository(
 					} finally { material.fill(0) }
 					session = active
 					remote = candidate
+					scheduleSession = verification.scheduleSession
 					GatewayResult.Success(Unit)
 				}
 			} catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
@@ -105,15 +108,17 @@ internal class SchoolRepository(
 
 	fun restore(): RestoreResult {
 		var candidate: UnverifiedSession? = null
+		var scheduleCandidate: VerifiedScheduleSession? = null
 		return store.restore({ material ->
 			val remote = decodeSession(material) ?: return@restore SessionVerification.Invalid
 			val verification = verifier.verify(remote)
-			if (verification is SessionVerification.Verified && verification.pupil) candidate = remote
+			if (verification is SessionVerification.Verified && verification.pupil) { candidate = remote; scheduleCandidate = verification.scheduleSession }
 			verification
 		}) { active ->
 			afterRestoreActivation()
 			session = active
 			remote = candidate
+			scheduleSession = scheduleCandidate
 			emit(DiaryState.Cleared)
 		}
 	}
@@ -123,7 +128,7 @@ internal class SchoolRepository(
 		val request = coordinator.ifActive(active) {
 			val candidate = remote ?: return@ifActive null
 			if (candidate.identityCandidate != active.account.value) return@ifActive null
-			VerifiedScheduleSession(candidate, active.account.value) to ++scheduleRevision
+			(scheduleSession ?: return@ifActive null) to ++scheduleRevision
 		} ?: return
 		val result = try { gateway.schedule(request.first, date) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
 		coordinator.ifActive(active) {
@@ -194,7 +199,7 @@ internal class SchoolRepository(
 private fun encodeSession(session: UnverifiedSession): ByteArray {
 	val bytes = ByteArrayOutputStream()
 	DataOutputStream(bytes).use { output ->
-		output.writeInt(3)
+		output.writeInt(4)
 		output.writeUTF(session.identityCandidate ?: throw IllegalArgumentException())
 		output.writeUTF(session.token)
 		output.writeBoolean(session.context != null)
@@ -210,13 +215,13 @@ private fun encodeSession(session: UnverifiedSession): ByteArray {
 private fun decodeSession(bytes: ByteArray): UnverifiedSession? = try {
 	val input = DataInputStream(ByteArrayInputStream(bytes))
 	val version = input.readInt()
-	require(version == 2 || version == 3)
+	require(version == 2 || version == 3 || version == 4)
 	val identity = input.readUTF().also { require(it.isNotEmpty()) }
 	val token = input.readUTF().also { require(it.isNotEmpty()) }
 	val context = if (input.readBoolean()) {
 		val school = input.readLong(); val year = input.readInt(); val group = input.readLong()
-		if (version == 3 && input.readBoolean()) input.readUTF()
-		org.materialclass.api.SchoolContext(school, year, group)
+		val uuid = if (version >= 3 && input.readBoolean()) input.readUTF() else null
+		org.materialclass.api.SchoolContext(school, year, group, if (version == 4) uuid else null)
 	} else null
 	require(input.available() == 0)
 	UnverifiedSession(token, identity, "student", context)

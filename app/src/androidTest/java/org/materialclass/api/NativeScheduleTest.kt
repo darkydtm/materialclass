@@ -7,7 +7,11 @@ class NativeScheduleTest {
 	private val uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 	private val dates = listOf("29.12.2025", "30.12.2025", "31.12.2025", "01.01.2026", "02.01.2026", "03.01.2026", "04.01.2026")
 	private val body = """{"data":{"weeks":{"next":"02.01.2026","prev":"01.01.2026","next_time":2,"prev_time":1},"days":[""" + dates.mapIndexed { index, date -> """{"date":${index + 1},"dateFormat":"$date","isCurrent":false,"isHoliday":false,"schedule":[{"type":"regular","cabinet":{"id":1},"theme":{"label":"Synthetic"}}]}""" }.joinToString(",") + """ ]}}"""
-	private fun session(id: String = "1", schoolUuid: String? = uuid) = VerifiedScheduleSession(UnverifiedSession("token", id, "student", SchoolContext(1, 2026, 2, schoolUuid)), id)
+	private fun session(): VerifiedScheduleSession {
+		val candidate = UnverifiedSession("token", "1", "student", SchoolContext(1, 2026, 2, uuid))
+		val profile = org.json.JSONObject("""{"userId":1,"role":"student","school_id":1,"group":{"id":2},"studentInfo":{"studentSchoolUuid":"$uuid"},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}""")
+		return VerifiedScheduleSession.compare(candidate, profile)!!
+	}
 
 	@Test
 	fun nativeGatewayExposesAccountBoundScheduleReader() {
@@ -51,7 +55,6 @@ class NativeScheduleTest {
 		var calls = 0
 		val gateway = NativeGateway(Exchange { calls++; Response(200, body.replace("\"id\":1", "\"id\":null")) })
 		assertEquals(AppError.INCOMPATIBLE_RESPONSE, (gateway.schedule(session(), "01.01.2026") as GatewayResult.Failure).error)
-		assertEquals(AppError.INCOMPATIBLE_RESPONSE, (gateway.schedule(session(schoolUuid = null), "01.01.2026") as GatewayResult.Failure).error)
 		assertEquals(1, calls)
 	}
 }

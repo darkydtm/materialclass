@@ -18,8 +18,21 @@ interface SchoolGateway {
 	fun schedule(session: VerifiedScheduleSession, date: String): GatewayResult<Schedule> = GatewayResult.Failure(AppError.UNAVAILABLE)
 }
 
-class VerifiedScheduleSession internal constructor(internal val remote: UnverifiedSession, internal val account: String) {
+class VerifiedScheduleSession private constructor(internal val remote: UnverifiedSession, internal val account: String) {
 	override fun toString(): String = "VerifiedScheduleSession([redacted])"
+
+	companion object {
+		internal fun compare(remote: UnverifiedSession, profile: JSONObject): VerifiedScheduleSession? {
+			val id = profile.opt("userId").integerValue()?.toString() ?: return null
+			if (remote.token.isEmpty() || remote.identityCandidate != id || remote.role != "student" || profile.opt("role") != remote.role) return null
+			val login = remote.context ?: return null
+			val actual = schoolContext(profile) ?: return null
+			val uuid = login.studentSchoolUuid ?: return null
+			if (!uuid.matches(Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"))) return null
+			if (login.schoolId != actual.schoolId || login.groupId != actual.groupId || login.eduYear != actual.eduYear || uuid != actual.studentSchoolUuid) return null
+			return VerifiedScheduleSession(remote, id)
+		}
+	}
 }
 
 class Schedule(val days: List<ScheduleDay>)
@@ -203,7 +216,7 @@ private fun calendarDate(value: String): Long? {
 	return parsed.time.takeIf { position.index == value.length && format.format(parsed) == value }
 }
 
-private fun schoolContext(user: JSONObject): SchoolContext? {
+internal fun schoolContext(user: JSONObject): SchoolContext? {
 	val schoolId = user.opt("school_id").integerValue() ?: return null
 	val groupId = user.optJSONObject("group")?.opt("id").integerValue() ?: return null
 	val years = user.optJSONObject("school")?.optJSONArray("eduYears") ?: return null
@@ -211,7 +224,7 @@ private fun schoolContext(user: JSONObject): SchoolContext? {
 	if (current.size != 1) return null
 	val year = current.single().opt("eduYear").integerValue() ?: return null
 	if (schoolId <= 0 || groupId <= 0 || year <= 0 || year > Int.MAX_VALUE) return null
-	return SchoolContext(schoolId, year.toInt(), groupId)
+	return SchoolContext(schoolId, year.toInt(), groupId, user.optJSONObject("studentInfo")?.opt("studentSchoolUuid") as? String)
 }
 
 private fun Any?.integerValue(): Long? = when (this) {
