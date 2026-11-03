@@ -63,31 +63,40 @@ internal class SchoolRepository(
 		val revision = synchronized(StorageLock) {
 			coordinator.beginLogin().also { loginRevision = it }
 		}
-		val result = try { gateway.login(username, password) } catch (error: CancellationException) {
-			throw error
-		} catch (_: Exception) {
-			GatewayResult.Failure(AppError.UNAVAILABLE)
-		} finally { password.fill('\u0000') }
-		if (result is GatewayResult.Failure) return result
-		val candidate = (result as GatewayResult.Success).value
-		val verification = try { verifier.verify(candidate) } catch (error: CancellationException) { throw error } catch (_: Exception) { SessionVerification.Retry }
-		if (candidate.role != "student" || verification !is SessionVerification.Verified || !verification.pupil) return GatewayResult.Failure(AppError.UNAVAILABLE)
-		return try {
+		try {
+			val result = try { gateway.login(username, password) } catch (error: CancellationException) {
+				throw error
+			} catch (_: Exception) {
+				GatewayResult.Failure(AppError.UNAVAILABLE)
+			} finally { password.fill('\u0000') }
+			if (result is GatewayResult.Failure) return result
+			val candidate = (result as GatewayResult.Success).value
+			val verification = try { verifier.verify(candidate) } catch (error: CancellationException) { throw error } catch (_: Exception) { SessionVerification.Retry }
+			if (candidate.role != "student" || verification !is SessionVerification.Verified || !verification.pupil) return GatewayResult.Failure(AppError.UNAVAILABLE)
+			return try {
+				synchronized(StorageLock) {
+					val active = coordinator.activateIfUnchanged(revision, verification.account) {
+						session = null
+						remote = null
+						emit(DiaryState.Cleared)
+					} ?: return@synchronized GatewayResult.Failure(AppError.UNAVAILABLE)
+					val material = candidate.token.toByteArray(Charsets.UTF_8)
+					try {
+						check(store.write(active, material))
+					} catch (error: Exception) {
+						coordinator.revokeIfActive(active)
+						throw error
+					} finally { material.fill(0) }
+					session = active
+					remote = candidate
+					GatewayResult.Success(Unit)
+				}
+			} catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
+		} finally {
 			synchronized(StorageLock) {
-				val active = coordinator.activateIfUnchanged(revision, verification.account) ?: return@synchronized GatewayResult.Failure(AppError.UNAVAILABLE)
-				val material = candidate.token.toByteArray(Charsets.UTF_8)
-				try {
-					check(store.write(active, material))
-				} catch (error: Exception) {
-					coordinator.revokeIfActive(active)
-					throw error
-				} finally { material.fill(0) }
-				session = active
-				remote = candidate
-				emit(DiaryState.Cleared)
-				GatewayResult.Success(Unit)
+				if (loginRevision == revision) loginRevision = null
 			}
-		} catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
+		}
 	}
 
 	fun restore(): RestoreResult {
@@ -153,13 +162,14 @@ internal class SchoolRepository(
 		loginRevision = null
 		val active = session
 		if (active == null) {
-			if (pending != null) coordinator.cancelLogin(pending) else coordinator.logout()
+			if (!coordinator.logoutIfNoActive()) pending?.let { coordinator.cancelLogin(it) }
 		} else {
-			coordinator.ifActive(active) {
+			val revoked = coordinator.ifActive(active) {
 				remote = null
 				session = null
 				try { coordinator.revokeIfActive(active) } finally { emit(DiaryState.Cleared) }
 			}
+			if (revoked != true) coordinator.logoutIfNoActive()
 			pending?.let { coordinator.cancelLogin(it) }
 		}
 	}

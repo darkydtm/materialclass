@@ -98,13 +98,15 @@ class RepositorySessionTest {
 	@Test
 	fun failedSessionWriteClearsPreviouslyEmittedDiary() {
 		val events = mutableListOf<DiaryState>()
-		val repo = SchoolRepository(gateway, IdentityVerifier { SessionVerification.Verified(AccountId("synthetic-account"), true) }, coordinator, cache, { 1L }, { events.add(it) }, store)
+		var account = "synthetic-account"
+		val repo = SchoolRepository(gateway, IdentityVerifier { SessionVerification.Verified(AccountId(account), true) }, coordinator, cache, { 1L }, { events.add(it) }, store)
 		assertTrue(repo.login("synthetic", charArrayOf('x')) is GatewayResult.Success)
 		repo.refresh(diaryContext)
 		assertTrue(events.last() is DiaryState.Ready)
 		val temporary = File(context.noBackupFilesDir, "storage-tmp")
 		check(temporary.delete())
 		check(temporary.createNewFile())
+		account = "another-account"
 		try {
 			assertTrue(repo.login("synthetic", charArrayOf('x')) is GatewayResult.Failure)
 			assertEquals(DiaryState.Cleared, events.last())

@@ -25,13 +25,22 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 
 	internal fun beginLogin(): Long = synchronized(StorageLock) { ++revision }
 
-	internal fun activateIfUnchanged(expected: Long, account: AccountId): ActiveSession? = synchronized(StorageLock) {
+	internal fun activateIfUnchanged(expected: Long, account: AccountId, beforeActivate: () -> Unit = {}): ActiveSession? = synchronized(StorageLock) {
 		if (revision != expected) return@synchronized null
+		beforeActivate()
 		activate(account)
 	}
 
+	internal fun logoutIfNoActive(): Boolean = synchronized(StorageLock) {
+		if (active != null) return@synchronized false
+		logout()
+		true
+	}
+
 	internal fun cancelLogin(expected: Long) = synchronized(StorageLock) {
-		if (revision == expected) logout()
+		if (revision == expected) {
+			if (active == null) logout() else revision++
+		}
 	}
 
 	internal fun revokeIfActive(session: ActiveSession): Boolean = synchronized(StorageLock) {
