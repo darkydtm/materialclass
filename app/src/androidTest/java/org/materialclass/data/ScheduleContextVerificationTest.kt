@@ -16,4 +16,28 @@ class ScheduleContextVerificationTest {
 		assertNotNull(accessor)
 		assertNotNull(accessor!!.invoke(result))
 	}
+
+	@Test
+	fun rejectsMismatchesAndAmbiguousProfileWhileKeepingIdentity() {
+		val uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+		val session = UnverifiedSession("synthetic-token", "42", "student", SchoolContext(7, 2026, 2, uuid))
+		val profile = """{"data":{"role":"student","userId":42,"school_id":7,"group":{"id":2},"studentInfo":{"studentSchoolUuid":"$uuid"},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}}"""
+		val variants = listOf(
+			profile.replace("\"school_id\":7", "\"school_id\":8"),
+			profile.replace("\"id\":2", "\"id\":3"),
+			profile.replace("\"eduYear\":2026", "\"eduYear\":2025"),
+			profile.replace(uuid, "bbbbbbbb-bbbb-cccc-dddd-eeeeeeeeeeee"),
+			profile.replace(uuid, "not-a-uuid"),
+			profile.replace("{\"isCurrent\":true,\"eduYear\":2026}", "{\"isCurrent\":true,\"eduYear\":2026},{\"isCurrent\":true,\"eduYear\":2025}"),
+			"""{"data":{"role":"student","userId":42}}"""
+		)
+		variants.forEach { response ->
+			val result = NativeIdentityVerifier(Exchange { Response(200, response) }).verify(session) as SessionVerification.Verified
+			assertNull(result.scheduleSession)
+		}
+		val bad = UnverifiedSession("synthetic-token", "42", "student", SchoolContext(7, 2026, 2, "invalid"))
+		assertNull((NativeIdentityVerifier(Exchange { Response(200, profile.replace(uuid, "invalid")) }).verify(bad) as SessionVerification.Verified).scheduleSession)
+		assertFalse(NativeIdentityVerifier(Exchange { Response(200, profile.replace("\"userId\":42", "\"userId\":43")) }).verify(session) is SessionVerification.Verified)
+		assertFalse(NativeIdentityVerifier(Exchange { Response(200, profile.replace("student", "teacher")) }).verify(session) is SessionVerification.Verified)
+	}
 }
