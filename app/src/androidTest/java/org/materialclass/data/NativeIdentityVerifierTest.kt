@@ -146,4 +146,43 @@ class NativeIdentityVerifierTest {
 		restored.refresh(DiaryContext(7, 2026, 2, "01.01.2026"))
 		assertEquals(0, accesses)
 	}
+
+	@Test
+	fun encryptedRestoreRevalidatesScheduleCandidate() {
+		val uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+		val candidate = UnverifiedSession("synthetic-token", "42", "student", SchoolContext(7, 2026, 2, uuid))
+		val profile = """{"data":{"role":"student","userId":42,"school_id":7,"group":{"id":2},"studentInfo":{"studentSchoolUuid":"$uuid"},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}}"""
+		var response = profile
+		var profiles = 0
+		var schedules = 0
+		val verifier = NativeIdentityVerifier(Exchange { profiles++; Response(200, response) })
+		val gateway = object : SchoolGateway {
+			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(candidate)
+			override fun diary(session: UnverifiedSession, context: DiaryContext): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
+			override fun schedule(session: VerifiedScheduleSession, date: String): GatewayResult<Schedule> { schedules++; return GatewayResult.Success(Schedule(emptyList())) }
+		}
+		val cache = object : DiaryCache {
+			override fun read(session: ActiveSession): ByteArray? = null
+			override fun write(session: ActiveSession, bytes: ByteArray) = true
+		}
+		fun repo() = SchoolRepository(gateway, verifier, coordinator, cache, { 1L }, {}, store)
+		fun restart() {
+			SessionCoordinator::class.java.getDeclaredField("active").apply { isAccessible = true }.set(null, null)
+			SessionCoordinator::class.java.getDeclaredField("restorationAllowed").apply { isAccessible = true }.setBoolean(null, true)
+		}
+		assertTrue(repo().login("synthetic", charArrayOf('x')) is GatewayResult.Success)
+		restart()
+		val restored = repo()
+		assertTrue(restored.restore() is RestoreResult.Restored)
+		restored.schedule("01.01.2026") {}
+		assertEquals(1, schedules)
+		assertEquals(2, profiles)
+		restart()
+		response = profile.replace("\"school_id\":7", "\"school_id\":8")
+		val mismatch = repo()
+		assertTrue(mismatch.restore() is RestoreResult.Restored)
+		mismatch.schedule("01.01.2026") {}
+		assertEquals(1, schedules)
+		assertEquals(3, profiles)
+	}
 }
