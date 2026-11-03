@@ -61,6 +61,7 @@ class NativeUiControllerTest {
 		val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
 		try {
 			instrumentation.runOnMainSync { activity.setContent { MaterialClassApp(nativeEnabled = true, controllerFactory = { fake }) } }
+			waitFor(context.getString(R.string.logout))
 			click(context.getString(R.string.schedule))
 			waitFor(context.getString(R.string.data_unavailable))
 			instrumentation.runOnMainSync {
