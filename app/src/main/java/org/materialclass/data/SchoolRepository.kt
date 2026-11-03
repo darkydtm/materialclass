@@ -137,14 +137,21 @@ internal class SchoolRepository(
 			verification
 		}) { active ->
 			try {
-				afterRestoreActivation()
-				session = active
-				remote = candidate
-				scheduleSession = scheduleCandidate
-				diarySession = diaryCandidate
-				emit(DiaryState.Cleared)
+				val installed = coordinator.ifActive(active) {
+					session = active
+					remote = candidate
+					scheduleSession = scheduleCandidate
+					diarySession = diaryCandidate
+					true
+				} == true
+				if (installed) {
+					afterRestoreActivation()
+					if (coordinator.ifActive(active) { session === active } == true) emit(DiaryState.Cleared)
+				}
 			} catch (error: Exception) {
-				if (session === active) { session = null; remote = null; scheduleSession = null; diarySession = null }
+				synchronized(StorageLock) {
+					if (session === active) { session = null; remote = null; scheduleSession = null; diarySession = null }
+				}
 				throw error
 			}
 		}

@@ -322,7 +322,7 @@ class RepositorySessionTest {
 		}
 		try {
 			check(logoutStarted.await(10, TimeUnit.SECONDS))
-			logoutFinished.await(1, TimeUnit.SECONDS)
+			assertTrue("Logout must finish while callback is blocked", logoutFinished.await(5, TimeUnit.SECONDS))
 		} finally {
 			release.countDown()
 			restoring.join(10000)
@@ -330,11 +330,49 @@ class RepositorySessionTest {
 		}
 		assertFalse(restoring.isAlive)
 		assertFalse(loggingOut.isAlive)
-		assertTrue(result is RestoreResult.Cancelled || result is RestoreResult.Restored)
+		assertEquals(RestoreResult.Cancelled, result)
 		repo.refresh(diaryContext)
 		assertEquals(0, accesses)
 		assertFalse(File(context.noBackupFilesDir, "session").exists())
 		assertEquals(DiaryState.Cleared, events.lastOrNull())
+	}
+
+	@Test
+	fun restoreCallbackFailureDoesNotRevokeNewLogin() {
+		saved()
+		val entered = CountDownLatch(1); val release = CountDownLatch(1)
+		val events = java.util.Collections.synchronizedList(mutableListOf<DiaryState>())
+		val repo = SchoolRepository(gateway, IdentityVerifier { session, _ -> proof(session) }, coordinator, cache, { 1L }, events::add, store)
+		repo.afterRestoreActivation = {
+			entered.countDown()
+			check(release.await(10, TimeUnit.SECONDS))
+			throw IllegalStateException("synthetic failure")
+		}
+		var failure: Throwable? = null
+		val worker = thread { try { repo.restore() } catch (error: Throwable) { failure = error } }
+		try {
+			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			repo.logout()
+			assertTrue(repo.login("new", charArrayOf('x')) is GatewayResult.Success)
+			val epoch = repo.ownedEpoch()
+			release.countDown(); worker.join(10000)
+			assertFalse(worker.isAlive)
+			assertTrue(failure is IllegalStateException)
+			assertNotNull(epoch)
+			assertEquals(epoch, repo.ownedEpoch())
+			assertTrue(File(context.noBackupFilesDir, "session").exists())
+			repo.refresh(diaryContext)
+			assertEquals(1, accesses)
+		} finally { release.countDown(); worker.join(10000) }
+	}
+
+	@Test
+	fun restoreCallbackCanLogoutReentrantly() {
+		saved()
+		val repo = repository(IdentityVerifier { session, _ -> proof(session) })
+		repo.afterRestoreActivation = { repo.logout() }
+		assertEquals(RestoreResult.Cancelled, repo.restore())
+		assertFalse(File(context.noBackupFilesDir, "session").exists())
 	}
 
 	@Test

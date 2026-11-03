@@ -134,7 +134,7 @@ class SessionStore(context: Context, private val coordinator: SessionCoordinator
 		} finally {
 			candidate.material.fill(0)
 		}
-		return coordinator.finishRestore(revision) {
+		val result = coordinator.finishRestore(revision) {
 			when (verification) {
 				SessionVerification.Retry -> RestoreResult.Retry
 				SessionVerification.Expired, SessionVerification.Invalid -> { coordinator.rejectRestore(); RestoreResult.Invalid }
@@ -144,18 +144,21 @@ class SessionStore(context: Context, private val coordinator: SessionCoordinator
 						coordinator.rejectRestore()
 						RestoreResult.Invalid
 					} else {
-						val active = coordinator.acceptRestore(verification.account, candidate.namespace) ?: return@finishRestore RestoreResult.Cancelled
-						try {
-							onRestored(active)
-							RestoreResult.Restored(active)
-						} catch (error: Exception) {
-							try { coordinator.revokeIfActive(active) } catch (cleanup: Exception) { error.addSuppressed(cleanup) }
-							throw error
-						}
+						val active = coordinator.acceptRestore(verification.account, candidate.namespace, notify = false) ?: return@finishRestore RestoreResult.Cancelled
+						RestoreResult.Restored(active)
 					}
 				}
 			}
 		} ?: RestoreResult.Cancelled
+		if (result !is RestoreResult.Restored) return result
+		try {
+			onRestored(result.session)
+		} catch (error: Exception) {
+			try { coordinator.revokeIfActive(result.session) } catch (cleanup: Exception) { error.addSuppressed(cleanup) }
+			throw error
+		}
+		coordinator.notifyRestore(result.session)
+		return if (coordinator.ownedEpoch(result.session) != null) result else RestoreResult.Cancelled
 	}
 
 	fun read(session: ActiveSession): ByteArray? = coordinator.ifActive(session) {

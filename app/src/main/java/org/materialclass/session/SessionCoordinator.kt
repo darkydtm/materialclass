@@ -199,7 +199,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 	internal fun <T> finishRestore(expected: Long, action: () -> T): T? = synchronized(StorageLock) {
 		if (!synchronized(CancellationLock) { active == null && restorationAllowed && pending.isEmpty() && revision == expected }) null else action()
 	}
-	internal fun acceptRestore(account: AccountId, namespace: CacheNamespace): ActiveSession? {
+	internal fun acceptRestore(account: AccountId, namespace: CacheNamespace, notify: Boolean = true): ActiveSession? {
 		val result = synchronized(CancellationLock) {
 			if (pending.isNotEmpty() || active != null || !restorationAllowed) null else {
 				restorationAllowed = false; revision++
@@ -209,8 +209,15 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 				Triple(candidate, revocationEpoch, observers.toList())
 			}
 		} ?: return null
-		notifyAfterStorage(result.second, result.third)
+		if (notify) notifyAfterStorage(result.second, result.third)
 		return result.first
+	}
+	internal fun notifyRestore(session: ActiveSession) {
+		val event = synchronized(CancellationLock) {
+			if (active !== session || pending.isNotEmpty() || lastEvent.session !== session || lastEvent.change != SessionChange.ACTIVATED) null
+			else Pair(lastEvent.epoch, observers.toList())
+		} ?: return
+		notifyRevocation(event.first, event.second)
 	}
 	internal fun rejectRestore() {
 		synchronized(CancellationLock) { restorationAllowed = false; revision++ }
