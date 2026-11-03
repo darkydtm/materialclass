@@ -37,6 +37,47 @@ class NativeControllerIntegrationTest {
 		coordinator.logout()
 	}
 
+	@Test fun oldLogoutCompletionAfterActivationUnblocksSecondController() {
+		val entered = CountDownLatch(1)
+		val release = CountDownLatch(1)
+		val blocked = CountDownLatch(1)
+		val resume = CountDownLatch(1)
+		val shared = SessionCoordinator { entered.countDown(); check(release.await(10, TimeUnit.SECONDS)) }
+		val gateway = object : SchoolGateway {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Failure(AppError.UNAVAILABLE)
+			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = GatewayResult.Failure(AppError.UNAVAILABLE)
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = GatewayResult.Failure(AppError.UNAVAILABLE)
+			override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> = GatewayResult.Failure(AppError.UNAVAILABLE)
+		}
+		val cache = object : DiaryCache {
+			override fun read(session: ActiveSession): ByteArray? = null
+			override fun write(session: ActiveSession, bytes: ByteArray) = true
+		}
+		fun create() = NativeController { emit -> SchoolRepository(gateway, IdentityVerifier { _, _ -> SessionVerification.Retry }, shared, cache, { 1L }, emit, SessionStore(context, shared)) }
+		main { controller = create() }
+		val first = controller!!
+		val second = create()
+		val field = NativeController::class.java.getDeclaredField("logoutExecutor").apply { isAccessible = true }
+		val executor = field.get(second) as java.util.concurrent.ExecutorService
+		executor.execute { blocked.countDown(); check(resume.await(10, TimeUnit.SECONDS)) }
+		try {
+			assertTrue(blocked.await(10, TimeUnit.SECONDS))
+			main { first.logout() }
+			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			main { second.logout(); assertTrue(second.state.busy) }
+			release.countDown()
+			await { !first.state.busy && shared.pendingLogoutTicket() == null }
+			val current = shared.activate(AccountId("synthetic-new"))
+			val observerField = NativeController::class.java.getDeclaredField("observeLogout").apply { isAccessible = true }
+			@Suppress("UNCHECKED_CAST")
+			val observer = observerField.get(second) as (Long) -> Unit
+			main { observer(shared.revocationEpoch()); assertTrue(second.state.busy) }
+			resume.countDown()
+			await { !second.state.busy && !second.state.logoutPending }
+			assertEquals("current", shared.ifActive(current) { "current" })
+		} finally { release.countDown(); resume.countDown(); main { second.close() }; shared.pendingLogoutTicket()?.let { shared.logout(it) }; shared.logout() }
+	}
+
 	@Test fun expiryDuringIndependentLoginKeepsAttemptAndClearsOldData() {
 		val entered = CountDownLatch(1)
 		val release = CountDownLatch(1)

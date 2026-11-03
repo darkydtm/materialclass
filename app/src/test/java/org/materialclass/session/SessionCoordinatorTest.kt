@@ -10,6 +10,32 @@ import kotlin.concurrent.thread
 
 class SessionCoordinatorTest {
 	@Test
+	fun failedExpiryKeepsCleanupTicketUntilRetry() {
+		var fail = false
+		val first = SessionCoordinator { if (fail) throw IllegalStateException("synthetic failure") }
+		val second = SessionCoordinator { if (fail) throw IllegalStateException("synthetic failure") }
+		val old = first.activate(AccountId("synthetic-expiry"))
+		try {
+			fail = true
+			try { first.revokeIfActive(old, expired = true); throw AssertionError("Expected cleanup failure") } catch (_: IllegalStateException) { }
+			val ticket = second.pendingLogoutTicket()
+			assertNotNull("Failed expiry cleanup must remain retryable", ticket)
+			assertEquals(SessionChange.EXPIRED, second.event().change)
+			assertNull(second.ifActive(old) { "stale" })
+			assertNull(second.admit(second.beginLogin()))
+			assertNull(second.beginRestore())
+			fail = false
+			second.logout(ticket)
+			assertNull(second.pendingLogoutTicket())
+			val current = second.activate(AccountId("synthetic-next"))
+			assertEquals("current", first.ifActive(current) { "current" })
+		} finally {
+			fail = false
+			second.pendingLogoutTicket()?.let { second.logout(it) }
+			second.logout()
+		}
+	}
+	@Test
 	fun failedReplacementRevokesGloballyAndCanRetryCleanup() {
 		var fail = false
 		val first = SessionCoordinator { if (fail) throw IllegalStateException("synthetic failure") }
