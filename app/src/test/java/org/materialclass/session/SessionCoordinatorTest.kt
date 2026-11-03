@@ -10,6 +10,40 @@ import kotlin.concurrent.thread
 
 class SessionCoordinatorTest {
 	@Test
+	fun delayedExpiryCannotDescribeNewlyActivatedSession() {
+		val coordinator = SessionCoordinator { }
+		val old = coordinator.activate(AccountId("synthetic-expired"))
+		val entered = CountDownLatch(1)
+		val release = CountDownLatch(1)
+		val delivered = CountDownLatch(1)
+		var delayedEpoch = -1L
+		val observer: (Long) -> Unit = { epoch ->
+			if (coordinator.event().change == SessionChange.EXPIRED) {
+				entered.countDown()
+				check(release.await(10, TimeUnit.SECONDS))
+				delayedEpoch = epoch
+				delivered.countDown()
+			}
+		}
+		coordinator.observeRevocations(observer)
+		try {
+			assertEquals(true, coordinator.revokeIfActive(old, expired = true))
+			assertEquals(true, entered.await(10, TimeUnit.SECONDS))
+			val current = coordinator.activate(AccountId("synthetic-new"))
+			release.countDown()
+			assertEquals(true, delivered.await(10, TimeUnit.SECONDS))
+			assertEquals(true, delayedEpoch < coordinator.revocationEpoch())
+			assertEquals(SessionChange.ACTIVATED, coordinator.event().change)
+			assertEquals(current, coordinator.event().session)
+			assertEquals("current", coordinator.ifActive(current) { "current" })
+		} finally {
+			release.countDown()
+			coordinator.removeRevocationObserver(observer)
+			coordinator.logout()
+		}
+	}
+
+	@Test
 	fun activatingAnotherAccountAdvancesGlobalEpoch() {
 		val first = SessionCoordinator { }
 		val second = SessionCoordinator { }
