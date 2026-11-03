@@ -115,6 +115,9 @@ class NativeControllerIntegrationTest {
 		assertTrue(entered.await(10, TimeUnit.SECONDS))
 		try {
 			main { c.logout(); assertFalse(c.state.signedIn); assertTrue(c.state.busy) }
+			val rejectedPassword = charArrayOf('x')
+			main { c.login("synthetic", rejectedPassword); assertTrue(c.state.busy) }
+			assertEquals('\u0000', rejectedPassword[0])
 			val checker = Thread { cancelled = blockedLease!!.isCancelled(); checked.countDown() }
 			checker.start()
 			assertTrue("Lease cancellation must not wait for disk I/O", checked.await(2, TimeUnit.SECONDS))
