@@ -220,7 +220,9 @@ internal fun schoolContext(user: JSONObject): SchoolContext? {
 	val schoolId = user.opt("school_id").integerValue() ?: return null
 	val groupId = user.optJSONObject("group")?.opt("id").integerValue() ?: return null
 	val years = user.optJSONObject("school")?.optJSONArray("eduYears") ?: return null
-	val current = (0 until years.length()).mapNotNull { years.optJSONObject(it) }.filter { it.opt("isCurrent") == true }
+	val entries = (0 until years.length()).map { years.optJSONObject(it) ?: return null }
+	if (entries.any { it.opt("isCurrent") !is Boolean }) return null
+	val current = entries.filter { it.opt("isCurrent") == true }
 	if (current.size != 1) return null
 	val year = current.single().opt("eduYear").integerValue() ?: return null
 	if (schoolId <= 0 || groupId <= 0 || year <= 0 || year > Int.MAX_VALUE) return null

@@ -149,6 +149,7 @@ internal class SchoolRepository(
 			if (request.second != refreshRevision) return@ifActive
 			if (result is GatewayResult.Failure && result.error == AppError.SESSION_EXPIRED) {
 				remote = null
+				scheduleSession = null
 				session = null
 				coordinator.revokeIfActive(active)
 				emit(DiaryState.Error(AppError.SESSION_EXPIRED))
@@ -186,6 +187,7 @@ internal class SchoolRepository(
 			} finally { emit(DiaryState.Cleared) }
 		} else {
 			remote = null
+			scheduleSession = null
 			session = null
 			try {
 				val revoked = coordinator.revokeIfActive(active)

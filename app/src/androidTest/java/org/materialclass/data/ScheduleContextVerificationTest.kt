@@ -29,6 +29,7 @@ class ScheduleContextVerificationTest {
 			profile.replace(uuid, "bbbbbbbb-bbbb-cccc-dddd-eeeeeeeeeeee"),
 			profile.replace(uuid, "not-a-uuid"),
 			profile.replace("{\"isCurrent\":true,\"eduYear\":2026}", "{\"isCurrent\":true,\"eduYear\":2026},{\"isCurrent\":true,\"eduYear\":2025}"),
+			profile.replace("{\"isCurrent\":true,\"eduYear\":2026}", "{\"isCurrent\":true,\"eduYear\":2026},{}"),
 			"""{"data":{"role":"student","userId":42}}"""
 		)
 		variants.forEach { response ->
