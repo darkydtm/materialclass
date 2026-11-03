@@ -40,15 +40,18 @@ internal interface NativeUiController {
 internal class NativeController(private val repositoryFactory: ((DiaryState) -> Unit) -> SchoolRepository) : NativeUiController {
 	private val executor = Executors.newSingleThreadExecutor()
 	private val handler = Handler(Looper.getMainLooper())
-	private var generation = 0L
-	private var closed = false
+	@Volatile private var generation = 0L
+	@Volatile private var closed = false
 	private var started = false
 	private var currentTaskGeneration = 0L
 	override var state by mutableStateOf(NativeUiState())
 		private set
 	private val repository = repositoryFactory { diary ->
 		val task = currentTaskGeneration
-		post(task) { state = state.copy(diary = diary, error = if (diary is DiaryState.Error) diary.error else state.error) }
+		post(task) {
+			state = if (diary is DiaryState.Error && diary.error == AppError.SESSION_EXPIRED) NativeUiState(error = diary.error)
+			else state.copy(diary = diary, error = if (diary is DiaryState.Error) diary.error else state.error)
+		}
 	}
 
 	private fun post(task: Long, action: () -> Unit) {
@@ -61,6 +64,7 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 		val task = ++generation
 		state = state.copy(busy = true)
 		executor.execute {
+			if (closed || generation != task) return@execute
 			currentTaskGeneration = task
 			val result = try { repository.restore() } catch (_: Exception) { RestoreResult.Retry }
 			post(task) {
@@ -76,6 +80,7 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 		state = NativeUiState(busy = true)
 		try {
 			executor.execute {
+				if (closed || generation != task) { password.fill('\u0000'); return@execute }
 				currentTaskGeneration = task
 				val result = try { repository.login(username, password) } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) } finally { password.fill('\u0000') }
 				post(task) {
@@ -88,9 +93,10 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 
 	override fun refresh() {
 		if (closed || !state.signedIn) return
-		val task = generation
+		val task = ++generation
 		state = state.copy(error = null)
 		executor.execute {
+			if (closed || generation != task) return@execute
 			currentTaskGeneration = task
 			try {
 				repository.refreshCurrent()
