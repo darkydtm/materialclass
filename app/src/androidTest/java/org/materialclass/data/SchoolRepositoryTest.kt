@@ -131,6 +131,46 @@ class SchoolRepositoryTest {
 		assertEquals(listOf(false, false), held)
 	}
 
+	private fun callbackDoesNotHoldStorageLock(schedule: Boolean, expired: Boolean) {
+		val entered = CountDownLatch(1); val release = CountDownLatch(1); val loggedOut = CountDownLatch(1)
+		val held = java.util.concurrent.atomic.AtomicBoolean(true)
+		val applied = java.util.concurrent.atomic.AtomicBoolean(false)
+		val gateway = object : TestSchoolGateway() {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic", "1", "student", SchoolContext(1, 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
+			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = if (expired) GatewayResult.Failure(AppError.SESSION_EXPIRED) else GatewayResult.Success(context.date)
+			override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> = if (expired) GatewayResult.Failure(AppError.SESSION_EXPIRED) else GatewayResult.Success(Schedule(emptyList()))
+		}
+		lateinit var repo: SchoolRepository
+		val callback = {
+			held.set(Thread.holdsLock(org.materialclass.security.StorageLock))
+			entered.countDown()
+			check(release.await(20, TimeUnit.SECONDS))
+		}
+		repo = SchoolRepository(gateway, IdentityVerifier { session, _ -> proof(session) }, coordinator, FakeCache(), { 1L }, { if (it is DiaryState.Error) callback() }, store)
+		assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+		val epoch = repo.revocationEpoch()
+		val worker = thread {
+			if (schedule) repo.schedule(context.date) { callback(); if (repo.revocationEpoch() == epoch) applied.set(true) }
+			else repo.currentWeek { callback(); if (repo.revocationEpoch() == epoch) applied.set(true) }
+		}
+		var logout: Thread? = null
+		try {
+			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			logout = thread { repo.logout(); synchronized(org.materialclass.security.StorageLock) { }; loggedOut.countDown() }
+			assertTrue("Logout and storage must proceed while the callback is blocked", loggedOut.await(5, TimeUnit.SECONDS))
+			assertFalse("Callback must run outside StorageLock", held.get())
+		} finally {
+			release.countDown(); worker.join(10000); logout?.join(10000)
+		}
+		assertFalse(worker.isAlive)
+		assertFalse("Consumer must reject a result after logout", applied.get())
+	}
+
+	@Test fun scheduleCallbackDoesNotHoldStorageLock() = callbackDoesNotHoldStorageLock(true, false)
+	@Test fun weekCallbackDoesNotHoldStorageLock() = callbackDoesNotHoldStorageLock(false, false)
+	@Test fun expiredScheduleCallbackDoesNotHoldStorageLock() = callbackDoesNotHoldStorageLock(true, true)
+	@Test fun expiredWeekCallbackDoesNotHoldStorageLock() = callbackDoesNotHoldStorageLock(false, true)
+
 	@Test fun cancelledCacheWriteDoesNotPublishRefresh() = cancelledCacheWriteDoesNotPublish(false)
 	@Test fun cancelledCacheWriteDoesNotPublishCurrentRefresh() = cancelledCacheWriteDoesNotPublish(true)
 
