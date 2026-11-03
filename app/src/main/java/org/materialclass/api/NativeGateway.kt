@@ -11,7 +11,17 @@ import javax.net.ssl.HttpsURLConnection
 interface SchoolGateway {
 	fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession>
 	fun diary(session: UnverifiedSession, context: DiaryContext): GatewayResult<Diary>
+	fun schedule(session: VerifiedScheduleSession, date: String): GatewayResult<Schedule> = GatewayResult.Failure(AppError.UNAVAILABLE)
 }
+
+class VerifiedScheduleSession internal constructor(internal val remote: UnverifiedSession, internal val account: String) {
+	override fun toString(): String = "VerifiedScheduleSession([redacted])"
+}
+
+class Schedule(val days: List<ScheduleDay>)
+class ScheduleDay(val date: Long, val dateFormat: String, val isCurrent: Boolean, val isHoliday: Boolean, val lessons: List<ScheduleLesson>)
+class ScheduleLesson(val type: String, val cabinetId: Long, val themeLabel: String)
+
 
 sealed class GatewayResult<out T> {
 	class Success<T>(val value: T) : GatewayResult<T>()
@@ -28,7 +38,7 @@ class UnverifiedSession internal constructor(
 	override fun toString(): String = "UnverifiedSession([redacted])"
 }
 
-class SchoolContext(val schoolId: Long, val eduYear: Int, val groupId: Long) {
+class SchoolContext(val schoolId: Long, val eduYear: Int, val groupId: Long, internal val studentSchoolUuid: String? = null) {
 	fun diary(date: String): DiaryContext = DiaryContext(schoolId, eduYear, groupId, date)
 	override fun toString(): String = "SchoolContext([redacted])"
 }
@@ -104,6 +114,37 @@ class NativeGateway internal constructor(private val exchange: Exchange) : Schoo
 		}
 	}
 
+	override fun schedule(session: VerifiedScheduleSession, date: String): GatewayResult<Schedule> {
+		return try {
+			val remote = session.remote
+			val context = remote.context ?: return GatewayResult.Failure(AppError.INCOMPATIBLE_RESPONSE)
+			val uuid = context.studentSchoolUuid ?: return GatewayResult.Failure(AppError.INCOMPATIBLE_RESPONSE)
+			if (session.account != remote.identityCandidate || remote.role != "student" || remote.token.isEmpty() || context.schoolId <= 0 || context.eduYear <= 0 || context.groupId <= 0 || !uuid.matches(Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")) || !date.matches(Regex("[0-9]{2}\\.[0-9]{2}\\.[0-9]{4}"))) return GatewayResult.Failure(AppError.INCOMPATIBLE_RESPONSE)
+			val query = listOf("schoolId" to context.schoolId.toString(), "eduYear" to context.eduYear.toString(), "studentSchoolUuid" to uuid, "date" to date, "groupId" to context.groupId.toString()).joinToString("&") { (key, value) -> "$key=${URLEncoder.encode(value, "UTF-8")}" }
+			val response = exchange.execute(request("/api/v4/os/clientoffice/schedule?$query", "GET", mapOf("Authorization" to "Bearer ${remote.token}", "x-school-id" to context.schoolId.toString()), null))
+			if (response.status != 200) return GatewayResult.Failure(AppError.UNAVAILABLE)
+			val data = JSONObject(response.body).getJSONObject("data")
+			val weeks = data.getJSONObject("weeks")
+			weeks.strictString("next"); weeks.strictString("prev")
+			weeks.get("next_time").integerValue() ?: throw IllegalArgumentException()
+			weeks.get("prev_time").integerValue() ?: throw IllegalArgumentException()
+			val days = data.getJSONArray("days").mapObjects { day ->
+				val timestamp = day.get("date").integerValue() ?: throw IllegalArgumentException()
+				ScheduleDay(timestamp, day.strictString("dateFormat"), day.strictBoolean("isCurrent"), day.strictBoolean("isHoliday"), day.getJSONArray("schedule").mapObjects { lesson ->
+					val cabinet = lesson.getJSONObject("cabinet").get("id").integerValue() ?: throw IllegalArgumentException()
+					ScheduleLesson(lesson.strictString("type"), cabinet, lesson.getJSONObject("theme").strictString("label"))
+				})
+			}
+			GatewayResult.Success(Schedule(days))
+		} catch (_: SocketTimeoutException) {
+			GatewayResult.Failure(AppError.TIMEOUT)
+		} catch (_: java.io.IOException) {
+			GatewayResult.Failure(AppError.OFFLINE)
+		} catch (_: Exception) {
+			GatewayResult.Failure(AppError.INCOMPATIBLE_RESPONSE)
+		}
+	}
+
 	private fun request(path: String, method: String, extra: Map<String, String>, body: ByteArray?): Request {
 		val headers = mapOf("Accept" to "application/json", "Content-Type" to "application/json", "X-Localization" to "ru", "X-Mathrix" to deviceId, "Origin" to "https://www.bilimclass.kz", "Referer" to "https://www.bilimclass.kz/", "User-Agent" to "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36") + extra
 		return Request(URL("https://api.bilimclass.kz$path"), method, headers, body)
@@ -151,7 +192,7 @@ private fun schoolContext(user: JSONObject): SchoolContext? {
 	if (current.size != 1) return null
 	val year = current.single().opt("eduYear").integerValue() ?: return null
 	if (schoolId <= 0 || groupId <= 0 || year <= 0 || year > Int.MAX_VALUE) return null
-	return SchoolContext(schoolId, year.toInt(), groupId)
+	return SchoolContext(schoolId, year.toInt(), groupId, user.optJSONObject("studentInfo")?.opt("studentSchoolUuid") as? String)
 }
 
 private fun Any?.integerValue(): Long? = when (this) {

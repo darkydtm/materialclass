@@ -8,6 +8,8 @@ import org.materialclass.api.DiarySubject
 import org.materialclass.api.GatewayResult
 import org.materialclass.api.SchoolGateway
 import org.materialclass.api.UnverifiedSession
+import org.materialclass.api.VerifiedScheduleSession
+import org.materialclass.api.Schedule
 import org.materialclass.cache.EncryptedCache
 import org.materialclass.session.AccountId
 import org.materialclass.session.ActiveSession
@@ -115,6 +117,17 @@ internal class SchoolRepository(
 		}
 	}
 
+	fun schedule(date: String): GatewayResult<Schedule> {
+		val active = session ?: return GatewayResult.Failure(AppError.UNAVAILABLE)
+		val verified = coordinator.ifActive(active) {
+			val candidate = remote ?: return@ifActive null
+			if (candidate.identityCandidate != active.account.value) return@ifActive null
+			VerifiedScheduleSession(candidate, active.account.value)
+		} ?: return GatewayResult.Failure(AppError.UNAVAILABLE)
+		val result = try { gateway.schedule(verified, date) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
+		return coordinator.ifActive(active) { result } ?: GatewayResult.Failure(AppError.UNAVAILABLE)
+	}
+
 	fun refresh(context: DiaryContext) {
 		val active = session ?: return
 		val request = coordinator.ifActive(active) {
@@ -178,21 +191,30 @@ internal class SchoolRepository(
 private fun encodeSession(session: UnverifiedSession): ByteArray {
 	val bytes = ByteArrayOutputStream()
 	DataOutputStream(bytes).use { output ->
-		output.writeInt(2)
+		output.writeInt(3)
 		output.writeUTF(session.identityCandidate ?: throw IllegalArgumentException())
 		output.writeUTF(session.token)
 		output.writeBoolean(session.context != null)
-		session.context?.let { output.writeLong(it.schoolId); output.writeInt(it.eduYear); output.writeLong(it.groupId) }
+		session.context?.let {
+			output.writeLong(it.schoolId); output.writeInt(it.eduYear); output.writeLong(it.groupId)
+			output.writeBoolean(it.studentSchoolUuid != null)
+			it.studentSchoolUuid?.let(output::writeUTF)
+		}
 	}
 	return bytes.toByteArray()
 }
 
 private fun decodeSession(bytes: ByteArray): UnverifiedSession? = try {
 	val input = DataInputStream(ByteArrayInputStream(bytes))
-	require(input.readInt() == 2)
+	val version = input.readInt()
+	require(version == 2 || version == 3)
 	val identity = input.readUTF().also { require(it.isNotEmpty()) }
 	val token = input.readUTF().also { require(it.isNotEmpty()) }
-	val context = if (input.readBoolean()) org.materialclass.api.SchoolContext(input.readLong(), input.readInt(), input.readLong()) else null
+	val context = if (input.readBoolean()) {
+		val school = input.readLong(); val year = input.readInt(); val group = input.readLong()
+		val uuid = if (version == 3 && input.readBoolean()) input.readUTF() else null
+		org.materialclass.api.SchoolContext(school, year, group, uuid)
+	} else null
 	require(input.available() == 0)
 	UnverifiedSession(token, identity, "student", context)
 } catch (_: Exception) { null }
