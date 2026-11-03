@@ -144,7 +144,7 @@ class SessionStore(context: Context, private val coordinator: SessionCoordinator
 						coordinator.rejectRestore()
 						RestoreResult.Invalid
 					} else {
-						val active = coordinator.acceptRestore(verification.account, candidate.namespace)
+						val active = coordinator.acceptRestore(verification.account, candidate.namespace) ?: return@finishRestore RestoreResult.Cancelled
 						try {
 							onRestored(active)
 							RestoreResult.Restored(active)

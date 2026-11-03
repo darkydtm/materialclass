@@ -7,10 +7,7 @@ import java.util.concurrent.Executors
 
 @JvmInline
 value class AccountId(val value: String) {
-	init {
-		require(value.isNotEmpty())
-	}
-
+	init { require(value.isNotEmpty()) }
 	override fun toString(): String = "AccountId([redacted])"
 }
 
@@ -23,19 +20,15 @@ internal class CacheNamespace(val value: String) {
 }
 
 class ActiveSession internal constructor(val account: AccountId, internal val cacheNamespace: CacheNamespace)
-
 private val CancellationLock = Any()
 
 class RequestLease internal constructor(internal val owner: ActiveSession? = null) {
 	@Volatile internal var cancelled = false
 	internal var disconnect: (() -> Unit)? = null
-
 	internal fun register(disconnect: () -> Unit): Boolean = synchronized(CancellationLock) {
 		if (cancelled) false else { this.disconnect = disconnect; true }
 	}
-
 	fun isCancelled(): Boolean = cancelled
-
 	internal fun unregister() = synchronized(CancellationLock) { disconnect = null }
 }
 
@@ -46,13 +39,13 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		private var active: ActiveSession? = null
 		private var restorationAllowed = true
 		private var revision = 0L
-		private var cancellationPending = false
+		private val pending = mutableSetOf<Any>()
 		private val leases = mutableSetOf<RequestLease>()
 		private val disconnectExecutor = Executors.newCachedThreadPool()
 
-		internal fun permits(lease: RequestLease, account: String): Boolean = synchronized(StorageLock) { synchronized(CancellationLock) {
-			!lease.cancelled && lease in leases && lease.owner === active && active?.account?.value == account
-		} }
+		internal fun permits(lease: RequestLease, account: String): Boolean = synchronized(CancellationLock) {
+			pending.isEmpty() && !lease.cancelled && lease in leases && lease.owner === active && active?.account?.value == account
+		}
 
 		private fun cancelRequests(owner: ActiveSession? = null) {
 			val disconnects = synchronized(CancellationLock) {
@@ -63,15 +56,16 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 			}
 			disconnects.forEach { disconnect -> disconnectExecutor.execute { try { disconnect() } catch (_: Exception) { } } }
 		}
-
-		private fun nextRevision(): Long = synchronized(CancellationLock) { ++revision }
-		private fun matches(expected: Long): Boolean = synchronized(CancellationLock) { !cancellationPending && revision == expected }
-
+		private fun matches(expected: Long): Boolean = synchronized(CancellationLock) { pending.isEmpty() && revision == expected }
 	}
 
-	fun cancelInFlightNow() {
+	private val ownPending = ArrayDeque<Any>()
+
+	fun cancelInFlightNow(): Any {
+		val token = Any()
 		val disconnects = synchronized(CancellationLock) {
-			cancellationPending = true
+			pending.add(token)
+			ownPending.addLast(token)
 			revision++
 			leases.forEach { it.cancelled = true }
 			val callbacks = leases.mapNotNull { lease -> lease.disconnect.also { lease.disconnect = null } }
@@ -79,103 +73,100 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 			callbacks
 		}
 		disconnects.forEach { disconnect -> disconnectExecutor.execute { try { disconnect() } catch (_: Exception) { } } }
+		return token
 	}
 
-	internal fun admit(session: ActiveSession): RequestLease? = synchronized(StorageLock) {
-		synchronized(CancellationLock) {
-			if (active !== session || cancellationPending) null else RequestLease(session).also { leases.add(it) }
-		}
+	internal fun admit(session: ActiveSession): RequestLease? = synchronized(CancellationLock) {
+		if (active !== session || pending.isNotEmpty()) null else RequestLease(session).also { leases.add(it) }
 	}
-
 	internal fun requestRevision(): Long = synchronized(CancellationLock) { revision }
-
-	internal fun admit(session: ActiveSession, expected: Long): RequestLease? = synchronized(StorageLock) {
-		synchronized(CancellationLock) {
-			if (active !== session || cancellationPending || revision != expected) null else RequestLease(session).also { leases.add(it) }
-		}
+	internal fun admit(session: ActiveSession, expected: Long): RequestLease? = synchronized(CancellationLock) {
+		if (active !== session || pending.isNotEmpty() || revision != expected) null else RequestLease(session).also { leases.add(it) }
 	}
-
 	internal fun finish(lease: RequestLease) = synchronized(CancellationLock) {
-		leases.remove(lease)
-		lease.cancelled = true
-		lease.disconnect = null
+		leases.remove(lease); lease.cancelled = true; lease.disconnect = null
 	}
-
 	internal fun admit(expected: Long): RequestLease? = synchronized(CancellationLock) {
-		if (cancellationPending || revision != expected) null else RequestLease().also { leases.add(it) }
+		if (pending.isNotEmpty() || revision != expected) null else RequestLease().also { leases.add(it) }
 	}
-
-	internal fun beginLogin(): Long = synchronized(StorageLock) { cancelRequests(); nextRevision() }
-
+	internal fun beginLogin(): Long = synchronized(StorageLock) {
+		cancelRequests()
+		synchronized(CancellationLock) { ++revision }
+	}
 	internal fun activateIfUnchanged(expected: Long, account: AccountId, beforeActivate: () -> Unit = {}): ActiveSession? = synchronized(StorageLock) {
 		if (!matches(expected)) return@synchronized null
 		beforeActivate()
-		activate(account)
+		if (!matches(expected)) return@synchronized null
+		activateChecked(account, expected)
 	}
-
-	internal fun logoutIfNoActive(): Boolean = synchronized(StorageLock) {
-		if (active != null) return@synchronized false
-		logout()
+	internal fun logoutIfNoActive(token: Any? = null): Boolean = synchronized(StorageLock) {
+		if (synchronized(CancellationLock) { active != null }) return@synchronized false
+		logout(token)
 		true
 	}
-
 	internal fun cancelLogin(expected: Long) = synchronized(StorageLock) {
 		if (matches(expected)) {
-			if (active == null) logout() else { cancelRequests(); nextRevision() }
+			if (synchronized(CancellationLock) { active == null }) logout() else { cancelRequests(); synchronized(CancellationLock) { revision++ } }
 		}
 	}
-
 	internal fun revokeIfActive(session: ActiveSession): Boolean = synchronized(StorageLock) {
-		if (active !== session) return@synchronized false
+		val revoked = synchronized(CancellationLock) {
+			if (active !== session) false else { active = null; restorationAllowed = false; revision++; true }
+		}
+		if (!revoked) return@synchronized false
 		cancelRequests(session)
-		active = null
-		restorationAllowed = false
 		clearSession()
 		true
 	}
-
 	internal fun activate(account: AccountId): ActiveSession = synchronized(StorageLock) {
-		cancelRequests()
-		active = null
-		nextRevision()
-		restorationAllowed = false
-		clearSession()
-		ActiveSession(account, CacheNamespace.create()).also { active = it }
+		activateChecked(account, requestRevision()) ?: throw IllegalStateException("Session activation cancelled")
 	}
-
+	private fun activateChecked(account: AccountId, expected: Long): ActiveSession? {
+		val activationRevision = synchronized(CancellationLock) {
+			if (pending.isNotEmpty() || revision != expected) null else { active = null; restorationAllowed = false; ++revision }
+		} ?: return null
+		cancelRequests()
+		clearSession()
+		val candidate = ActiveSession(account, CacheNamespace.create())
+		return synchronized(CancellationLock) {
+			if (pending.isNotEmpty() || revision != activationRevision) null else candidate.also { active = it }
+		}
+	}
 	internal fun beginRestore(): Long? = synchronized(StorageLock) {
-		if (active != null || !restorationAllowed) null else { cancelRequests(); nextRevision() }
+		val expected = synchronized(CancellationLock) {
+			if (active != null || !restorationAllowed || pending.isNotEmpty()) null else ++revision
+		}
+		if (expected != null) cancelRequests()
+		expected
 	}
-
 	internal fun <T> finishRestore(expected: Long, action: () -> T): T? = synchronized(StorageLock) {
-		if (active != null || !restorationAllowed || !matches(expected)) null else action()
+		if (!synchronized(CancellationLock) { active == null && restorationAllowed && pending.isEmpty() && revision == expected }) null else action()
 	}
-
-	internal fun acceptRestore(account: AccountId, namespace: CacheNamespace): ActiveSession {
-		restorationAllowed = false
-		nextRevision()
-		return ActiveSession(account, namespace).also { active = it }
+	internal fun acceptRestore(account: AccountId, namespace: CacheNamespace): ActiveSession? = synchronized(CancellationLock) {
+		if (pending.isNotEmpty() || active != null || !restorationAllowed) null else {
+			restorationAllowed = false; revision++; ActiveSession(account, namespace).also { active = it }
+		}
 	}
-
 	internal fun rejectRestore() {
-		restorationAllowed = false
-		nextRevision()
+		synchronized(CancellationLock) { restorationAllowed = false; revision++ }
 		clearSession()
 	}
-
-	fun logout() = synchronized(StorageLock) {
+	fun logout(token: Any? = null) = synchronized(StorageLock) {
+		val ownedToken = synchronized(CancellationLock) {
+			val owned = token ?: ownPending.firstOrNull()
+			active = null; revision++; restorationAllowed = false
+			owned
+		}
 		cancelRequests()
-		active = null
-		nextRevision()
-		restorationAllowed = false
 		clearSession()
-		synchronized(CancellationLock) { cancellationPending = false }
+		if (ownedToken != null) finishImmediateLogout(ownedToken)
 	}
-
-	internal fun finishImmediateLogout() = synchronized(CancellationLock) { cancellationPending = false }
-
+	internal fun finishImmediateLogout(token: Any) = synchronized(CancellationLock) {
+		ownPending.remove(token)
+		pending.remove(token)
+	}
 	fun <T> ifActive(session: ActiveSession, action: () -> T): T? = synchronized(StorageLock) {
-		if (active !== session) return@synchronized null
+		if (!synchronized(CancellationLock) { active === session && pending.isEmpty() }) return@synchronized null
 		action()
 	}
 }

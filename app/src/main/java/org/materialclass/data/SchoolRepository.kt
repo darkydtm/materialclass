@@ -312,13 +312,13 @@ internal class SchoolRepository(
 
 	fun cancelInFlightNow() = coordinator.cancelInFlightNow()
 
-	fun logout() = synchronized(StorageLock) {
+	fun logout(token: Any? = null) = synchronized(StorageLock) {
 		val pending = loginRevision
 		loginRevision = null
 		val active = session
 		if (active == null) {
 			try {
-				if (!coordinator.logoutIfNoActive()) pending?.let { coordinator.cancelLogin(it) }
+				if (!coordinator.logoutIfNoActive(token)) pending?.let { coordinator.cancelLogin(it) }
 			} finally { emit(DiaryState.Cleared) }
 		} else {
 			remote = null
@@ -327,11 +327,11 @@ internal class SchoolRepository(
 			session = null
 			try {
 				val revoked = coordinator.revokeIfActive(active)
-				if (!revoked) coordinator.logoutIfNoActive()
+				if (!revoked) coordinator.logoutIfNoActive(token)
 				pending?.let { coordinator.cancelLogin(it) }
 			} finally { emit(DiaryState.Cleared) }
 		}
-		coordinator.finishImmediateLogout()
+		if (token != null) coordinator.finishImmediateLogout(token)
 	}
 }
 

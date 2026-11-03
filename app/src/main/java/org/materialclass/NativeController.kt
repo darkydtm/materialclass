@@ -23,6 +23,7 @@ import java.util.concurrent.Executors
 internal data class NativeUiState(
 	val signedIn: Boolean = false,
 	val busy: Boolean = false,
+	val logoutPending: Boolean = false,
 	val diary: DiaryState = DiaryState.Cleared,
 	val schedule: Schedule? = null,
 	val error: AppError? = null,
@@ -121,11 +122,11 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 		if (closed || logoutPending) return
 		val task = ++generation
 		logoutPending = true
-		state = NativeUiState(busy = true)
-		repository.cancelInFlightNow()
+		state = NativeUiState(busy = true, logoutPending = true)
+		val token = repository.cancelInFlightNow()
 		logoutExecutor.execute {
-			val error = try { repository.logout(); null } catch (_: Exception) { AppError.UNAVAILABLE }
-			post(task) { logoutPending = error != null; state = NativeUiState(busy = false, error = error) }
+			val error = try { repository.logout(token); null } catch (_: Exception) { AppError.UNAVAILABLE }
+			post(task) { logoutPending = error != null; state = NativeUiState(busy = false, logoutPending = error != null, error = error) }
 		}
 	}
 
