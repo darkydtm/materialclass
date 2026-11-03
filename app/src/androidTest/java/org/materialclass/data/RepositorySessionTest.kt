@@ -48,6 +48,35 @@ class RepositorySessionTest {
 	fun cleanup() { coordinator.logout() }
 
 	@Test
+	fun logoutBeforeLoginAdmissionPreventsGatewayCall() {
+		val entered = CountDownLatch(1)
+		val release = CountDownLatch(1)
+		val calls = java.util.concurrent.atomic.AtomicInteger()
+		val fake = object : SchoolGateway {
+			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> {
+				calls.incrementAndGet()
+				return GatewayResult.Success(UnverifiedSession("synthetic-token", "424242424242", "student", SchoolContext(1, 2026, 2)))
+			}
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
+		}
+		val repo = SchoolRepository(fake, IdentityVerifier { proof(it) }, coordinator, cache, { 1L }, {}, store)
+		repo.beforeRequestAdmission = { entered.countDown(); check(release.await(10, TimeUnit.SECONDS)) }
+		val password = charArrayOf('x')
+		val worker = thread { repo.login("synthetic", password) }
+		try {
+			assertTrue("Login must reach the admission barrier", entered.await(5, TimeUnit.SECONDS))
+			repo.logout()
+		} finally {
+			release.countDown()
+			worker.join(10000)
+		}
+		assertFalse(worker.isAlive)
+		assertEquals(0, calls.get())
+		assertArrayEquals(charArrayOf('\u0000'), password)
+		assertFalse(File(context.noBackupFilesDir, "session").exists())
+	}
+
+	@Test
 	fun verifiedLoginPersistsEncryptedSession() {
 		val constructor = SchoolRepository::class.java.declaredConstructors.firstOrNull { constructor ->
 			constructor.parameterTypes.any { it == SessionStore::class.java }
