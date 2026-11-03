@@ -205,7 +205,7 @@ class NativeGateway internal constructor(private val exchange: Exchange) : Schoo
 					ScheduleLesson(lesson.strictString("type"), cabinet, lesson.getJSONObject("theme").strictString("label"))
 				})
 			}
-			if (days.size != 7 || days.none { it.lessons.isNotEmpty() }) return GatewayResult.Failure(AppError.INCOMPATIBLE_RESPONSE)
+			if (days.size != 7) return GatewayResult.Failure(AppError.INCOMPATIBLE_RESPONSE)
 			val dates = days.map { calendarDate(it.dateFormat) ?: throw IllegalArgumentException() }
 			if (requested !in dates || dates.zipWithNext().any { (first, second) -> second - first != 86_400_000L }) return GatewayResult.Failure(AppError.INCOMPATIBLE_RESPONSE)
 			GatewayResult.Success(Schedule(days))

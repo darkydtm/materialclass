@@ -32,6 +32,34 @@ class NativeScheduleTest {
 	}
 
 	@Test
+	fun acceptsSevenConsecutiveDaysWithoutLessons() {
+		val empty = body.replace("[{\"type\":\"regular\",\"cabinet\":{\"id\":1},\"theme\":{\"label\":\"Synthetic\"}}]", "[]")
+		val result = NativeGateway(Exchange { Response(200, empty) }).schedule(session(), "01.01.2026") as GatewayResult.Success
+		assertEquals(dates, result.value.days.map { it.dateFormat })
+		assertTrue(result.value.days.all { it.lessons.isEmpty() })
+	}
+
+	@Test
+	fun rejectsMissingNullUnexpectedAndPartialScheduleShapes() {
+		val empty = body.replace("[{\"type\":\"regular\",\"cabinet\":{\"id\":1},\"theme\":{\"label\":\"Synthetic\"}}]", "[]")
+		val responses = listOf(
+			empty.replaceFirst(",\"schedule\":[]", ""),
+			empty.replaceFirst("\"schedule\":[]", "\"schedule\":null"),
+			empty.replaceFirst("\"schedule\":[]", "\"schedule\":{}"),
+			empty.replaceFirst("\"schedule\":[]", "\"schedule\":[null]"),
+			empty.replaceFirst("\"isHoliday\":false", "\"isHoliday\":\"false\""),
+			empty.replace("\"next_time\":2", "\"next_time\":null"),
+			empty.replace("29.12.2025", "30.12.2025"),
+			empty.replace("01.01.2026", "08.01.2026"),
+			"""{"data":{"weeks":{"next":"02.01.2026","prev":"01.01.2026","next_time":2,"prev_time":1},"days":[{"date":1,"dateFormat":"01.01.2026","isCurrent":true,"isHoliday":false,"schedule":[]}]}}"""
+		)
+		responses.forEach { response ->
+			val result = NativeGateway(Exchange { Response(200, response) }).schedule(session(), "01.01.2026")
+			assertEquals(AppError.INCOMPATIBLE_RESPONSE, (result as GatewayResult.Failure).error)
+		}
+	}
+
+	@Test
 	fun rejectsInvalidDuplicateAndWrongWeekDates() {
 		val responses = listOf(
 			body.replace("29.12.2025", "32.12.2025"),

@@ -104,7 +104,13 @@ internal fun MaterialClassApp(example: ExampleData? = null, nativeEnabled: Boole
 										DiaryState.Loading -> Text(stringResource(R.string.loading))
 										else -> Text(stringResource(R.string.data_unavailable))
 									}
-								} else nativeState.schedule?.days?.forEach { day -> Text(day.dateFormat); day.lessons.forEach { Text(it.themeLabel) } } ?: Text(stringResource(R.string.data_unavailable))
+								} else {
+									val schedule = nativeState.schedule
+									if (schedule == null) Text(stringResource(R.string.data_unavailable)) else {
+										if (schedule.days.all { it.lessons.isEmpty() }) Text(stringResource(R.string.schedule_empty))
+										schedule.days.forEach { day -> Text(day.dateFormat); day.lessons.forEach { Text(it.themeLabel) } }
+									}
+								}
 								if (nativeState.signedIn) Button(onClick = { controller.refresh() }) { Text(stringResource(R.string.refresh)) }
 							} else if (example == null) Text(stringResource(R.string.data_unavailable)) else {
 								Text(stringResource(R.string.example_only))

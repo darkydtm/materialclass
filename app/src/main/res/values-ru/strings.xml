@@ -12,6 +12,7 @@
 	<string name="settings">Настройки</string>
 	<string name="backend_unavailable">Настоящий сервер недоступен. Вход и школьные данные не подключены.</string>
 	<string name="data_unavailable">Школьные данные недоступны.</string>
+	<string name="schedule_empty">На этой неделе занятий нет.</string>
 	<string name="example_only">Только пример - это не реальные школьные данные.</string>
 	<string name="username">Логин</string>
 	<string name="password">Пароль</string>
