@@ -68,7 +68,7 @@ class NativeGateway internal constructor(private val exchange: Exchange) : Schoo
 			val role = user.strictString("role")
 			if (role != "student") return GatewayResult.Failure(AppError.FORBIDDEN)
 			val candidate = user.opt("userId")
-			val id = if (candidate is Int || candidate is Long) candidate.toString() else null
+			val id = candidate.integerValue()?.takeIf { it > 0 }?.toString() ?: return GatewayResult.Failure(AppError.INCOMPATIBLE_RESPONSE)
 			GatewayResult.Success(UnverifiedSession(token, id, role, schoolContext(user)))
 		} catch (_: SocketTimeoutException) {
 			GatewayResult.Failure(AppError.TIMEOUT)

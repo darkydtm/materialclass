@@ -23,6 +23,7 @@ fun interface SessionVerifier {
 sealed class SessionVerification {
 	class Verified(val account: AccountId, val pupil: Boolean) : SessionVerification()
 	data object Expired : SessionVerification()
+	data object Invalid : SessionVerification()
 	data object Retry : SessionVerification()
 }
 
@@ -129,7 +130,7 @@ class SessionStore(context: Context, private val coordinator: SessionCoordinator
 		coordinator.finishRestore(revision) {
 			when (verification) {
 				SessionVerification.Retry -> RestoreResult.Retry
-				SessionVerification.Expired -> { coordinator.rejectRestore(); RestoreResult.Invalid }
+				SessionVerification.Expired, SessionVerification.Invalid -> { coordinator.rejectRestore(); RestoreResult.Invalid }
 				is SessionVerification.Verified -> {
 					val matching = MessageDigest.isEqual(candidate.first.value.toByteArray(Charsets.UTF_8), verification.account.value.toByteArray(Charsets.UTF_8))
 					if (!matching || !verification.pupil) {

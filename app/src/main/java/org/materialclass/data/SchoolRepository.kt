@@ -103,7 +103,7 @@ internal class SchoolRepository(
 	fun restore(): RestoreResult {
 		var candidate: UnverifiedSession? = null
 		return store.restore({ material ->
-			val remote = decodeSession(material) ?: return@restore SessionVerification.Retry
+			val remote = decodeSession(material) ?: return@restore SessionVerification.Invalid
 			val verification = verifier.verify(remote)
 			if (verification is SessionVerification.Verified && verification.pupil) candidate = remote
 			verification
@@ -178,7 +178,8 @@ internal class SchoolRepository(
 private fun encodeSession(session: UnverifiedSession): ByteArray {
 	val bytes = ByteArrayOutputStream()
 	DataOutputStream(bytes).use { output ->
-		output.writeInt(1)
+		output.writeInt(2)
+		output.writeUTF(session.identityCandidate ?: throw IllegalArgumentException())
 		output.writeUTF(session.token)
 		output.writeBoolean(session.context != null)
 		session.context?.let { output.writeLong(it.schoolId); output.writeInt(it.eduYear); output.writeLong(it.groupId) }
@@ -188,11 +189,12 @@ private fun encodeSession(session: UnverifiedSession): ByteArray {
 
 private fun decodeSession(bytes: ByteArray): UnverifiedSession? = try {
 	val input = DataInputStream(ByteArrayInputStream(bytes))
-	require(input.readInt() == 1)
+	require(input.readInt() == 2)
+	val identity = input.readUTF().also { require(it.isNotEmpty()) }
 	val token = input.readUTF().also { require(it.isNotEmpty()) }
 	val context = if (input.readBoolean()) org.materialclass.api.SchoolContext(input.readLong(), input.readInt(), input.readLong()) else null
 	require(input.available() == 0)
-	UnverifiedSession(token, null, "student", context)
+	UnverifiedSession(token, identity, "student", context)
 } catch (_: Exception) { null }
 
 private fun encode(context: DiaryContext, snapshot: DiarySnapshot): ByteArray {

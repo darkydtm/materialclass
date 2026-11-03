@@ -47,7 +47,7 @@ class NativeGatewayTest {
 
 	@Test
 	fun mapsOnlyExplicitUnambiguousSchoolContext() {
-		val user = """{"success":true,"access_token":"token","user_info":{"role":"student","school_id":1,"group":{"id":2},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}}"""
+		val user = """{"success":true,"access_token":"token","user_info":{"userId":123,"role":"student","school_id":1,"group":{"id":2},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}}"""
 		val session = (NativeGateway(Exchange { Response(200, user) }).login("x", charArrayOf('x')) as GatewayResult.Success).value
 		assertEquals(2026, session.context!!.eduYear)
 		assertEquals(1L, session.context!!.schoolId)
