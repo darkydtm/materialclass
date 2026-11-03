@@ -150,9 +150,17 @@ class NativeControllerIntegrationTest {
 	@Test fun overlappingLogoutCompletionKeepsNewTicketRetryable() {
 		val entered = CountDownLatch(1)
 		val release = CountDownLatch(1)
+		val retryEntered = CountDownLatch(1)
+		val retryRelease = CountDownLatch(1)
+		val attempts = java.util.concurrent.atomic.AtomicInteger()
 		val shared = SessionCoordinator {
-			entered.countDown()
-			check(release.await(10, TimeUnit.SECONDS))
+			if (attempts.incrementAndGet() == 1) {
+				entered.countDown()
+				check(release.await(10, TimeUnit.SECONDS))
+			} else {
+				retryEntered.countDown()
+				check(retryRelease.await(10, TimeUnit.SECONDS))
+			}
 		}
 		val gateway = object : SchoolGateway {
 			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Failure(AppError.UNAVAILABLE)
@@ -168,15 +176,23 @@ class NativeControllerIntegrationTest {
 		try {
 			assertTrue(entered.await(10, TimeUnit.SECONDS))
 			val firstTicket = shared.pendingLogoutTicket()
-			val newer = shared.cancelInFlightNow()
+			lateinit var newer: Any
+			main {
+				newer = shared.cancelInFlightNow()
+				assertTrue(controller!!.state.logoutPending)
+				assertTrue("Retry must not be exposed while the controller rejects it", controller!!.state.busy)
+			}
+			assertNotEquals(firstTicket, newer)
 			release.countDown()
 			await { shared.pendingLogoutTicket() === newer && controller!!.state.logoutPending && !controller!!.state.busy }
-			assertNotEquals(firstTicket, newer)
+			main { controller!!.logout(); assertTrue(controller!!.state.busy) }
+			assertTrue(retryEntered.await(10, TimeUnit.SECONDS))
+			main { assertTrue(controller!!.state.logoutPending); assertTrue(controller!!.state.busy) }
 			assertEquals(newer, shared.pendingLogoutTicket())
-			main { controller!!.logout() }
+			retryRelease.countDown()
 			await { !controller!!.state.logoutPending && !controller!!.state.busy }
 			assertNull(shared.pendingLogoutTicket())
-		} finally { release.countDown(); while (shared.pendingLogoutTicket() != null) shared.logout(shared.pendingLogoutTicket()) }
+		} finally { release.countDown(); retryRelease.countDown(); while (shared.pendingLogoutTicket() != null) shared.logout(shared.pendingLogoutTicket()) }
 	}
 
 	@Test fun failedLogoutCanBeRetriedAfterControllerRecreation() {
