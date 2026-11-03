@@ -48,6 +48,31 @@ class SchoolRepositoryTest {
 	}
 
 	@Test
+	fun logoutBeforeAdmissionPreventsDiarySubmission() {
+		val prepared = CountDownLatch(1); val release = CountDownLatch(1)
+		var calls = 0
+		val gateway = object : SchoolGateway {
+			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", "1", "student", SchoolContext(1, 2026, 2)))
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext): GatewayResult<Diary> { calls++; return GatewayResult.Success(Diary(context.date, emptyList())) }
+		}
+		val events = mutableListOf<DiaryState>(); val cache = FakeCache()
+		val repository = SchoolRepository(gateway, IdentityVerifier { proof(it) }, coordinator, cache, { 1L }, events::add, store)
+		val setter = repository.javaClass.methods.firstOrNull { it.name.startsWith("setBeforeRequestAdmission") && it.parameterCount == 1 }
+		assertNotNull("Request admission barrier is required", setter)
+		setter!!.invoke(repository, { prepared.countDown(); check(release.await(10, TimeUnit.SECONDS)); Unit })
+		assertTrue(repository.login("1", charArrayOf('x')) is GatewayResult.Success)
+		val worker = thread { repository.refresh(context) }
+		check(prepared.await(10, TimeUnit.SECONDS))
+		repository.logout()
+		val count = events.size
+		release.countDown(); worker.join(10000)
+		assertFalse(worker.isAlive)
+		assertEquals(0, calls)
+		assertEquals(count, events.size)
+		assertEquals(0, cache.accesses)
+	}
+
+	@Test
 	fun unverifiedDiaryContextCannotReachGateway() {
 		var calls = 0
 		val gateway = object : SchoolGateway {
