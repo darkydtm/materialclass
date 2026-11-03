@@ -266,12 +266,12 @@ internal class SchoolRepository(
 				}
 				try {
 					when (result) {
-						is GatewayResult.Success -> if (result.value.date != date) emitFailure(active, context, AppError.INCOMPATIBLE_RESPONSE) else {
+						is GatewayResult.Success -> if (result.value.date != date) emit(failureState(active, context, AppError.INCOMPATIBLE_RESPONSE)) else {
 							val snapshot = DiarySnapshot(result.value, clock())
 							check(cache.write(active, encode(context, snapshot)))
 							if (!lease.cancelled && coordinator.ifActive(active) { request.second == refreshRevision } == true) emit(DiaryState.Ready(snapshot))
 						}
-						is GatewayResult.Failure -> emitFailure(active, context, result.error)
+						is GatewayResult.Failure -> emit(failureState(active, context, result.error))
 					}
 				} catch (error: CancellationException) { throw error } catch (_: Exception) {
 					if (!lease.cancelled && coordinator.ifActive(active) { request.second == refreshRevision } == true) emit(DiaryState.Error(AppError.CACHE_UNREADABLE))
@@ -313,14 +313,14 @@ internal class SchoolRepository(
 					when (result) {
 						is GatewayResult.Success -> {
 							if (result.value.date != context.date) {
-								emitFailure(active, context, AppError.INCOMPATIBLE_RESPONSE)
+								emit(failureState(active, context, AppError.INCOMPATIBLE_RESPONSE))
 							} else {
 								val snapshot = DiarySnapshot(result.value, clock())
 								check(cache.write(active, encode(context, snapshot)))
 								if (!lease.cancelled && coordinator.ifActive(active) { request.second == refreshRevision } == true) emit(DiaryState.Ready(snapshot))
 							}
 						}
-						is GatewayResult.Failure -> emitFailure(active, context, result.error)
+						is GatewayResult.Failure -> emit(failureState(active, context, result.error))
 					}
 				} catch (error: CancellationException) { throw error } catch (_: Exception) {
 					if (!lease.cancelled && coordinator.ifActive(active) { request.second == refreshRevision } == true) emit(DiaryState.Error(AppError.CACHE_UNREADABLE))
@@ -329,9 +329,9 @@ internal class SchoolRepository(
 		} finally { coordinator.finish(lease) }
 	}
 
-	private fun emitFailure(active: ActiveSession, context: DiaryContext, error: AppError) {
+	private fun failureState(active: ActiveSession, context: DiaryContext, error: AppError): DiaryState {
 		val saved = cache.read(active)?.let { decode(it, context) }?.takeIf { it.diary.date == context.date }
-		emit(if (saved == null) DiaryState.Error(error) else DiaryState.Ready(saved, error))
+		return if (saved == null) DiaryState.Error(error) else DiaryState.Ready(saved, error)
 	}
 
 	fun cancelInFlightNow() = coordinator.cancelInFlightNow()
