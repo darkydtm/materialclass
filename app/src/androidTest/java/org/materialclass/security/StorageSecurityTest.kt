@@ -399,6 +399,28 @@ class StorageSecurityTest {
 	}
 
 	@Test
+	fun freshLoginsWithSameRemoteIdentityCannotReadPriorCaches() {
+		val coordinator = SessionCoordinator(context)
+		val cache = EncryptedCache(context, coordinator)
+		cache.clearAll()
+		try {
+			val firstUser = coordinator.activate(AccountId("synthetic-colliding-id"))
+			assertTrue(cache.write(firstUser, byteArrayOf(1)))
+			coordinator.logout()
+			val secondUser = coordinator.activate(AccountId("synthetic-colliding-id"))
+			assertNull(cache.read(secondUser))
+			assertTrue(cache.write(secondUser, byteArrayOf(2)))
+			coordinator.logout()
+			val firstUserAgain = coordinator.activate(AccountId("synthetic-colliding-id"))
+			assertNull(cache.read(firstUserAgain))
+			assertNull(cache.read(firstUser))
+		} finally {
+			coordinator.logout()
+			cache.clearAll()
+		}
+	}
+
+	@Test
 	fun isolatesAccountsAndSessions() {
 		val coordinator = SessionCoordinator(context)
 		val cache = EncryptedCache(context, coordinator)
