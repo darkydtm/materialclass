@@ -16,6 +16,7 @@ import org.materialclass.data.EncryptedDiaryCache
 import org.materialclass.data.NativeIdentityVerifier
 import org.materialclass.data.SchoolRepository
 import org.materialclass.session.RestoreResult
+import org.materialclass.session.SessionChange
 import org.materialclass.session.SessionCoordinator
 import org.materialclass.session.SessionStore
 import java.util.concurrent.Executors
@@ -45,12 +46,20 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 	private val handler = Handler(Looper.getMainLooper())
 	@Volatile private var observedEpoch = 0L
 	private val observeLogout: (Long) -> Unit = { epoch ->
-		val apply = {
+		val apply = apply@{
 			if (!closed && epoch == repository.revocationEpoch()) {
 				if (epoch != observedEpoch) {
+					val event = repository.sessionEvent()
+					if (event.epoch != epoch) return@apply
 					observedEpoch = epoch
-					generation++
-					state = NativeUiState(logoutPending = repository.pendingLogoutTicket() != null)
+					if (event.change == SessionChange.ACTIVATED && repository.ownedEpoch() == epoch) {
+						currentTaskEpoch = epoch
+					} else if (event.change == SessionChange.EXPIRED && state.busy && !state.signedIn) {
+						currentTaskEpoch = epoch
+					} else {
+						generation++
+						state = NativeUiState(logoutPending = repository.pendingLogoutTicket() != null, error = if (event.change == SessionChange.EXPIRED) AppError.SESSION_EXPIRED else null)
+					}
 				} else if (state.logoutPending && !logoutPending && repository.pendingLogoutTicket() == null) {
 					state = NativeUiState()
 				}
@@ -99,7 +108,9 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 			currentTaskGeneration = task
 			currentTaskEpoch = epoch
 			val result = try { repository.restore() } catch (_: Exception) { RestoreResult.Retry }
+			if (result is RestoreResult.Restored) repository.ownedEpoch()?.let { currentTaskEpoch = it }
 			post(task) {
+				if (result is RestoreResult.Restored) observedEpoch = currentTaskEpoch
 				state = state.copy(busy = false, signedIn = result is RestoreResult.Restored, error = if (result is RestoreResult.Retry) AppError.UNAVAILABLE else null)
 				if (result is RestoreResult.Restored) refresh()
 			}
@@ -117,7 +128,9 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 				currentTaskGeneration = task
 			currentTaskEpoch = epoch
 				val result = try { repository.login(username, password) } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) } finally { password.fill('\u0000') }
+				if (result is GatewayResult.Success) repository.ownedEpoch()?.let { currentTaskEpoch = it }
 				post(task) {
+					if (result is GatewayResult.Success) observedEpoch = currentTaskEpoch
 					state = state.copy(busy = false, signedIn = result is GatewayResult.Success, error = (result as? GatewayResult.Failure)?.error)
 					if (result is GatewayResult.Success) refresh()
 				}

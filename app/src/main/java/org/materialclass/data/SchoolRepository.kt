@@ -162,7 +162,7 @@ internal class SchoolRepository(
 				if (!lease.cancelled && request.second == weekRevision) {
 					if (result is GatewayResult.Failure && result.error == AppError.SESSION_EXPIRED) {
 						remote = null; scheduleSession = null; diarySession = null; session = null
-						try { coordinator.revokeIfActive(active) } finally { emit(DiaryState.Error(result.error)) }
+						try { coordinator.revokeIfActive(active, expired = true) } finally { emit(DiaryState.Error(result.error)) }
 					} else deliver(result)
 				}
 			}
@@ -186,7 +186,7 @@ internal class SchoolRepository(
 				if (!lease.cancelled && request.second == scheduleRevision) {
 					if (result is GatewayResult.Failure && result.error == AppError.SESSION_EXPIRED) {
 						remote = null; scheduleSession = null; diarySession = null; session = null
-						try { coordinator.revokeIfActive(active) } finally { emit(DiaryState.Error(result.error)) }
+						try { coordinator.revokeIfActive(active, expired = true) } finally { emit(DiaryState.Error(result.error)) }
 					} else deliver(result)
 				}
 			}
@@ -216,7 +216,7 @@ internal class SchoolRepository(
 					if (!lease.cancelled && request.second == refreshRevision) {
 						if (week.error == AppError.SESSION_EXPIRED) {
 							remote = null; scheduleSession = null; diarySession = null; session = null
-							coordinator.revokeIfActive(active)
+							coordinator.revokeIfActive(active, expired = true)
 							emit(DiaryState.Error(week.error))
 						} else if (week.error == AppError.OFFLINE || week.error == AppError.TIMEOUT) {
 							try {
@@ -240,7 +240,7 @@ internal class SchoolRepository(
 				if (lease.cancelled || request.second != refreshRevision) return@ifActive
 				if (result is GatewayResult.Failure && result.error == AppError.SESSION_EXPIRED) {
 					remote = null; scheduleSession = null; diarySession = null; session = null
-					coordinator.revokeIfActive(active)
+					coordinator.revokeIfActive(active, expired = true)
 					emit(DiaryState.Error(AppError.SESSION_EXPIRED))
 					return@ifActive
 				}
@@ -285,7 +285,7 @@ internal class SchoolRepository(
 					scheduleSession = null
 					diarySession = null
 					session = null
-					coordinator.revokeIfActive(active)
+					coordinator.revokeIfActive(active, expired = true)
 					emit(DiaryState.Error(AppError.SESSION_EXPIRED))
 					return@ifActive
 				}
@@ -319,6 +319,8 @@ internal class SchoolRepository(
 	internal fun observeRevocations(observer: (Long) -> Unit) = coordinator.observeRevocations(observer)
 	internal fun removeRevocationObserver(observer: (Long) -> Unit) = coordinator.removeRevocationObserver(observer)
 	internal fun revocationEpoch() = coordinator.revocationEpoch()
+	internal fun sessionEvent() = coordinator.event()
+	internal fun ownedEpoch() = coordinator.ownedEpoch(session)
 
 	fun logout(token: Any? = null) = synchronized(StorageLock) {
 		if (token != null && !coordinator.isPendingLogout(token)) return@synchronized

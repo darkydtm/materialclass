@@ -32,6 +32,9 @@ class RequestLease internal constructor(internal val owner: ActiveSession? = nul
 	internal fun unregister() = synchronized(CancellationLock) { disconnect = null }
 }
 
+internal enum class SessionChange { ACTIVATED, EXPIRED, LOGOUT }
+internal data class SessionEvent(val epoch: Long, val change: SessionChange, val session: ActiveSession?)
+
 class SessionCoordinator internal constructor(private val clearSession: () -> Unit) {
 	constructor(context: Context) : this({ SessionStore.clear(context) })
 
@@ -40,6 +43,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		private var restorationAllowed = true
 		private var revision = 0L
 		private var revocationEpoch = 0L
+		private var lastEvent = SessionEvent(0L, SessionChange.LOGOUT, null)
 		private val observers = mutableSetOf<(Long) -> Unit>()
 		private val pending = mutableSetOf<Any>()
 		private val leases = mutableSetOf<RequestLease>()
@@ -69,6 +73,8 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 	}
 	internal fun removeRevocationObserver(observer: (Long) -> Unit) = synchronized(CancellationLock) { observers.remove(observer) }
 	internal fun revocationEpoch(): Long = synchronized(CancellationLock) { revocationEpoch }
+	internal fun event(): SessionEvent = synchronized(CancellationLock) { lastEvent }
+	internal fun ownedEpoch(session: ActiveSession?): Long? = synchronized(CancellationLock) { if (session != null && active === session && pending.isEmpty()) revocationEpoch else null }
 	private fun notifyRevocation(epoch: Long, callbacks: List<(Long) -> Unit>) {
 		callbacks.forEach { observer -> try { observer(epoch) } catch (_: Exception) { } }
 	}
@@ -92,7 +98,8 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 			leases.forEach { it.cancelled = true }
 			val callbacks = leases.mapNotNull { lease -> lease.disconnect.also { lease.disconnect = null } }
 			leases.clear()
-			Triple(callbacks, ++revocationEpoch, observers.toList())
+			lastEvent = SessionEvent(++revocationEpoch, SessionChange.LOGOUT, null)
+			Triple(callbacks, revocationEpoch, observers.toList())
 		}
 		if (Thread.holdsLock(StorageLock)) notifyAfterStorage(epoch, callbacks) else notifyRevocation(epoch, callbacks)
 		disconnects.forEach { disconnect -> disconnectExecutor.execute { try { disconnect() } catch (_: Exception) { } } }
@@ -132,11 +139,12 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 			if (synchronized(CancellationLock) { active == null }) logout() else { cancelRequests(); synchronized(CancellationLock) { revision++ } }
 		}
 	}
-	internal fun revokeIfActive(session: ActiveSession): Boolean = synchronized(StorageLock) {
+	internal fun revokeIfActive(session: ActiveSession, expired: Boolean = false): Boolean = synchronized(StorageLock) {
 		val event = synchronized(CancellationLock) {
 			if (active !== session) null else {
 				active = null; restorationAllowed = false
-				Pair(++revocationEpoch, observers.toList())
+				lastEvent = SessionEvent(++revocationEpoch, if (expired) SessionChange.EXPIRED else SessionChange.LOGOUT, session)
+				Pair(revocationEpoch, observers.toList())
 			}
 		} ?: return@synchronized false
 		notifyAfterStorage(event.first, event.second)
@@ -154,9 +162,15 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		cancelRequests()
 		clearSession()
 		val candidate = ActiveSession(account, CacheNamespace.create())
-		return synchronized(CancellationLock) {
-			if (pending.isNotEmpty() || revision != activationRevision) null else candidate.also { active = it }
-		}
+		val event = synchronized(CancellationLock) {
+			if (pending.isNotEmpty() || revision != activationRevision) null else {
+				active = candidate
+				lastEvent = SessionEvent(++revocationEpoch, SessionChange.ACTIVATED, candidate)
+				Pair(revocationEpoch, observers.toList())
+			}
+		} ?: return null
+		notifyAfterStorage(event.first, event.second)
+		return candidate
 	}
 	internal fun beginRestore(): Long? = synchronized(StorageLock) {
 		val expected = synchronized(CancellationLock) {
@@ -168,10 +182,18 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 	internal fun <T> finishRestore(expected: Long, action: () -> T): T? = synchronized(StorageLock) {
 		if (!synchronized(CancellationLock) { active == null && restorationAllowed && pending.isEmpty() && revision == expected }) null else action()
 	}
-	internal fun acceptRestore(account: AccountId, namespace: CacheNamespace): ActiveSession? = synchronized(CancellationLock) {
-		if (pending.isNotEmpty() || active != null || !restorationAllowed) null else {
-			restorationAllowed = false; revision++; ActiveSession(account, namespace).also { active = it }
-		}
+	internal fun acceptRestore(account: AccountId, namespace: CacheNamespace): ActiveSession? {
+		val result = synchronized(CancellationLock) {
+			if (pending.isNotEmpty() || active != null || !restorationAllowed) null else {
+				restorationAllowed = false; revision++
+				val candidate = ActiveSession(account, namespace)
+				active = candidate
+				lastEvent = SessionEvent(++revocationEpoch, SessionChange.ACTIVATED, candidate)
+				Triple(candidate, revocationEpoch, observers.toList())
+			}
+		} ?: return null
+		notifyAfterStorage(result.second, result.third)
+		return result.first
 	}
 	internal fun rejectRestore() {
 		synchronized(CancellationLock) { restorationAllowed = false; revision++ }
@@ -182,7 +204,10 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		val (ownedToken, event) = synchronized(CancellationLock) {
 			val owned = token ?: ownPending.firstOrNull { it in pending }
 			active = null; revision++; restorationAllowed = false
-			Pair(owned, if (owned == null) Pair(++revocationEpoch, observers.toList()) else null)
+			Pair(owned, if (owned == null) {
+				lastEvent = SessionEvent(++revocationEpoch, SessionChange.LOGOUT, null)
+				Pair(revocationEpoch, observers.toList())
+			} else null)
 		}
 		if (event != null) notifyAfterStorage(event.first, event.second)
 		cancelRequests()
