@@ -69,6 +69,38 @@ class NativeIdentityVerifierTest {
 	}
 
 	@Test
+	fun nativeVerificationRestoresMatchingAccountAndRejectsChangedAccount() {
+		val gateway = object : SchoolGateway {
+			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(session)
+			override fun diary(session: UnverifiedSession, context: DiaryContext): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
+		}
+		var accesses = 0
+		val cache = object : DiaryCache {
+			override fun read(session: ActiveSession): ByteArray? { accesses++; return null }
+			override fun write(session: ActiveSession, bytes: ByteArray): Boolean { accesses++; return true }
+		}
+		var response = success
+		val verifier = NativeIdentityVerifier(Exchange { Response(200, response) })
+		fun repo() = SchoolRepository(gateway, verifier, coordinator, cache, { 1L }, {}, store)
+		fun restart() {
+			SessionCoordinator::class.java.getDeclaredField("active").apply { isAccessible = true }.set(null, null)
+			SessionCoordinator::class.java.getDeclaredField("restorationAllowed").apply { isAccessible = true }.setBoolean(null, true)
+		}
+		assertTrue(repo().login("synthetic", charArrayOf('x')) is GatewayResult.Success)
+		restart()
+		val matching = repo()
+		assertTrue(matching.restore() is RestoreResult.Restored)
+		matching.refresh(DiaryContext(7, 2026, 2, "01.01.2026"))
+		assertEquals(1, accesses)
+		restart()
+		response = "{\"data\":{\"role\":\"student\",\"userId\":43}}"
+		val changed = repo()
+		assertEquals(RestoreResult.Invalid, changed.restore())
+		changed.refresh(DiaryContext(7, 2026, 2, "01.01.2026"))
+		assertEquals(1, accesses)
+	}
+
+	@Test
 	fun restoredSessionUsesPersistedSchoolAndCannotSurviveLogoutRace() {
 		val gateway = object : SchoolGateway {
 			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = GatewayResult.Success(session)
