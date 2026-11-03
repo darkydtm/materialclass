@@ -137,6 +137,7 @@ class SchoolRepositoryTest {
 		val applied = java.util.concurrent.atomic.AtomicBoolean(false)
 		val gateway = object : TestSchoolGateway() {
 			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic", "1", "student", SchoolContext(1, 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = error("unexpected")
 			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = if (expired) GatewayResult.Failure(AppError.SESSION_EXPIRED) else GatewayResult.Success(context.date)
 			override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> = if (expired) GatewayResult.Failure(AppError.SESSION_EXPIRED) else GatewayResult.Success(Schedule(emptyList()))
 		}
