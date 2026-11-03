@@ -60,7 +60,7 @@ class RepositorySessionTest {
 			override fun diary(session: VerifiedDiarySession, context: DiaryContext): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
 		}
 		val repo = SchoolRepository(fake, IdentityVerifier { proof(it) }, coordinator, cache, { 1L }, {}, store)
-		repo.beforeRequestAdmission = { entered.countDown(); check(release.await(10, TimeUnit.SECONDS)) }
+		repo.beforeIdentityAdmission = { entered.countDown(); check(release.await(10, TimeUnit.SECONDS)) }
 		val password = charArrayOf('x')
 		val worker = thread { repo.login("synthetic", password) }
 		try {
@@ -83,7 +83,7 @@ class RepositorySessionTest {
 		val calls = java.util.concurrent.atomic.AtomicInteger()
 		val admissions = java.util.concurrent.atomic.AtomicInteger()
 		val repo = repository(IdentityVerifier { calls.incrementAndGet(); proof(it) })
-		repo.beforeRequestAdmission = {
+		repo.beforeIdentityAdmission = {
 			if (admissions.incrementAndGet() == 2) { entered.countDown(); check(release.await(10, TimeUnit.SECONDS)) }
 		}
 		val worker = thread { repo.login("synthetic", charArrayOf('x')) }
@@ -102,7 +102,7 @@ class RepositorySessionTest {
 		val entered = CountDownLatch(1); val release = CountDownLatch(1)
 		val calls = java.util.concurrent.atomic.AtomicInteger()
 		val repo = repository(IdentityVerifier { calls.incrementAndGet(); proof(it) })
-		repo.beforeRequestAdmission = { entered.countDown(); check(release.await(10, TimeUnit.SECONDS)) }
+		repo.beforeIdentityAdmission = { entered.countDown(); check(release.await(10, TimeUnit.SECONDS)) }
 		var result: RestoreResult? = null
 		val worker = thread { result = repo.restore() }
 		try {

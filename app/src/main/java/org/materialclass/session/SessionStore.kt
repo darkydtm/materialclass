@@ -42,6 +42,7 @@ class SessionStore(context: Context, private val coordinator: SessionCoordinator
 	private val marker = File(context.noBackupFilesDir, "session-revoked")
 
 	companion object {
+		private val restoreLock = Any()
 
 		private fun syncDirectory(directory: File) {
 			val descriptor = Os.open(directory.absolutePath, OsConstants.O_RDONLY, 0)
@@ -114,7 +115,7 @@ class SessionStore(context: Context, private val coordinator: SessionCoordinator
 
 	fun restore(verifier: SessionVerifier): RestoreResult = restore(verifier) {}
 
-	internal fun restore(verifier: SessionVerifier, onRestored: (ActiveSession) -> Unit): RestoreResult = restoreLeased({}, { material, _ -> verifier.verify(material) }, onRestored)
+	internal fun restore(verifier: SessionVerifier, onRestored: (ActiveSession) -> Unit): RestoreResult = synchronized(restoreLock) { restoreLeased({}, { material, _ -> verifier.verify(material) }, onRestored) }
 
 	internal fun restoreLeased(beforeAdmission: () -> Unit, verifier: (ByteArray, RequestLease) -> SessionVerification, onRestored: (ActiveSession) -> Unit): RestoreResult {
 		val revision = coordinator.beginRestore() ?: return RestoreResult.Cancelled

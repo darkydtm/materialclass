@@ -68,13 +68,14 @@ internal class SchoolRepository(
 	@Volatile private var loginRevision: Long? = null
 	internal var afterRestoreActivation: () -> Unit = {}
 	internal var beforeRequestAdmission: () -> Unit = {}
+	internal var beforeIdentityAdmission: () -> Unit = {}
 
 	fun login(username: String, password: CharArray): GatewayResult<Unit> {
 		val revision = synchronized(StorageLock) {
 			coordinator.beginLogin().also { loginRevision = it }
 		}
 		try {
-			beforeRequestAdmission()
+			beforeIdentityAdmission()
 			val lease = coordinator.admit(revision) ?: return GatewayResult.Failure(AppError.UNAVAILABLE)
 			val result = try { gateway.login(username, password, lease) } catch (error: CancellationException) {
 				throw error
@@ -83,7 +84,7 @@ internal class SchoolRepository(
 			} finally { coordinator.finish(lease) }
 			if (result is GatewayResult.Failure) return result
 			val candidate = (result as GatewayResult.Success).value
-			beforeRequestAdmission()
+			beforeIdentityAdmission()
 			val profileLease = coordinator.admit(revision) ?: return GatewayResult.Failure(AppError.UNAVAILABLE)
 			val verification = try { verifier.verify(candidate, profileLease) } catch (error: CancellationException) { throw error } catch (_: Exception) { SessionVerification.Retry } finally { coordinator.finish(profileLease) }
 			if (candidate.role != "student" || verification !is SessionVerification.Verified || !verification.pupil) return GatewayResult.Failure(AppError.UNAVAILABLE)
@@ -122,7 +123,7 @@ internal class SchoolRepository(
 		var candidate: UnverifiedSession? = null
 		var scheduleCandidate: VerifiedScheduleSession? = null
 		var diaryCandidate: VerifiedDiarySession? = null
-		return store.restoreLeased({ beforeRequestAdmission() }, { material, lease ->
+		return store.restoreLeased({ beforeIdentityAdmission() }, { material, lease ->
 			val remote = decodeSession(material) ?: return@restoreLeased SessionVerification.Invalid
 			val verification = verifier.verify(remote, lease)
 			if (verification is SessionVerification.Verified && verification.pupil) { candidate = remote; scheduleCandidate = verification.scheduleSession; diaryCandidate = verification.diarySession }

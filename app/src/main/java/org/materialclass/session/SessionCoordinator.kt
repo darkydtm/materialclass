@@ -24,7 +24,7 @@ internal class CacheNamespace(val value: String) {
 
 class ActiveSession internal constructor(val account: AccountId, internal val cacheNamespace: CacheNamespace)
 
-class RequestLease internal constructor() {
+class RequestLease internal constructor(internal val owner: ActiveSession? = null) {
 	internal var cancelled = false
 	internal var disconnect: (() -> Unit)? = null
 
@@ -45,18 +45,19 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		private val leases = mutableSetOf<RequestLease>()
 		private val disconnectExecutor = Executors.newCachedThreadPool()
 
-		private fun cancelRequests() {
-			leases.forEach { lease ->
+		private fun cancelRequests(owner: ActiveSession? = null) {
+			val cancelled = leases.filter { owner == null || it.owner === owner }
+			cancelled.forEach { lease ->
 				lease.cancelled = true
 				lease.disconnect?.let { disconnect -> disconnectExecutor.execute { try { disconnect() } catch (_: Exception) { } } }
 				lease.disconnect = null
 			}
-			leases.clear()
+			leases.removeAll(cancelled.toSet())
 		}
 	}
 
 	internal fun admit(session: ActiveSession): RequestLease? = synchronized(StorageLock) {
-		if (active !== session) null else RequestLease().also { leases.add(it) }
+		if (active !== session) null else RequestLease(session).also { leases.add(it) }
 	}
 
 	internal fun finish(lease: RequestLease) = synchronized(StorageLock) {
@@ -91,9 +92,8 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 
 	internal fun revokeIfActive(session: ActiveSession): Boolean = synchronized(StorageLock) {
 		if (active !== session) return@synchronized false
-		cancelRequests()
+		cancelRequests(session)
 		active = null
-		revision++
 		restorationAllowed = false
 		clearSession()
 		true
