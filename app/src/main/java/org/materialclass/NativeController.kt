@@ -111,7 +111,7 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 						is GatewayResult.Failure -> post(task) { state = state.copy(schedule = null, error = week.error) }
 					}
 				}
-			} catch (_: Exception) { post(task) { state = state.copy(error = AppError.UNAVAILABLE) } }
+			} catch (_: Exception) { post(task) { if (state.error != AppError.SESSION_EXPIRED) state = state.copy(error = AppError.UNAVAILABLE) } }
 		}
 	}
 

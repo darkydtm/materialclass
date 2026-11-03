@@ -159,7 +159,12 @@ internal class SchoolRepository(
 		try {
 			val result = if (request.first == null) GatewayResult.Failure(AppError.UNAVAILABLE) else try { gateway.currentWeek(request.first!!, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
 			coordinator.ifActive(active) {
-				if (!lease.cancelled && request.second == weekRevision) deliver(result)
+				if (!lease.cancelled && request.second == weekRevision) {
+					if (result is GatewayResult.Failure && result.error == AppError.SESSION_EXPIRED) {
+						remote = null; scheduleSession = null; diarySession = null; session = null
+						try { coordinator.revokeIfActive(active) } finally { emit(DiaryState.Error(result.error)) }
+					} else deliver(result)
+				}
 			}
 		} finally { coordinator.finish(lease) }
 	}
@@ -178,7 +183,12 @@ internal class SchoolRepository(
 		try {
 			val result = if (request.first == null) GatewayResult.Failure(AppError.UNAVAILABLE) else try { gateway.schedule(request.first!!, date, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
 			coordinator.ifActive(active) {
-				if (!lease.cancelled && request.second == scheduleRevision) deliver(result)
+				if (!lease.cancelled && request.second == scheduleRevision) {
+					if (result is GatewayResult.Failure && result.error == AppError.SESSION_EXPIRED) {
+						remote = null; scheduleSession = null; diarySession = null; session = null
+						try { coordinator.revokeIfActive(active) } finally { emit(DiaryState.Error(result.error)) }
+					} else deliver(result)
+				}
 			}
 		} finally { coordinator.finish(lease) }
 	}

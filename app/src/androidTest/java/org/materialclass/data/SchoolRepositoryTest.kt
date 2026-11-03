@@ -154,6 +154,22 @@ class SchoolRepositoryTest {
 	}
 
 	@Test
+	fun expiredScheduleRevokesSessionAndHidesCache() {
+		val gateway = object : TestSchoolGateway() {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", "1", "student", SchoolContext(1, 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
+			override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> = GatewayResult.Failure(AppError.SESSION_EXPIRED)
+		}
+		val events = mutableListOf<DiaryState>()
+		val repo = SchoolRepository(gateway, IdentityVerifier { session, _ -> proof(session) }, coordinator, FakeCache(), { 1L }, events::add, store)
+		assertTrue(repo.login("synthetic", charArrayOf('x')) is GatewayResult.Success)
+		var delivered = false
+		repo.schedule(context.date) { delivered = true }
+		assertFalse(delivered)
+		assertEquals(AppError.SESSION_EXPIRED, (events.last() as DiaryState.Error).error)
+		assertTrue(coordinator.logoutIfNoActive())
+	}
+
+	@Test
 	fun expiredCurrentWeekRevokesSessionAndHidesCache() {
 		val gateway = object : TestSchoolGateway() {
 			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", "1", "student", SchoolContext(1, 2026, 2)))
