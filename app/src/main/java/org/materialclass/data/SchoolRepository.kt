@@ -200,7 +200,23 @@ internal class SchoolRepository(
 		try {
 			val week = try { gateway.currentWeek(request.first, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
 			if (week is GatewayResult.Failure) {
-				coordinator.ifActive(active) { if (!lease.cancelled && request.second == refreshRevision) emit(DiaryState.Error(week.error)) }
+				coordinator.ifActive(active) {
+					if (!lease.cancelled && request.second == refreshRevision) {
+						if (week.error == AppError.SESSION_EXPIRED) {
+							remote = null; scheduleSession = null; diarySession = null; session = null
+							coordinator.revokeIfActive(active)
+							emit(DiaryState.Error(week.error))
+						} else if (week.error == AppError.OFFLINE || week.error == AppError.TIMEOUT) {
+							try {
+								val context = request.first.remote.context!!.diary("")
+								val saved = cache.read(active)?.let { decode(it, context) }
+								emit(if (saved == null) DiaryState.Error(week.error) else DiaryState.Ready(saved, week.error))
+							} catch (_: Exception) { emit(DiaryState.Error(AppError.CACHE_UNREADABLE)) }
+						} else {
+							emit(DiaryState.Error(week.error))
+						}
+					}
+				}
 				return
 			}
 			val date = (week as GatewayResult.Success).value
