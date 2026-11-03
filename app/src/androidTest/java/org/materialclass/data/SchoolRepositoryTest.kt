@@ -48,6 +48,42 @@ class SchoolRepositoryTest {
 	}
 
 	@Test
+	fun startingLoginSuppressesCancelledDiaryAndScheduleResults() {
+		val diaryEntered = CountDownLatch(1); val scheduleEntered = CountDownLatch(1); val release = CountDownLatch(1)
+		val gateway = object : TestSchoolGateway() {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", "1", "student", SchoolContext(1, 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> {
+				diaryEntered.countDown(); check(release.await(10, TimeUnit.SECONDS))
+				return GatewayResult.Success(Diary(context.date, emptyList()))
+			}
+			override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> {
+				scheduleEntered.countDown(); check(release.await(10, TimeUnit.SECONDS))
+				return GatewayResult.Success(Schedule(emptyList()))
+			}
+		}
+		val cache = FakeCache(); val events = mutableListOf<DiaryState>(); var delivered = false
+		val repository = SchoolRepository(gateway, IdentityVerifier { session, _ -> proof(session) }, coordinator, cache, { 1L }, events::add, store)
+		assertTrue(repository.login("1", charArrayOf('x')) is GatewayResult.Success)
+		val diary = thread { repository.refresh(context) }
+		val schedule = thread { repository.schedule(context.date) { delivered = true } }
+		check(diaryEntered.await(10, TimeUnit.SECONDS)); check(scheduleEntered.await(10, TimeUnit.SECONDS))
+		coordinator.beginLogin()
+		val count = events.size
+		release.countDown(); diary.join(10000); schedule.join(10000)
+		assertFalse(diary.isAlive); assertFalse(schedule.isAlive)
+		assertEquals(count, events.size); assertEquals(0, cache.accesses); assertFalse(delivered)
+	}
+
+	@Test
+	fun passwordIsClearedBeforeProfileVerification() {
+		val password = charArrayOf('x')
+		var cleared = false
+		val repository = SchoolRepository(FakeGateway(), IdentityVerifier { session, _ -> cleared = password.all { it == '\u0000' }; proof(session) }, coordinator, FakeCache(), { 1L }, {}, store)
+		assertTrue(repository.login("1", password) is GatewayResult.Success)
+		assertTrue(cleared)
+	}
+
+	@Test
 	fun logoutBeforeAdmissionPreventsDiarySubmission() {
 		val prepared = CountDownLatch(1); val release = CountDownLatch(1)
 		var calls = 0
