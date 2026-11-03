@@ -102,12 +102,17 @@ class NativeControllerIntegrationTest {
 			await { first.state.signedIn && first.state.diary is DiaryState.Ready }
 			failing.set(true)
 			main { second.login("2", charArrayOf('x')) }
-			await { !first.state.signedIn && !second.state.signedIn && !second.state.busy }
+			await { first.state.logoutPending && second.state.logoutPending && !second.state.busy }
 			main { assertTrue(first.state.diary is DiaryState.Cleared); assertNull(first.state.schedule); assertFalse(second.state.signedIn) }
+			val rejected = charArrayOf('x')
+			main { second.login("2", rejected) }
+			assertEquals('\u0000', rejected[0])
 			failing.set(false)
+			main { second.logout() }
+			await { !second.state.logoutPending && !second.state.busy }
 			main { second.login("2", charArrayOf('x')) }
 			await { second.state.signedIn && second.state.diary is DiaryState.Ready }
-		} finally { failing.set(false); main { second.close() }; shared.logout() }
+		} finally { failing.set(false); main { second.close() }; shared.pendingLogoutTicket()?.let { shared.logout(it) }; shared.logout() }
 	}
 
 	@Test fun accountSwitchClearsOtherControllerAndExpiryRemainsVisible() {

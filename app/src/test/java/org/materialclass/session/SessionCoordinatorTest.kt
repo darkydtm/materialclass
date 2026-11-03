@@ -31,15 +31,21 @@ class SessionCoordinatorTest {
 			assertEquals(true, delivered.await(10, TimeUnit.SECONDS))
 			assertEquals(false, callbackHeldStorage)
 			assertEquals(SessionChange.LOGOUT, second.event().change)
+			assertEquals(old, second.event().session)
+			val ticket = second.pendingLogoutTicket()
+			assertNotNull("Replacement cleanup must be retryable", ticket)
 			assertNull(second.ifActive(old) { "stale" })
-			try { second.activate(AccountId("synthetic-new")); throw AssertionError("Expected cleanup failure") } catch (_: IllegalStateException) { }
+			assertNull(second.admit(second.beginLogin()))
 			assertNull(second.beginRestore())
 			fail = false
+			second.logout(ticket)
+			assertNull(second.pendingLogoutTicket())
 			val current = second.activate(AccountId("synthetic-new"))
 			assertEquals("current", first.ifActive(current) { "current" })
 		} finally {
 			fail = false
 			second.removeRevocationObserver(observer)
+			second.pendingLogoutTicket()?.let { second.logout(it) }
 			second.logout()
 		}
 	}
