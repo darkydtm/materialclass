@@ -34,6 +34,19 @@ class SchoolRepositoryTest {
 	)
 
 	@Test
+	fun switchingAccountsClearsPreviouslyEmittedDiary() {
+		val gateway = FakeGateway(); val events = mutableListOf<DiaryState>()
+		val repository = repository(gateway, FakeCache(), events)
+		repository.login("a", charArrayOf('x'))
+		repository.refresh(context)
+		assertTrue(events.last() is DiaryState.Ready)
+		gateway.identity = "b"
+		assertTrue(repository.login("b", charArrayOf('x')) is GatewayResult.Success)
+		assertEquals(DiaryState.Cleared, events.last())
+		repository.logout()
+	}
+
+	@Test
 	fun logoutClearsPreviouslyEmittedDiary() {
 		val gateway = FakeGateway(); val events = mutableListOf<DiaryState>()
 		val repository = repository(gateway, FakeCache(), events)
