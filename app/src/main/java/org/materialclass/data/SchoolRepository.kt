@@ -215,8 +215,8 @@ private fun decodeSession(bytes: ByteArray): UnverifiedSession? = try {
 	val token = input.readUTF().also { require(it.isNotEmpty()) }
 	val context = if (input.readBoolean()) {
 		val school = input.readLong(); val year = input.readInt(); val group = input.readLong()
-		val uuid = if (version == 3 && input.readBoolean()) input.readUTF() else null
-		org.materialclass.api.SchoolContext(school, year, group, uuid)
+		if (version == 3 && input.readBoolean()) input.readUTF()
+		org.materialclass.api.SchoolContext(school, year, group)
 	} else null
 	require(input.available() == 0)
 	UnverifiedSession(token, identity, "student", context)

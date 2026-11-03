@@ -57,6 +57,17 @@ class NativeGatewayTest {
 	}
 
 	@Test
+	fun loginDoesNotTrustUnconfirmedScheduleContext() {
+		val user = """{"success":true,"access_token":"token","user_info":{"userId":123,"role":"student","school_id":1,"group":{"id":2},"studentInfo":{"studentSchoolUuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}}"""
+		var calls = 0
+		val gateway = NativeGateway(Exchange { calls++; Response(200, user) })
+		val remote = (gateway.login("x", charArrayOf('x')) as GatewayResult.Success).value
+		assertNull(remote.context!!.studentSchoolUuid)
+		assertEquals(AppError.INCOMPATIBLE_RESPONSE, (gateway.schedule(VerifiedScheduleSession(remote, "123"), "01.01.2026") as GatewayResult.Failure).error)
+		assertEquals(1, calls)
+	}
+
+	@Test
 	fun rejectsMalformedResponsesAndUnrecognizedRoles() {
 		for (response in listOf("{}", loginResponse.replace("student", "parent"), loginResponse.replace("true", "\"true\""))) {
 			assertTrue(NativeGateway(Exchange { Response(200, response) }).login("x", charArrayOf('x')) is GatewayResult.Failure)
