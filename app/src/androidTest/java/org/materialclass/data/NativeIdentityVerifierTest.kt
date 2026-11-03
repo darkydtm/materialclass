@@ -62,6 +62,7 @@ class NativeIdentityVerifierTest {
 	@Test
 	fun offlineRetriesAndMissingContextFailsClosed() {
 		assertEquals(SessionVerification.Retry, NativeIdentityVerifier(Exchange { throw IOException() }).verify(session))
+		assertEquals(SessionVerification.Retry, NativeIdentityVerifier(Exchange { Response(401, "") }).verify(session))
 		var calls = 0
 		val verifier = NativeIdentityVerifier(Exchange { calls++; Response(200, success) })
 		assertFalse(verifier.verify(UnverifiedSession("synthetic-token", "42", "student")) is SessionVerification.Verified)

@@ -95,6 +95,25 @@ class RepositorySessionTest {
 	}
 
 	@Test
+	fun versionOneSessionWithoutIdentityRequiresFreshLogin() {
+		val verifier = IdentityVerifier { SessionVerification.Verified(AccountId("synthetic-account"), true) }
+		assertTrue(repository(verifier).login("synthetic", charArrayOf('x')) is GatewayResult.Success)
+		val active = SessionCoordinator::class.java.getDeclaredField("active").apply { isAccessible = true }.get(null) as ActiveSession
+		val bytes = java.io.ByteArrayOutputStream()
+		java.io.DataOutputStream(bytes).use { it.writeInt(1); it.writeUTF("synthetic-token"); it.writeBoolean(false) }
+		assertTrue(store.write(active, bytes.toByteArray()))
+		restart()
+		var calls = 0
+		val repo = repository(IdentityVerifier { calls++; SessionVerification.Retry })
+		assertEquals(RestoreResult.Invalid, repo.restore())
+		assertEquals(0, calls)
+		assertFalse(File(context.noBackupFilesDir, "session").exists())
+		assertTrue(repository(verifier).login("synthetic", charArrayOf('x')) is GatewayResult.Success)
+		restart()
+		assertTrue(repository(verifier).restore() is RestoreResult.Restored)
+	}
+
+	@Test
 	fun mismatchedIdentityCannotOpenCache() {
 		saved()
 		val repo = repository(IdentityVerifier { SessionVerification.Verified(AccountId("other"), true) })
