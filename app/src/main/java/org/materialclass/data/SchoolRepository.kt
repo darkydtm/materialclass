@@ -102,21 +102,17 @@ internal class SchoolRepository(
 
 	fun restore(): RestoreResult {
 		var candidate: UnverifiedSession? = null
-		val result = store.restore { material ->
+		return store.restore({ material ->
 			val remote = decodeSession(material) ?: return@restore SessionVerification.Retry
 			val verification = verifier.verify(remote)
 			if (verification is SessionVerification.Verified && verification.pupil) candidate = remote
 			verification
-		}
-		if (result is RestoreResult.Restored) {
+		}) { active ->
 			afterRestoreActivation()
-			coordinator.ifActive(result.session) {
-				session = result.session
-				remote = candidate
-				emit(DiaryState.Cleared)
-			} ?: return RestoreResult.Cancelled
+			session = active
+			remote = candidate
+			emit(DiaryState.Cleared)
 		}
-		return result
 	}
 
 	fun refresh(context: DiaryContext) {
@@ -164,15 +160,17 @@ internal class SchoolRepository(
 		loginRevision = null
 		val active = session
 		if (active == null) {
-			if (!coordinator.logoutIfNoActive()) pending?.let { coordinator.cancelLogin(it) }
+			try {
+				if (!coordinator.logoutIfNoActive()) pending?.let { coordinator.cancelLogin(it) }
+			} finally { emit(DiaryState.Cleared) }
 		} else {
-			val revoked = coordinator.ifActive(active) {
-				remote = null
-				session = null
-				try { coordinator.revokeIfActive(active) } finally { emit(DiaryState.Cleared) }
-			}
-			if (revoked != true) coordinator.logoutIfNoActive()
-			pending?.let { coordinator.cancelLogin(it) }
+			remote = null
+			session = null
+			try {
+				val revoked = coordinator.revokeIfActive(active)
+				if (!revoked) coordinator.logoutIfNoActive()
+				pending?.let { coordinator.cancelLogin(it) }
+			} finally { emit(DiaryState.Cleared) }
 		}
 	}
 }

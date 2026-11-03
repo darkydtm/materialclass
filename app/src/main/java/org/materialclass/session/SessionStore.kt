@@ -109,7 +109,9 @@ class SessionStore(context: Context, private val coordinator: SessionCoordinator
 
 	fun restore(): ActiveSession? = null
 
-	fun restore(verifier: SessionVerifier): RestoreResult = synchronized(restoreLock) {
+	fun restore(verifier: SessionVerifier): RestoreResult = restore(verifier) {}
+
+	internal fun restore(verifier: SessionVerifier, onRestored: (ActiveSession) -> Unit): RestoreResult = synchronized(restoreLock) {
 		val revision = coordinator.beginRestore() ?: return@synchronized RestoreResult.Cancelled
 		val candidate = coordinator.finishRestore(revision) {
 			if (marker.exists() || File(marker.path + ".bak").exists() || File(marker.path + ".new").exists()) null
@@ -133,7 +135,11 @@ class SessionStore(context: Context, private val coordinator: SessionCoordinator
 					if (!matching || !verification.pupil) {
 						coordinator.rejectRestore()
 						RestoreResult.Invalid
-					} else RestoreResult.Restored(coordinator.acceptRestore(verification.account))
+					} else {
+						val active = coordinator.acceptRestore(verification.account)
+						onRestored(active)
+						RestoreResult.Restored(active)
+					}
 				}
 			}
 		} ?: RestoreResult.Cancelled

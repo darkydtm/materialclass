@@ -96,6 +96,40 @@ class SchoolRepositoryTest {
 	}
 
 	@Test
+	fun logoutClearsDiaryWhenStorageRevocationFails() {
+		var failClear = false
+		val failingCoordinator = SessionCoordinator { if (failClear) throw java.io.IOException("synthetic failure") }
+		val failingStore = SessionStore(androidContext, failingCoordinator)
+		val events = mutableListOf<DiaryState>()
+		val repository = SchoolRepository(FakeGateway(), IdentityVerifier { SessionVerification.Verified(AccountId("a"), true) }, failingCoordinator, FakeCache(), { 1L }, events::add, failingStore)
+		assertTrue(repository.login("a", charArrayOf('x')) is GatewayResult.Success)
+		repository.refresh(context)
+		assertTrue(events.last() is DiaryState.Ready)
+		failClear = true
+		try {
+			repository.logout()
+			fail("Storage failure must propagate")
+		} catch (_: java.io.IOException) {
+			assertEquals(DiaryState.Cleared, events.last())
+		}
+	}
+
+	@Test
+	fun logoutOfStaleRepositoryDoesNotRevokeNewerLogin() {
+		val gateway = FakeGateway(); val olderEvents = mutableListOf<DiaryState>(); val newerEvents = mutableListOf<DiaryState>()
+		val older = repository(gateway, FakeCache(), olderEvents)
+		assertTrue(older.login("a", charArrayOf('x')) is GatewayResult.Success)
+		older.refresh(context)
+		gateway.identity = "b"
+		val newer = repository(gateway, FakeCache(), newerEvents)
+		assertTrue(newer.login("b", charArrayOf('x')) is GatewayResult.Success)
+		older.logout()
+		assertEquals(DiaryState.Cleared, olderEvents.last())
+		newer.refresh(context)
+		assertTrue(newerEvents.last() is DiaryState.Ready)
+	}
+
+	@Test
 	fun cancellationIsNotConvertedToUnavailable() {
 		val gateway = object : SchoolGateway {
 			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> = throw java.util.concurrent.CancellationException()
