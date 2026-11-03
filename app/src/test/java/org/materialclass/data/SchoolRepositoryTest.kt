@@ -34,6 +34,36 @@ class SchoolRepositoryTest {
 	)
 
 	@Test
+	fun olderLoginCannotPublishAfterNewerLoginStarts() {
+		val enteredOld = CountDownLatch(1); val entered = CountDownLatch(2); val releaseOld = CountDownLatch(1); val releaseNew = CountDownLatch(1)
+		val gateway = object : SchoolGateway {
+			override fun login(login: String, password: CharArray): GatewayResult<UnverifiedSession> {
+				entered.countDown()
+				if (login == "older") enteredOld.countDown()
+				check((if (login == "older") releaseOld else releaseNew).await(10, TimeUnit.SECONDS))
+				return GatewayResult.Success(UnverifiedSession("synthetic-token", login, "student"))
+			}
+			override fun diary(session: UnverifiedSession, context: DiaryContext): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
+		}
+		val cache = FakeCache(); val events = mutableListOf<DiaryState>()
+		val repository = SchoolRepository(gateway, IdentityVerifier { it.identityCandidate?.let(::AccountId) }, SessionCoordinator { }, cache, { 1L }, events::add)
+		var older: GatewayResult<Unit>? = null; var newer: GatewayResult<Unit>? = null
+		val first = thread { older = repository.login("older", charArrayOf('x')) }
+		check(enteredOld.await(10, TimeUnit.SECONDS))
+		val second = thread { newer = repository.login("newer", charArrayOf('x')) }
+		check(entered.await(10, TimeUnit.SECONDS))
+		releaseOld.countDown(); first.join(10000)
+		assertFalse(first.isAlive)
+		assertTrue(older is GatewayResult.Failure)
+		releaseNew.countDown(); second.join(10000)
+		assertFalse(second.isAlive)
+		assertTrue(newer is GatewayResult.Success)
+		repository.refresh(context)
+		assertEquals(setOf(AccountId("newer")), cache.values.keys)
+		repository.logout()
+	}
+
+	@Test
 	fun switchingAccountsClearsPreviouslyEmittedDiary() {
 		val gateway = FakeGateway(); val events = mutableListOf<DiaryState>()
 		val repository = repository(gateway, FakeCache(), events)
