@@ -20,6 +20,25 @@ class StorageSecurityTest {
 	private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
 	@Test
+	fun storedIdentityAloneCannotRestoreSession() {
+		val coordinator = SessionCoordinator(context)
+		val store = SessionStore(context, coordinator)
+		val active = coordinator.activate(AccountId("synthetic-unverified"))
+		store.write(active, "synthetic-token".toByteArray())
+		val field = SessionCoordinator::class.java.getDeclaredField("active")
+		field.isAccessible = true
+		field.set(null, null)
+		val allowed = SessionCoordinator::class.java.getDeclaredField("restorationAllowed")
+		allowed.isAccessible = true
+		allowed.setBoolean(null, true)
+		try {
+			assertNull("A stored identity is not independent verification", store.restore())
+		} finally {
+			coordinator.logout()
+		}
+	}
+
+	@Test
 	fun restoresEncryptedSessionAfterProcessRecreation() {
 		val coordinator = SessionCoordinator(context)
 		val store = SessionStore(context, coordinator)
