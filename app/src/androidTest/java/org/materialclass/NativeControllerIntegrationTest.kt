@@ -167,14 +167,16 @@ class NativeControllerIntegrationTest {
 		main { controller = NativeController { emit -> SchoolRepository(gateway, IdentityVerifier { _, _ -> SessionVerification.Retry }, shared, cache, { 1L }, emit, SessionStore(context, shared)) }; controller!!.logout() }
 		try {
 			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			val firstTicket = shared.pendingLogoutTicket()
 			val newer = shared.cancelInFlightNow()
 			release.countDown()
-			await { controller!!.state.logoutPending && !controller!!.state.busy }
+			await { shared.pendingLogoutTicket() === newer && controller!!.state.logoutPending && !controller!!.state.busy }
+			assertNotEquals(firstTicket, newer)
 			assertEquals(newer, shared.pendingLogoutTicket())
 			main { controller!!.logout() }
 			await { !controller!!.state.logoutPending && !controller!!.state.busy }
 			assertNull(shared.pendingLogoutTicket())
-		} finally { release.countDown(); shared.pendingLogoutTicket()?.let { shared.logout(it) } }
+		} finally { release.countDown(); while (shared.pendingLogoutTicket() != null) shared.logout(shared.pendingLogoutTicket()) }
 	}
 
 	@Test fun failedLogoutCanBeRetriedAfterControllerRecreation() {
