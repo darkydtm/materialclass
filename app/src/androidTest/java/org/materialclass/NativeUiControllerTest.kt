@@ -68,7 +68,7 @@ class NativeUiControllerTest {
 			edit(editables(instrumentation.uiAutomation.rootInActiveWindow).first { !it.isPassword }, "synthetic")
 			SystemClock.sleep(500)
 			edit(editables(instrumentation.uiAutomation.rootInActiveWindow).first { it.isPassword }, "synthetic")
-			instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+			instrumentation.runOnMainSync { (context.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).hideSoftInputFromWindow(activity.window.decorView.windowToken, 0) }
 			SystemClock.sleep(500)
 			click(context.getString(R.string.sign_in))
 			waitFor(context.getString(R.string.logout))
