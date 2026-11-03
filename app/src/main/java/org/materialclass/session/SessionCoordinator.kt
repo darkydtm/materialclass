@@ -36,7 +36,9 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 
 	internal fun revokeIfActive(session: ActiveSession): Boolean = synchronized(StorageLock) {
 		if (active !== session) return@synchronized false
-		logout()
+		active = null
+		restorationAllowed = false
+		clearSession()
 		true
 	}
 
