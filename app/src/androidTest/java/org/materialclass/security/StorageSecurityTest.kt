@@ -9,6 +9,9 @@ import org.materialclass.cache.EncryptedCache
 import org.materialclass.session.AccountId
 import org.materialclass.session.SessionCoordinator
 import org.materialclass.session.SessionStore
+import org.materialclass.session.SessionVerification
+import org.materialclass.session.SessionVerifier
+import org.materialclass.session.RestoreResult
 import java.io.File
 import java.security.MessageDigest
 import java.util.concurrent.CountDownLatch
@@ -18,6 +21,67 @@ import kotlin.concurrent.thread
 @RunWith(AndroidJUnit4::class)
 class StorageSecurityTest {
 	private val context = InstrumentationRegistry.getInstrumentation().targetContext
+
+	private fun resetProcessSession() {
+		val active = SessionCoordinator::class.java.getDeclaredField("active")
+		active.isAccessible = true
+		active.set(null, null)
+		val allowed = SessionCoordinator::class.java.getDeclaredField("restorationAllowed")
+		allowed.isAccessible = true
+		allowed.setBoolean(null, true)
+	}
+
+	@Test
+	fun retryPreservesSessionButMismatchAndExpiryRevokeIt() {
+		val coordinator = SessionCoordinator(context)
+		val store = SessionStore(context, coordinator)
+		val account = AccountId("synthetic-verify")
+		val old = coordinator.activate(account)
+		store.write(old, "synthetic-material".toByteArray())
+		resetProcessSession()
+		assertEquals(RestoreResult.Retry, store.restore { SessionVerification.Retry })
+		assertTrue(File(context.noBackupFilesDir, "session").exists())
+		assertEquals(RestoreResult.Invalid, store.restore { SessionVerification.Verified(AccountId("synthetic-other"), true) })
+		assertFalse(File(context.noBackupFilesDir, "session").exists())
+		val next = coordinator.activate(account)
+		store.write(next, byteArrayOf(7))
+		resetProcessSession()
+		assertEquals(RestoreResult.Invalid, store.restore { SessionVerification.Expired })
+		assertFalse(File(context.noBackupFilesDir, "session").exists())
+		val third = coordinator.activate(account)
+		store.write(third, byteArrayOf(8))
+		resetProcessSession()
+		assertEquals(RestoreResult.Invalid, store.restore { SessionVerification.Verified(account, false) })
+		assertFalse(File(context.noBackupFilesDir, "session").exists())
+		coordinator.logout()
+	}
+
+	@Test
+	fun logoutCancelsPendingVerification() {
+		val coordinator = SessionCoordinator(context)
+		val store = SessionStore(context, coordinator)
+		val account = AccountId("synthetic-race")
+		val old = coordinator.activate(account)
+		store.write(old, byteArrayOf(1))
+		resetProcessSession()
+		val entered = CountDownLatch(1)
+		val release = CountDownLatch(1)
+		var result: RestoreResult? = null
+		val worker = thread {
+			result = store.restore {
+				entered.countDown()
+				check(release.await(10, TimeUnit.SECONDS))
+				SessionVerification.Verified(account, true)
+			}
+		}
+		check(entered.await(10, TimeUnit.SECONDS))
+		coordinator.logout()
+		release.countDown()
+		worker.join(10000)
+		assertFalse(worker.isAlive)
+		assertEquals(RestoreResult.Cancelled, result)
+		assertFalse(File(context.noBackupFilesDir, "session").exists())
+	}
 
 	@Test
 	fun storedIdentityAloneCannotRestoreSession() {
@@ -57,11 +121,12 @@ class StorageSecurityTest {
 		allowed.setBoolean(null, true)
 		val restarted = SessionCoordinator(context)
 		val restoredStore = SessionStore(context, restarted)
-		val restore = try { SessionStore::class.java.getMethod("restore") } catch (_: NoSuchMethodException) { null }
-		assertNotNull("Session restore must be available", restore)
-		val restored = restore!!.invoke(restoredStore) as org.materialclass.session.ActiveSession?
-		assertNotNull(restored)
-		assertEquals(AccountId("synthetic-restored-account"), restored!!.account)
+		val restore = SessionStore::class.java.getMethod("restore")
+		val result = restoredStore.restore(SessionVerifier { material ->
+			assertArrayEquals("synthetic-restored-token".toByteArray(), material)
+			SessionVerification.Verified(AccountId("synthetic-restored-account"), true)
+		})
+		val restored = (result as RestoreResult.Restored).session
 		assertArrayEquals("synthetic-restored-token".toByteArray(), restoredStore.read(restored))
 		assertArrayEquals(byteArrayOf(3, 4), EncryptedCache(context, restarted).read(restored))
 		assertNull(restore.invoke(restoredStore))

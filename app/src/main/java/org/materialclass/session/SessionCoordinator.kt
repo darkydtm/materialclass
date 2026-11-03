@@ -50,11 +50,24 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		ActiveSession(account).also { active = it }
 	}
 
-	internal fun restore(account: () -> AccountId?): ActiveSession? = synchronized(StorageLock) {
-		if (active != null || !restorationAllowed) return@synchronized null
-		val restored = account()
+	internal fun beginRestore(): Long? = synchronized(StorageLock) {
+		if (active != null || !restorationAllowed) null else ++revision
+	}
+
+	internal fun <T> finishRestore(expected: Long, action: () -> T): T? = synchronized(StorageLock) {
+		if (active != null || !restorationAllowed || revision != expected) null else action()
+	}
+
+	internal fun acceptRestore(account: AccountId): ActiveSession {
 		restorationAllowed = false
-		restored?.let { revision++; ActiveSession(it).also { session -> active = session } }
+		revision++
+		return ActiveSession(account).also { active = it }
+	}
+
+	internal fun rejectRestore() {
+		restorationAllowed = false
+		revision++
+		clearSession()
 	}
 
 	fun logout() = synchronized(StorageLock) {

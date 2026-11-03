@@ -13,6 +13,26 @@ import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.File
+import java.security.MessageDigest
+import java.util.concurrent.CancellationException
+
+fun interface SessionVerifier {
+	fun verify(material: ByteArray): SessionVerification
+}
+
+sealed class SessionVerification {
+	class Verified(val account: AccountId, val pupil: Boolean) : SessionVerification()
+	data object Expired : SessionVerification()
+	data object Retry : SessionVerification()
+}
+
+sealed class RestoreResult {
+	class Restored(val session: ActiveSession) : RestoreResult()
+	data object Absent : RestoreResult()
+	data object Retry : RestoreResult()
+	data object Invalid : RestoreResult()
+	data object Cancelled : RestoreResult()
+}
 
 class LogoutStorageException(cause: Throwable) : Exception("Logout could not durably revoke the session", cause)
 
@@ -85,9 +105,36 @@ class SessionStore(context: Context, private val coordinator: SessionCoordinator
 		}
 	}
 
-	fun restore(): ActiveSession? = coordinator.restore {
-		if (marker.exists() || File(marker.path + ".bak").exists() || File(marker.path + ".new").exists()) null
-		else file.read()?.let { decode(it).first }
+	fun restore(): ActiveSession? = null
+
+	fun restore(verifier: SessionVerifier): RestoreResult {
+		val revision = coordinator.beginRestore() ?: return RestoreResult.Cancelled
+		val candidate = coordinator.finishRestore(revision) {
+			if (marker.exists() || File(marker.path + ".bak").exists() || File(marker.path + ".new").exists()) null
+			else file.read()?.let { bytes -> try { decode(bytes) } finally { bytes.fill(0) } }
+		} ?: return RestoreResult.Absent
+		val verification = try {
+			verifier.verify(candidate.second)
+		} catch (error: CancellationException) {
+			throw error
+		} catch (_: Exception) {
+			SessionVerification.Retry
+		} finally {
+			candidate.second.fill(0)
+		}
+		return coordinator.finishRestore(revision) {
+			when (verification) {
+				SessionVerification.Retry -> RestoreResult.Retry
+				SessionVerification.Expired -> { coordinator.rejectRestore(); RestoreResult.Invalid }
+				is SessionVerification.Verified -> {
+					val matching = MessageDigest.isEqual(candidate.first.value.toByteArray(Charsets.UTF_8), verification.account.value.toByteArray(Charsets.UTF_8))
+					if (!matching || !verification.pupil) {
+						coordinator.rejectRestore()
+						RestoreResult.Invalid
+					} else RestoreResult.Restored(coordinator.acceptRestore(verification.account))
+				}
+			}
+		} ?: RestoreResult.Cancelled
 	}
 
 	fun read(session: ActiveSession): ByteArray? = coordinator.ifActive(session) {

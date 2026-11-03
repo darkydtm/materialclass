@@ -18,11 +18,10 @@ class SessionCoordinatorTest {
 		allowed.isAccessible = true
 		allowed.setBoolean(null, true)
 		val coordinator = SessionCoordinator { }
-		try {
-			coordinator.restore { throw IllegalStateException("synthetic transient failure") }
-			throw AssertionError("Failure must be reported")
-		} catch (_: IllegalStateException) { }
-		assertEquals(AccountId("synthetic-retry"), coordinator.restore { AccountId("synthetic-retry") }?.account)
+		val first = coordinator.beginRestore()!!
+		assertNull(coordinator.finishRestore(first) { null })
+		val second = coordinator.beginRestore()!!
+		assertEquals(AccountId("synthetic-retry"), coordinator.finishRestore(second) { coordinator.acceptRestore(AccountId("synthetic-retry")) }?.account)
 		coordinator.logout()
 	}
 	@Test
@@ -32,7 +31,7 @@ class SessionCoordinatorTest {
 		coordinator.activate(AccountId("synthetic-account"))
 		fail = true
 		try { coordinator.logout() } catch (_: IllegalStateException) { }
-		assertNull(coordinator.restore { AccountId("synthetic-account") })
+		assertNull(coordinator.beginRestore())
 	}
 
 	@Test
