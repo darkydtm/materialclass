@@ -10,6 +10,20 @@ import kotlin.concurrent.thread
 
 class SessionCoordinatorTest {
 	@Test
+	fun activatingAnotherAccountAdvancesGlobalEpoch() {
+		val first = SessionCoordinator { }
+		val second = SessionCoordinator { }
+		val old = first.activate(AccountId("synthetic-first"))
+		val initial = second.revocationEpoch()
+		try {
+			val current = second.activate(AccountId("synthetic-second"))
+			assertEquals(initial + 1, first.revocationEpoch())
+			assertNull(first.ifActive(old) { "stale" })
+			assertEquals("current", first.ifActive(current) { "current" })
+		} finally { first.logout() }
+	}
+
+	@Test
 	fun revocationsPersistAcrossCoordinatorsAndObserversCanUnsubscribe() {
 		val first = SessionCoordinator { }
 		val second = SessionCoordinator { }
