@@ -92,7 +92,11 @@ class SchoolRepositoryTest {
 	private fun cancelledCacheWriteDoesNotPublish(current: Boolean) {
 		val entered = CountDownLatch(1); val release = CountDownLatch(1)
 		val events = java.util.Collections.synchronizedList(mutableListOf<DiaryState>())
-		val gateway = FakeGateway()
+		val gateway = object : TestSchoolGateway() {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic", "1", "student", SchoolContext(1, 2026, 2)))
+			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = GatewayResult.Success(context.date)
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
+		}
 		val cache = object : DiaryCache {
 			override fun read(session: ActiveSession): ByteArray? = null
 			override fun write(session: ActiveSession, bytes: ByteArray): Boolean {
