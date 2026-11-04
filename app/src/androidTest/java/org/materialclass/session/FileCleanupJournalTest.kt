@@ -16,6 +16,8 @@ class FileCleanupJournalTest {
 	private val context = InstrumentationRegistry.getInstrumentation().targetContext
 	private val path = File(context.noBackupFilesDir, "cleanup-journal")
 	private val namespace = CacheNamespace("a".repeat(64))
+	private val backupTemporary = File(context.noBackupFilesDir, "recovery-tmp")
+	private val primaryTemporary = File(context.noBackupFilesDir, "cleanup-tmp")
 
 	@Before
 	fun setup() {
@@ -24,10 +26,43 @@ class FileCleanupJournalTest {
 
 	@After
 	fun cleanup() {
+		backupTemporary.delete()
+		primaryTemporary.delete()
 		path.delete()
 		File(context.noBackupFilesDir, "cleanup-recovery").delete()
 		KeystoreKeys().delete("cleanup-journal")
 		KeystoreKeys().delete("cleanup-recovery")
+	}
+
+	@Test
+	fun backupFailureStillPersistsPrimaryBeforeInvalidation() {
+		check(!backupTemporary.exists() || backupTemporary.delete())
+		check(backupTemporary.createNewFile())
+		var invalidated = false
+		try {
+			try {
+				CleanupRecovery(FileCleanupJournal(context), {}, {}, { invalidated = true }).cleanup(namespace)
+				fail("Expected write failure")
+			} catch (_: LogoutStorageException) { }
+			assertTrue(invalidated)
+			assertEquals(namespace.value, FileCleanupJournal(context).read()?.value)
+		} finally { backupTemporary.delete() }
+	}
+
+	@Test
+	fun failedCopiesAndCacheCleanupPreserveSessionKey() {
+		check(!backupTemporary.exists() || backupTemporary.delete())
+		check(!primaryTemporary.exists() || primaryTemporary.delete())
+		check(backupTemporary.createNewFile())
+		check(primaryTemporary.createNewFile())
+		var invalidated = false
+		try {
+			try {
+				CleanupRecovery(FileCleanupJournal(context), { throw IllegalStateException("cache") }, {}, { invalidated = true }).cleanup(namespace)
+				fail("Expected write failure")
+			} catch (_: LogoutStorageException) { }
+			assertFalse(invalidated)
+		} finally { backupTemporary.delete(); primaryTemporary.delete() }
 	}
 
 	@Test
