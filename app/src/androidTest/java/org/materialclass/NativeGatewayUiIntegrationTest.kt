@@ -156,6 +156,8 @@ class NativeGatewayUiIntegrationTest {
 		waitFor(context.getString(R.string.logout))
 		click(context.getString(R.string.diary))
 		waitFor("Homework for 01.01.2026")
+		click("Second - 08.01.2026")
+		waitFor("Homework for 08.01.2026")
 		exchange.blockDiary.set(true)
 		click("First - 01.01.2026")
 		assertTrue(exchange.entered.await(15, TimeUnit.SECONDS))
@@ -164,6 +166,8 @@ class NativeGatewayUiIntegrationTest {
 		exchange.blockDiary.set(false)
 		exchange.release.countDown()
 		assertTrue(exchange.returned.await(15, TimeUnit.SECONDS))
+		val field = NativeController::class.java.getDeclaredField("executor").apply { isAccessible = true }
+		(field.get(controller) as java.util.concurrent.ExecutorService).submit {}.get(15, TimeUnit.SECONDS)
 		waitFor("Homework for 08.01.2026")
 		instrumentation.waitForIdleSync()
 		instrumentation.runOnMainSync {
@@ -197,6 +201,7 @@ class NativeGatewayUiIntegrationTest {
 		click("Second - 08.01.2026")
 		assertTrue(exchange.entered.await(15, TimeUnit.SECONDS))
 		instrumentation.runOnMainSync { controller.logout() }
+		click(context.getString(R.string.login))
 		waitFor(context.getString(R.string.sign_in))
 		exchange.release.countDown()
 		assertTrue(exchange.returned.await(15, TimeUnit.SECONDS))
