@@ -460,6 +460,7 @@ internal class SchoolRepository(
 	internal fun ownedEpoch() = coordinator.ownedEpoch(session)
 
 	fun logout(token: Any? = null) {
+		val nested = Thread.holdsLock(StorageLock)
 		var acknowledgement: java.util.concurrent.CountDownLatch? = null
 		val selected: (Any) -> Unit = { acknowledgement = coordinator.uiAcknowledgement(it) }
 		val outcome: Result<Boolean> = synchronized(StorageLock) {
@@ -492,7 +493,7 @@ internal class SchoolRepository(
 			}
 		}
 		if (outcome.isFailure || outcome.getOrNull() == true) emit(DiaryState.Cleared)
-		coordinator.awaitUiAcknowledgement(acknowledgement)
+		if (!nested && outcome.isSuccess) coordinator.awaitUiAcknowledgement(acknowledgement)
 		outcome.getOrThrow()
 	}
 }
