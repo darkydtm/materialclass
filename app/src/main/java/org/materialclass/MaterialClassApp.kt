@@ -87,10 +87,11 @@ internal fun MaterialClassApp(example: ExampleData? = null, nativeEnabled: Boole
 						TextButton(onClick = { warning = false; preferences.edit().putBoolean("warning_seen", true).apply() }) { Text(stringResource(R.string.ok)) }
 					}
 					Row(modifier = Modifier.horizontalScroll(rememberScrollState()).selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-						listOf("login" to R.string.login, "grades" to R.string.grades, "homework" to R.string.homework, "diary" to R.string.diary, "schedule" to R.string.schedule, "settings" to R.string.settings).forEach { (value, label) ->
+						listOf("login" to R.string.login, "homework" to R.string.homework, "diary" to R.string.diary, "schedule" to R.string.schedule, "settings" to R.string.settings).forEach { (value, label) ->
 							Box(Modifier.selectable(selected = screen == value, role = Role.Tab, onClick = { screen = value }).padding(12.dp)) { Text(stringResource(label)) }
 						}
 					}
+					TextButton(onClick = { screen = "grades" }) { Text(stringResource(R.string.grades)) }
 					when (screen) {
 						"login" -> LoginScreen(controller, nativeState)
 						"grades" -> {
