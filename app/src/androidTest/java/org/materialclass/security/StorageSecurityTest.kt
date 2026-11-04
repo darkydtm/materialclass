@@ -52,6 +52,46 @@ class StorageSecurityTest {
 	}
 
 	@Test
+	fun replacementDeletesOnlyPreviousNamespace() {
+		val coordinator = SessionCoordinator(context)
+		val cache = EncryptedCache(context, coordinator)
+		val schedule = EncryptedCache(context, coordinator, "schedule")
+		val old = coordinator.activate(AccountId("synthetic-old"))
+		try {
+			cache.write(old, byteArrayOf(1)); schedule.write(old, byteArrayOf(2))
+			val keys = KeystoreKeys()
+			val ids = listOf(old.cacheNamespace.value, old.cacheNamespace.value + ":schedule").map { keys.namespace(it, false) }
+			val current = coordinator.activate(AccountId("synthetic-new"))
+			cache.write(current, byteArrayOf(3)); schedule.write(current, byteArrayOf(4))
+			ids.forEach { assertFalse(File(context.filesDir, "backup-cache/$it").exists()); assertFalse(keys.contains("cache-$it")) }
+			assertArrayEquals(byteArrayOf(3), cache.read(current))
+			assertArrayEquals(byteArrayOf(4), schedule.read(current))
+		} finally { coordinator.logout(); cache.clearAll() }
+	}
+
+	@Test
+	fun cacheDeletionFailureLeavesRetryableTicket() {
+		val coordinator = SessionCoordinator(context)
+		val cache = EncryptedCache(context, coordinator)
+		val session = coordinator.activate(AccountId("synthetic-failure"))
+		cache.write(session, byteArrayOf(1))
+		val keys = KeystoreKeys()
+		val id = keys.namespace(session.cacheNamespace.value, false)
+		val file = File(context.filesDir, "backup-cache/$id")
+		assertTrue(file.delete()); assertTrue(file.mkdir())
+		val child = File(file, "block"); assertTrue(child.createNewFile())
+		try {
+			try { coordinator.logout(); fail("Cleanup must fail") } catch (_: java.io.IOException) { }
+			val ticket = coordinator.pendingLogoutTicket()
+			assertNotNull(ticket)
+			assertTrue(child.delete()); assertTrue(file.delete())
+			coordinator.logout(ticket)
+			assertNull(coordinator.pendingLogoutTicket())
+			assertFalse(keys.contains("cache-$id"))
+		} finally { child.delete(); file.delete(); coordinator.pendingLogoutTicket()?.let { coordinator.logout(it) }; coordinator.logout(); cache.clearAll() }
+	}
+
+	@Test
 	fun legacyEncryptedSessionWithoutNamespaceCannotRestore() {
 		val coordinator = SessionCoordinator(context)
 		val store = SessionStore(context, coordinator)
@@ -387,8 +427,9 @@ class StorageSecurityTest {
 		KeystoreKeys().delete("cache-namespace")
 		try { cache.write(active, byteArrayOf(9)); fail("Missing namespace must fail") } catch (_: StorageUnreadableException) { }
 		assertEquals(files, directory.listFiles()!!.associate { it.name to it.readBytes().toList() })
-		coordinator.logout()
+		try { coordinator.logout(); fail("Missing namespace must prevent cleanup") } catch (_: java.io.IOException) { }
 		cache.clearAll()
+		coordinator.logout(coordinator.pendingLogoutTicket())
 		assertTrue(directory.listFiles()!!.isEmpty())
 	}
 
@@ -453,9 +494,9 @@ class StorageSecurityTest {
 		try {
 			val firstUser = coordinator.activate(AccountId("synthetic-colliding-id"))
 			assertTrue(cache.write(firstUser, byteArrayOf(1)))
-			val retained = File(context.filesDir, "backup-cache").listFiles()!!.associate { it.name to it.readBytes().toList() }
+			val oldId = KeystoreKeys().namespace(firstUser.cacheNamespace.value, false)
 			coordinator.logout()
-			assertEquals(retained, File(context.filesDir, "backup-cache").listFiles()!!.associate { it.name to it.readBytes().toList() })
+			assertFalse(File(context.filesDir, "backup-cache/$oldId").exists())
 			val secondUser = coordinator.activate(AccountId("synthetic-colliding-id"))
 			assertNotEquals(firstUser.cacheNamespace.value, secondUser.cacheNamespace.value)
 			assertNull(cache.read(secondUser))

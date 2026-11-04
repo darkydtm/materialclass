@@ -137,11 +137,11 @@ class SessionStore(context: Context, private val coordinator: SessionCoordinator
 		val result = coordinator.finishRestore(revision) {
 			when (verification) {
 				SessionVerification.Retry -> RestoreResult.Retry
-				SessionVerification.Expired, SessionVerification.Invalid -> { coordinator.rejectRestore(); RestoreResult.Invalid }
+				SessionVerification.Expired, SessionVerification.Invalid -> { coordinator.rejectRestore(candidate.namespace); RestoreResult.Invalid }
 				is SessionVerification.Verified -> {
 					val matching = MessageDigest.isEqual(candidate.account.value.toByteArray(Charsets.UTF_8), verification.account.value.toByteArray(Charsets.UTF_8))
 					if (!matching || !verification.pupil) {
-						coordinator.rejectRestore()
+						coordinator.rejectRestore(candidate.namespace)
 						RestoreResult.Invalid
 					} else {
 						val active = coordinator.acceptRestore(verification.account, candidate.namespace, notify = false) ?: return@finishRestore RestoreResult.Cancelled

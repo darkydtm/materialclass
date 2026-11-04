@@ -32,6 +32,33 @@ class EncryptedCache(context: Context, private val coordinator: SessionCoordinat
 	fun write(session: ActiveSession, value: ByteArray): Boolean = coordinator.ifActive(session) { file(session).write(value); true } ?: false
 	fun reset(session: ActiveSession): Boolean = coordinator.ifActive(session) { file(session).reset(); true } ?: false
 
+	companion object {
+		internal fun clearNamespace(context: Context, namespace: org.materialclass.session.CacheNamespace) = synchronized(StorageLock) {
+			val files = CacheFiles(context)
+			val keys = KeystoreKeys()
+			if (!keys.contains("cache-namespace")) {
+				if (files.directory.listFiles()?.isEmpty() != true) throw IOException("Cache namespace key is missing")
+				return@synchronized
+			}
+			var failure: Exception? = null
+			for (suffix in listOf("", ":schedule")) {
+				try {
+					val id = keys.namespace(namespace.value + suffix, false)
+					EncryptedFile(File(files.directory, id), "cache-$id", keys, files).reset()
+				} catch (error: Exception) {
+					if (failure == null) failure = error else failure.addSuppressed(error)
+				}
+			}
+			try {
+				val descriptor = android.system.Os.open(files.directory.absolutePath, android.system.OsConstants.O_RDONLY, 0)
+				try { android.system.Os.fsync(descriptor) } finally { android.system.Os.close(descriptor) }
+			} catch (error: Exception) {
+				if (failure == null) failure = error else failure.addSuppressed(error)
+			}
+			failure?.let { throw it }
+		}
+	}
+
 	fun clearAll() = synchronized(StorageLock) {
 		var failure: Exception? = null
 		try {

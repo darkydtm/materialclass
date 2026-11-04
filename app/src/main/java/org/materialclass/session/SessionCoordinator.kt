@@ -35,8 +35,9 @@ class RequestLease internal constructor(internal val owner: ActiveSession? = nul
 internal enum class SessionChange { ACTIVATED, EXPIRED, LOGOUT }
 internal data class SessionEvent(val epoch: Long, val change: SessionChange, val session: ActiveSession?)
 
-class SessionCoordinator internal constructor(private val clearSession: () -> Unit) {
-	constructor(context: Context) : this({ SessionStore.clear(context) })
+class SessionCoordinator internal constructor(private val clearSession: () -> Unit, private val clearCache: (CacheNamespace) -> Unit) {
+	internal constructor(clearSession: () -> Unit) : this(clearSession, {})
+	constructor(context: Context) : this({ SessionStore.clear(context) }, { org.materialclass.cache.EncryptedCache.clearNamespace(context, it) })
 
 	companion object {
 		private var active: ActiveSession? = null
@@ -46,6 +47,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		private var lastEvent = SessionEvent(0L, SessionChange.LOGOUT, null)
 		private val observers = mutableSetOf<(Long) -> Unit>()
 		private val pending = mutableSetOf<Any>()
+		private val revoked = mutableMapOf<Any, CacheNamespace?>()
 		private val leases = mutableSetOf<RequestLease>()
 		private val disconnectExecutor = Executors.newCachedThreadPool()
 
@@ -93,6 +95,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		val token = Any()
 		val (disconnects, epoch, callbacks) = synchronized(CancellationLock) {
 			pending.add(token)
+			revoked[token] = active?.cacheNamespace
 			ownPending.addLast(token)
 			revision++
 			leases.forEach { it.cancelled = true }
@@ -139,12 +142,22 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 			if (synchronized(CancellationLock) { active == null }) logout() else { cancelRequests(); synchronized(CancellationLock) { revision++ } }
 		}
 	}
+	private fun cleanup(namespace: CacheNamespace?) {
+		var failure: Exception? = null
+		try { if (namespace != null) clearCache(namespace) } catch (error: Exception) { failure = error }
+		try { clearSession() } catch (error: Exception) {
+			if (failure == null) failure = error else failure.addSuppressed(error)
+		}
+		failure?.let { throw it }
+	}
+
 	internal fun revokeIfActive(session: ActiveSession, expired: Boolean = false): Boolean = synchronized(StorageLock) {
 		val result = synchronized(CancellationLock) {
 			if (active !== session) null else {
 				active = null; restorationAllowed = false
 				val token = Any()
 				pending.add(token)
+				revoked[token] = session.cacheNamespace
 				ownPending.addLast(token)
 				lastEvent = SessionEvent(++revocationEpoch, if (expired) SessionChange.EXPIRED else SessionChange.LOGOUT, session)
 				Triple(token, revocationEpoch, observers.toList())
@@ -152,7 +165,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		} ?: return@synchronized false
 		notifyAfterStorage(result.second, result.third)
 		cancelRequests(session)
-		clearSession()
+		cleanup(session.cacheNamespace)
 		finishImmediateLogout(result.first)
 		true
 	}
@@ -170,11 +183,12 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		val (activationRevision, previous) = activation
 		cancelRequests()
 		try {
-			clearSession()
+			cleanup(previous?.cacheNamespace)
 		} catch (error: Exception) {
 			val event = synchronized(CancellationLock) {
 				val token = Any()
 				pending.add(token)
+				revoked[token] = previous?.cacheNamespace
 				ownPending.addLast(token)
 				lastEvent = SessionEvent(++revocationEpoch, SessionChange.LOGOUT, previous)
 				Pair(revocationEpoch, observers.toList())
@@ -223,29 +237,37 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		} ?: return
 		notifyRevocation(event.first, event.second)
 	}
-	internal fun rejectRestore() {
-		synchronized(CancellationLock) { restorationAllowed = false; revision++ }
-		clearSession()
+	internal fun rejectRestore(namespace: CacheNamespace) {
+		val token = synchronized(CancellationLock) {
+			restorationAllowed = false; revision++
+			Any().also { pending.add(it); revoked[it] = namespace; ownPending.addLast(it) }
+		}
+		cleanup(namespace)
+		finishImmediateLogout(token)
 	}
 	fun logout(token: Any? = null) = synchronized(StorageLock) {
 		if (token != null && !isPendingLogout(token)) return@synchronized
 		val (ownedToken, event) = synchronized(CancellationLock) {
-			val owned = token ?: ownPending.firstOrNull { it in pending }
-			active = null; revision++; restorationAllowed = false
-			Pair(owned, if (owned == null) {
+			val existing = token ?: ownPending.firstOrNull { it in pending }
+			val owned = existing ?: Any().also { pending.add(it); revoked[it] = active?.cacheNamespace; ownPending.addLast(it) }
+			val namespace = revoked[owned]
+			if (active?.cacheNamespace === namespace || namespace == null) active = null
+			revision++; restorationAllowed = false
+			Pair(owned, if (existing == null) {
 				lastEvent = SessionEvent(++revocationEpoch, SessionChange.LOGOUT, null)
 				Pair(revocationEpoch, observers.toList())
 			} else null)
 		}
 		if (event != null) notifyAfterStorage(event.first, event.second)
 		cancelRequests()
-		clearSession()
-		if (ownedToken != null) finishImmediateLogout(ownedToken)
+		cleanup(synchronized(CancellationLock) { revoked[ownedToken] })
+		finishImmediateLogout(ownedToken)
 	}
 	internal fun finishImmediateLogout(token: Any) {
 		val (epoch, callbacks) = synchronized(CancellationLock) {
 			ownPending.remove(token)
 			pending.remove(token)
+			revoked.remove(token)
 			Pair(revocationEpoch, observers.toList())
 		}
 		notifyAfterStorage(epoch, callbacks)

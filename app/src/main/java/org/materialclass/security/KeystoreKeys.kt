@@ -32,6 +32,7 @@ internal class KeystoreKeys {
 	}
 
 	fun delete(alias: String) = synchronized(StorageLock) { store.deleteEntry(alias) }
+	fun contains(alias: String): Boolean = synchronized(StorageLock) { store.containsAlias(alias) }
 
 	fun namespace(value: String, create: Boolean): String = synchronized(StorageLock) {
 		try {
