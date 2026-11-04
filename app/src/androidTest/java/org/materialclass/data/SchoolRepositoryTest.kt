@@ -22,9 +22,11 @@ class SchoolRepositoryTest {
 		var identity: String? = "1"
 		var role = "student"
 		var result: GatewayResult<Diary> = GatewayResult.Success(Diary("01.01.2026", emptyList()))
+		var week: GatewayResult<String> = GatewayResult.Failure(AppError.UNAVAILABLE)
 		var entered: CountDownLatch? = null
 		var release: CountDownLatch? = null
 		override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", identity, role, SchoolContext(1, 2026, 2)))
+		override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = week
 		override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> {
 			entered?.countDown()
 			release?.let { check(it.await(10, TimeUnit.SECONDS)) }
@@ -939,6 +941,149 @@ class SchoolRepositoryTest {
 		val count = events.size
 		repository.refresh(context)
 		assertEquals(count, events.size)
+	}
+
+	@Test
+	fun diaryFallbackOnlyForConnectivityFailuresOnBothRefreshPaths() {
+		for (current in listOf(false, true)) {
+			val gateway = FakeGateway().apply { week = GatewayResult.Success(context.date) }
+			val cache = FakeCache(); val events = mutableListOf<DiaryState>()
+			val repo = repository(gateway, cache, events)
+			assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+			fun refresh() { if (current) repo.refreshCurrent() else repo.refreshDate(context.date) }
+			refresh()
+			val fresh = (events.last() as DiaryState.Ready).snapshot
+			for (error in AppError.values().filter { it != AppError.SESSION_EXPIRED }) {
+				gateway.result = GatewayResult.Failure(error)
+				val before = cache.accesses
+				refresh()
+				if (error == AppError.OFFLINE || error == AppError.TIMEOUT) {
+					val stale = events.last() as DiaryState.Ready
+					assertEquals(fresh, stale.snapshot); assertEquals(error, stale.staleError)
+					assertEquals(before + 1, cache.accesses)
+				} else {
+					assertEquals(error, (events.last() as DiaryState.Error).error)
+					assertEquals(before, cache.accesses)
+				}
+			}
+			gateway.result = GatewayResult.Success(Diary("08.01.2026", emptyList()))
+			val before = cache.accesses
+			refresh()
+			assertEquals(AppError.INCOMPATIBLE_RESPONSE, (events.last() as DiaryState.Error).error)
+			assertEquals(before, cache.accesses)
+			repo.logout()
+		}
+	}
+
+	@Test
+	fun unreadableDiaryCacheIsReportedOnlyForConnectivityFailures() {
+		for (current in listOf(false, true)) {
+			val gateway = FakeGateway().apply { week = GatewayResult.Success(context.date) }
+			var reads = 0
+			val cache = object : DiaryCache {
+				override fun read(session: ActiveSession): ByteArray? { reads++; throw java.io.IOException() }
+				override fun write(session: ActiveSession, bytes: ByteArray) = true
+			}
+			val events = mutableListOf<DiaryState>()
+			val repo = SchoolRepository(gateway, IdentityVerifier { session, _ -> proof(session) }, coordinator, cache, { 1L }, events::add, store)
+			assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+			for (error in listOf(AppError.UNAVAILABLE, AppError.FORBIDDEN, AppError.OFFLINE, AppError.TIMEOUT)) {
+				gateway.result = GatewayResult.Failure(error)
+				if (current) repo.refreshCurrent() else repo.refreshDate(context.date)
+				val expected = if (error == AppError.OFFLINE || error == AppError.TIMEOUT) AppError.CACHE_UNREADABLE else error
+				assertEquals(expected, (events.last() as DiaryState.Error).error)
+			}
+			assertEquals(2, reads)
+			repo.logout()
+		}
+	}
+
+	@Test
+	fun currentWeekFailuresNeverReadDiaryCache() {
+		val gateway = FakeGateway().apply { week = GatewayResult.Success(context.date) }
+		val cache = FakeCache(); val events = mutableListOf<DiaryState>()
+		val repo = repository(gateway, cache, events)
+		assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+		repo.refreshCurrent()
+		for (error in AppError.values().filter { it != AppError.SESSION_EXPIRED }) {
+			gateway.week = GatewayResult.Failure(error)
+			val before = cache.accesses
+			repo.refreshCurrent()
+			assertEquals(error, (events.last() as DiaryState.Error).error)
+			assertEquals(before, cache.accesses)
+		}
+		repo.logout()
+	}
+
+	@Test
+	fun corruptDiaryCacheIsUnreadableOnOfflineRefresh() {
+		val gateway = FakeGateway(); val cache = FakeCache(); val events = mutableListOf<DiaryState>()
+		val repo = repository(gateway, cache, events)
+		assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+		repo.refresh(context)
+		cache.values[AccountId("1")] = byteArrayOf(1)
+		gateway.result = GatewayResult.Failure(AppError.OFFLINE)
+		repo.refreshDate(context.date)
+		assertEquals(AppError.CACHE_UNREADABLE, (events.last() as DiaryState.Error).error)
+		repo.logout()
+	}
+
+	@Test
+	fun expiredDiaryRevokesSessionWithoutReadingCachedData() {
+		for (current in listOf(false, true)) {
+			val gateway = FakeGateway().apply { week = GatewayResult.Success(context.date) }
+			val cache = FakeCache(); val events = mutableListOf<DiaryState>()
+			val repo = repository(gateway, cache, events)
+			assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+			repo.refresh(context)
+			val before = cache.accesses
+			gateway.result = GatewayResult.Failure(AppError.SESSION_EXPIRED)
+			if (current) repo.refreshCurrent() else repo.refreshDate(context.date)
+			assertEquals(AppError.SESSION_EXPIRED, (events.last() as DiaryState.Error).error)
+			assertEquals(before, cache.accesses)
+			assertTrue(coordinator.logoutIfNoActive())
+		}
+	}
+
+	@Test
+	fun cancelledOfflineDiaryCannotReadOrPublishCache() {
+		for (current in listOf(false, true)) {
+			val gateway = FakeGateway().apply { week = GatewayResult.Success(context.date) }
+			val cache = FakeCache(); val events = java.util.Collections.synchronizedList(mutableListOf<DiaryState>())
+			val repo = repository(gateway, cache, events)
+			assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+			repo.refresh(context)
+			gateway.result = GatewayResult.Failure(AppError.OFFLINE)
+			gateway.entered = CountDownLatch(1); gateway.release = CountDownLatch(1)
+			val worker = thread { if (current) repo.refreshCurrent() else repo.refreshDate(context.date) }
+			var token: Any? = null
+			try {
+				assertTrue(gateway.entered!!.await(10, TimeUnit.SECONDS))
+				token = repo.cancelInFlightNow()
+				val count = events.size; val before = cache.accesses
+				gateway.release!!.countDown(); worker.join(10000)
+				assertFalse(worker.isAlive); assertEquals(count, events.size); assertEquals(before, cache.accesses)
+			} finally {
+				gateway.release!!.countDown(); worker.join(10000)
+				if (token != null) repo.logout(token)
+			}
+		}
+	}
+
+	@Test
+	fun offlineDiaryCacheDoesNotCrossAccountsOrDates() {
+		val gateway = FakeGateway(); val cache = FakeCache(); val events = mutableListOf<DiaryState>()
+		val repo = repository(gateway, cache, events)
+		assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+		repo.refresh(context)
+		gateway.result = GatewayResult.Failure(AppError.OFFLINE)
+		repo.refreshDate("08.01.2026")
+		assertEquals(AppError.OFFLINE, (events.last() as DiaryState.Error).error)
+		gateway.identity = "2"
+		assertTrue(repo.login("2", charArrayOf('x')) is GatewayResult.Success)
+		repo.refresh(context)
+		assertEquals(AppError.OFFLINE, (events.last() as DiaryState.Error).error)
+		repo.logout()
 	}
 
 	@Test
