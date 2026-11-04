@@ -60,6 +60,8 @@ class NativeGatewayUiIntegrationTest {
 		val failLogin = AtomicBoolean(false)
 		val failDiary = AtomicBoolean(false)
 		val blockDiary = AtomicBoolean(false)
+		val selectableWeeks = AtomicBoolean(false)
+		val requestedDates = java.util.Collections.synchronizedList(mutableListOf<String>())
 		val entered = CountDownLatch(1)
 		val release = CountDownLatch(1)
 		val returned = CountDownLatch(1)
@@ -78,15 +80,17 @@ class NativeGatewayUiIntegrationTest {
 					if (failLogin.get()) Response(503, "") else Response(200, """{"success":true,"access_token":"synthetic-token","user_info":$profile}""")
 				}
 				"/api/v2/os/user-info" -> Response(200, """{"data":$profile}""")
-				"/api/v4/os/clientoffice/diary/weeks" -> Response(200, """{"data":{"week":"01.01.2026"}}""")
+				"/api/v4/os/clientoffice/diary/weeks" -> if (selectableWeeks.get()) Response(200, """{"data":{"week":"01.01.2026","weeks":[{"label":"First","value":"01.01.2026"},{"label":"Second","value":"08.01.2026"}]}}""") else Response(200, """{"data":{"week":"01.01.2026"}}""")
 				"/api/v4/os/clientoffice/diary" -> {
+					val date = request.url.query.split('&').single { it.startsWith("date=") }.substringAfter('=')
+					requestedDates.add(date)
 					if (blockDiary.get()) {
 						blockedRequest = request
 						entered.countDown()
 						check(release.await(15, TimeUnit.SECONDS))
 						returned.countDown()
 					}
-					if (failDiary.get()) Response(503, "") else Response(200, diary)
+					if (failDiary.get()) Response(503, "") else if (selectableWeeks.get()) Response(200, diary.replace("01.01.2026", date).replace("null,\"homeworkUuid\"", "\"Homework for $date\",\"homeworkUuid\"")) else Response(200, diary)
 				}
 				"/api/v4/os/clientoffice/schedule" -> Response(200, schedule)
 				else -> throw AssertionError("Unexpected request: ${request.url.path}")
@@ -128,6 +132,21 @@ class NativeGatewayUiIntegrationTest {
 
 	private fun signIn(controller: NativeController) {
 		instrumentation.runOnMainSync { controller.login("synthetic-user", "synthetic-password".toCharArray()) }
+	}
+
+	@Test fun selectingDiaryWeekUpdatesHomework() = exercise { exchange, controller ->
+		exchange.selectableWeeks.set(true)
+		signIn(controller)
+		waitFor(context.getString(R.string.logout))
+		click(context.getString(R.string.diary))
+		waitFor("Synthetic diary lesson")
+		click("Second - 08.01.2026")
+		waitFor("Selected week: 08.01.2026")
+		waitFor("Homework for 08.01.2026")
+		click(context.getString(R.string.homework))
+		waitFor("Selected week: 08.01.2026")
+		waitFor("Homework for 08.01.2026")
+		assertTrue(exchange.requestedDates.contains("08.01.2026"))
 	}
 
 	@Test fun realGatewayDisplaysDiaryScheduleAndLogout() = exercise { exchange, controller ->
