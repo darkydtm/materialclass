@@ -47,6 +47,7 @@ class VerifiedDiarySession private constructor(internal val remote: UnverifiedSe
 			if (remote.token.isEmpty() || remote.identityCandidate != id || remote.role != "student" || profile.opt("role") != remote.role) return null
 			val login = remote.context ?: return null
 			val actual = schoolContext(profile) ?: return null
+			if (actual.studentSchoolUuid != null && !actual.studentSchoolUuid.matches(Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"))) return null
 			if (login.schoolId != actual.schoolId || login.groupId != actual.groupId || login.eduYear != actual.eduYear) return null
 			return VerifiedDiarySession(remote, id)
 		}

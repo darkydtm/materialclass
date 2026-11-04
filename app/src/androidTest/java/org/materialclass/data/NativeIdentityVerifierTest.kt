@@ -247,6 +247,54 @@ class NativeIdentityVerifierTest {
 	}
 
 	@Test
+	fun malformedProfileUuidBlocksSchoolAccessAfterLoginAndRestore() {
+		val response = success.replace("\"school_id\":7", "\"school_id\":7,\"studentInfo\":{\"studentSchoolUuid\":\"not-a-uuid\"}")
+		var calls = 0
+		val gateway = object : TestSchoolGateway(), AnnualGradesGateway {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(session)
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> { calls++; return GatewayResult.Success(Diary(context.date, emptyList())) }
+			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> { calls++; return GatewayResult.Success("01.01.2026") }
+			override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> { calls++; return GatewayResult.Success(Schedule(emptyList())) }
+			override fun annualGrades(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<AnnualGrades> { calls++; return GatewayResult.Success(AnnualGrades(emptyList())) }
+		}
+		val cache = object : DiaryCache {
+			override fun read(session: ActiveSession): ByteArray? = null
+			override fun write(session: ActiveSession, bytes: ByteArray) = true
+		}
+		val events = mutableListOf<DiaryState>()
+		val verifier = NativeIdentityVerifier(Exchange { Response(200, response) })
+		fun repo() = SchoolRepository(gateway, verifier, coordinator, cache, { 1L }, events::add, store)
+		fun exercise(repository: SchoolRepository) {
+			events.clear()
+			assertNull(repository.currentProfile())
+			repository.refresh(DiaryContext(7, 2026, 2, "01.01.2026"))
+			assertTrue(events.last() is DiaryState.Error)
+			events.clear()
+			repository.refreshCurrent()
+			assertTrue(events.last() is DiaryState.Error)
+			var week: GatewayResult<String>? = null
+			var schedule: GatewayResult<Schedule>? = null
+			var grades: AnnualGradesDelivery? = null
+			repository.currentWeek { week = it }
+			repository.schedule("01.01.2026") { schedule = it }
+			repository.annualGrades { grades = it }
+			assertTrue(week is GatewayResult.Failure)
+			assertTrue(schedule is GatewayResult.Failure)
+			assertTrue(grades?.result is GatewayResult.Failure)
+			assertEquals(0, calls)
+		}
+		val login = repo()
+		assertTrue(login.login("synthetic", charArrayOf('x')) is GatewayResult.Success)
+		exercise(login)
+		SessionCoordinator::class.java.getDeclaredField("active").apply { isAccessible = true }.set(null, null)
+		SessionCoordinator::class.java.getDeclaredField("restorationAllowed").apply { isAccessible = true }.setBoolean(null, true)
+		events.clear()
+		val restored = repo()
+		assertTrue(restored.restore() is RestoreResult.Restored)
+		exercise(restored)
+	}
+
+	@Test
 	fun encryptedRestoreRevalidatesScheduleCandidate() {
 		val uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 		val candidate = UnverifiedSession("synthetic-token", "42", "student", SchoolContext(7, 2026, 2, uuid))
