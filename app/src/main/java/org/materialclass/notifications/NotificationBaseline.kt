@@ -3,6 +3,7 @@ package org.materialclass.notifications
 import android.content.Context
 import org.materialclass.api.Diary
 import org.materialclass.api.DiaryContext
+import org.materialclass.api.VerifiedDiarySession
 import org.materialclass.cache.EncryptedCache
 import org.materialclass.security.StorageUnreadableException
 import org.materialclass.session.ActiveSession
@@ -16,33 +17,44 @@ internal sealed class BaselineResult {
 	object Initialized : BaselineResult()
 	object Unchanged : BaselineResult()
 	object Invalid : BaselineResult()
-	data class Change internal constructor(internal val context: DiaryContext, internal val previous: String, internal val current: String, internal val eventId: String) : BaselineResult()
+	data class Change internal constructor(internal val context: DiaryContext, internal val previous: String, internal val current: String, internal val eventId: String, internal val session: ActiveSession) : BaselineResult()
 }
 
 internal class NotificationBaseline(context: Context, private val coordinator: SessionCoordinator) {
 	private val cache = EncryptedCache(context, coordinator, "notification-baseline")
 	private data class Entry(val context: DiaryContext, var fingerprint: String, var pending: String?, var eventId: String?)
 
-	fun observe(session: ActiveSession, context: DiaryContext, diary: Diary): BaselineResult? {
-		val observation = DiaryObservation.from(context, diary) ?: return BaselineResult.Invalid
-		return coordinator.ifActive(session) {
-			val entries = read(session)
-			val entry = entries.firstOrNull { sameContext(it.context, context) }
-			if (entry == null) {
-				if (entries.size >= 32) throw StorageUnreadableException()
-				entries.add(Entry(context, observation.fingerprint, null, null))
+	private var generation = 0L
+	internal class Request internal constructor(internal val session: ActiveSession, internal val context: DiaryContext, internal val generation: Long, internal val revision: Long)
+
+	fun begin(session: ActiveSession, verified: VerifiedDiarySession, context: DiaryContext): Request? = coordinator.ifActive(session) {
+		if (verified.account != session.account.value || !verified.permits(context)) null
+		else Request(session, context, ++generation, coordinator.requestRevision())
+	}
+
+	fun observe(session: ActiveSession, context: DiaryContext, diary: Diary): BaselineResult? = coordinator.ifActive(session) { BaselineResult.Invalid }
+
+	private fun observeVerified(request: Request, diary: Diary): BaselineResult? = coordinator.ifActive(request.session) {
+		if (request.generation != generation || request.revision != coordinator.requestRevision()) return@ifActive BaselineResult.Invalid
+		val context = request.context
+		val session = request.session
+		val observation = DiaryObservation.from(context, diary) ?: return@ifActive BaselineResult.Invalid
+		val entries = read(session)
+		val entry = entries.firstOrNull { sameContext(it.context, context) }
+		if (entry == null) {
+			if (entries.size >= 32) throw StorageUnreadableException()
+			entries.add(Entry(context, observation.fingerprint, null, null))
+			check(cache.write(session, encode(entries)))
+			BaselineResult.Initialized
+		} else {
+			val pending = entry.pending
+			if (pending != null) BaselineResult.Change(entry.context, entry.fingerprint, pending, checkNotNull(entry.eventId), session)
+			else if (entry.fingerprint == observation.fingerprint) BaselineResult.Unchanged
+			else {
+				entry.pending = observation.fingerprint
+				entry.eventId = java.util.UUID.randomUUID().toString()
 				check(cache.write(session, encode(entries)))
-				BaselineResult.Initialized
-			} else {
-				val pending = entry.pending
-				if (pending != null) BaselineResult.Change(entry.context, entry.fingerprint, pending, checkNotNull(entry.eventId))
-				else if (entry.fingerprint == observation.fingerprint) BaselineResult.Unchanged
-				else {
-					entry.pending = observation.fingerprint
-					entry.eventId = java.util.UUID.randomUUID().toString()
-					check(cache.write(session, encode(entries)))
-					BaselineResult.Change(entry.context, entry.fingerprint, observation.fingerprint, checkNotNull(entry.eventId))
-				}
+				BaselineResult.Change(entry.context, entry.fingerprint, observation.fingerprint, checkNotNull(entry.eventId), session)
 			}
 		}
 	}
@@ -50,7 +62,7 @@ internal class NotificationBaseline(context: Context, private val coordinator: S
 	fun acknowledge(session: ActiveSession, change: BaselineResult.Change): Boolean = coordinator.ifActive(session) {
 		val entries = read(session)
 		val entry = entries.firstOrNull { sameContext(it.context, change.context) }
-		if (entry == null || entry.fingerprint != change.previous || entry.pending != change.current || entry.eventId != change.eventId) false
+		if (change.session !== session || entry == null || entry.fingerprint != change.previous || entry.pending != change.current || entry.eventId != change.eventId) false
 		else {
 			entry.fingerprint = change.current
 			entry.pending = null
