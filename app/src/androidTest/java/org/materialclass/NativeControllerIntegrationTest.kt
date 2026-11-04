@@ -504,12 +504,8 @@ class NativeControllerIntegrationTest {
 		main { assertEquals("Synthetic lesson", (c.state.diary as DiaryState.Ready).snapshot.diary.days[0].subjects[0].label); assertEquals("Synthetic schedule", c.state.schedule!!.days[0].lessons[0].themeLabel) }
 		val other = NativeController { emit -> SchoolRepository(gateway, verifier, coordinator, cache, { 1L }, emit, SessionStore(context, coordinator)) }
 		try {
-			main {
-				other.logout()
-				val deadline = android.os.SystemClock.uptimeMillis() + 10000
-				while (coordinator.pendingLogoutTicket() != null && android.os.SystemClock.uptimeMillis() < deadline) Thread.sleep(10)
-				assertNull(coordinator.pendingLogoutTicket())
-			}
+			main { other.logout() }
+			await { coordinator.pendingLogoutTicket() == null }
 			main { assertFalse(c.state.signedIn); assertNull(c.state.schedule); assertTrue(c.state.diary is DiaryState.Cleared) }
 		} finally { main { other.close() } }
 		main { c.login("synthetic", charArrayOf('x')) }
