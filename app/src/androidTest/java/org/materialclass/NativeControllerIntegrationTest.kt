@@ -76,6 +76,53 @@ class NativeControllerIntegrationTest {
 		assertFalse(worker!!.isAlive)
 		assertTrue(completed.await(1, TimeUnit.SECONDS))
 	}
+	@Test fun privateDataAndLoginStayGatedUntilBothControllersAcknowledge() {
+		val cleaned = CountDownLatch(2)
+		val shared = SessionCoordinator { cleaned.countDown() }
+		val gateway = object : SchoolGateway {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic", login, "student", SchoolContext(1, 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
+			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = GatewayResult.Success("01.01.2026")
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
+			override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> = GatewayResult.Success(Schedule(emptyList()))
+		}
+		val verifier = IdentityVerifier { session, _ ->
+			val profile = JSONObject("""{"userId":${session.identityCandidate},"role":"student","school_id":1,"group":{"id":2},"studentInfo":{"studentSchoolUuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}""")
+			SessionVerification.Verified(AccountId(session.identityCandidate!!), true, VerifiedScheduleSession.compare(session, profile), VerifiedDiarySession.compare(session, profile))
+		}
+		val cache = object : DiaryCache {
+			override fun read(session: ActiveSession): ByteArray? = null
+			override fun write(session: ActiveSession, bytes: ByteArray) = true
+		}
+		fun create() = NativeController { emit -> SchoolRepository(gateway, verifier, shared, cache, { 1L }, emit, SessionStore(context, shared)) }
+		lateinit var second: NativeController
+		main { controller = create(); second = create(); controller!!.login("1", charArrayOf('x')) }
+		await { controller!!.state.signedIn && controller!!.state.diary is DiaryState.Ready }
+		val entered = CountDownLatch(1)
+		val release = CountDownLatch(1)
+		val cancelled = CountDownLatch(1)
+		val completed = CountDownLatch(1)
+		android.os.Handler(android.os.Looper.getMainLooper()).post { entered.countDown(); release.await(30, TimeUnit.SECONDS) }
+		var worker: Thread? = null
+		try {
+			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			worker = kotlin.concurrent.thread {
+				val ticket = shared.cancelInFlightNow()
+				cancelled.countDown()
+				shared.logout(ticket)
+				completed.countDown()
+			}
+			assertTrue(cancelled.await(10, TimeUnit.SECONDS))
+			assertTrue(cleaned.await(10, TimeUnit.SECONDS))
+			synchronized(org.materialclass.security.StorageLock) { }
+			assertNotNull(shared.pendingLogoutTicket())
+			assertNull(shared.admit(shared.beginLogin()))
+		} finally { release.countDown(); worker?.join(10000) }
+		assertTrue(completed.await(10, TimeUnit.SECONDS))
+		await { !controller!!.state.signedIn && controller!!.state.diary !is DiaryState.Ready && !second.state.logoutPending }
+		main { second.login("2", charArrayOf('x')) }
+		await { second.state.signedIn && second.state.diary is DiaryState.Ready }
+		main { second.close() }
+	}
 
 	@Test fun mainThreadRevocationAppliesAfterCurrentTurn() {
 		val gateway = object : SchoolGateway {

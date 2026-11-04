@@ -5,6 +5,7 @@ import org.materialclass.security.StorageLock
 import java.security.SecureRandom
 import java.util.concurrent.Executors
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 @JvmInline
@@ -53,6 +54,8 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		private val observers = mutableSetOf<(Long) -> Unit>()
 		private val uiObservers = mutableSetOf<(Long, () -> Unit) -> Unit>()
 		private val uiAcknowledgements = mutableMapOf<Any, CountDownLatch>()
+		private val cleanedTickets = mutableSetOf<Any>()
+		private val failedUiCallbacks = mutableMapOf<Any, MutableList<() -> Unit>>()
 		private val pending = mutableSetOf<Any>()
 		private val revoked = mutableMapOf<Any, CacheNamespace?>()
 		private val leases = mutableSetOf<RequestLease>()
@@ -88,7 +91,10 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 	internal fun removeUiRevocationObserver(observer: (Long, () -> Unit) -> Unit) = synchronized(CancellationLock) { uiObservers.remove(observer) }
 	internal fun uiAcknowledgement(token: Any?): CountDownLatch? = synchronized(CancellationLock) { uiAcknowledgements[token] }
 	internal fun awaitUiAcknowledgement(acknowledgement: CountDownLatch?) {
-		if (acknowledgement != null && android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) acknowledgement.await()
+		if (acknowledgement == null || android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) return
+		while (!acknowledgement.await(100, TimeUnit.MILLISECONDS)) {
+			if (synchronized(CancellationLock) { failedUiCallbacks.keys.any { uiAcknowledgements[it] === acknowledgement } }) return
+		}
 	}
 	internal fun revocationEpoch(): Long = synchronized(CancellationLock) { revocationEpoch }
 	internal fun event(): SessionEvent = synchronized(CancellationLock) { lastEvent }
@@ -130,12 +136,24 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 			val completed = AtomicBoolean(false)
 			val acknowledge = {
 				if (completed.compareAndSet(false, true)) {
-					acknowledgement.countDown()
-					if (acknowledgement.count == 0L) synchronized(CancellationLock) { uiAcknowledgements.remove(token) }
+					synchronized(CancellationLock) {
+						acknowledgement.countDown()
+						if (acknowledgement.count == 0L) {
+							uiAcknowledgements.remove(token)
+							failedUiCallbacks.remove(token)
+							if (cleanedTickets.contains(token)) finishImmediateLogout(token)
+						}
+					}
 				}
 				Unit
 			}
-			try { observer(epoch, acknowledge) } catch (_: Exception) { acknowledge() }
+			lateinit var deliver: () -> Unit
+			deliver = {
+				try { observer(epoch, acknowledge) } catch (_: Exception) {
+					synchronized(CancellationLock) { if (!completed.get()) failedUiCallbacks.getOrPut(token) { mutableListOf() }.add(deliver) }
+				}
+			}
+			deliver()
 		}
 		}
 		if (Thread.holdsLock(StorageLock)) disconnectExecutor.execute { synchronized(StorageLock) { }; notifyUi() } else notifyUi()
@@ -287,6 +305,9 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		finishImmediateLogout(token)
 	}
 	fun logout(token: Any? = null) {
+		val retries = synchronized(CancellationLock) { if (token == null) emptyList() else failedUiCallbacks.remove(token)?.toList() ?: emptyList() }
+		if (Thread.holdsLock(StorageLock)) disconnectExecutor.execute { synchronized(StorageLock) { }; retries.forEach { it() } }
+		else retries.forEach { it() }
 		val acknowledgement = uiAcknowledgement(token)
 		val nested = Thread.holdsLock(StorageLock)
 		synchronized(StorageLock) {
@@ -311,6 +332,12 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 	}
 	internal fun finishImmediateLogout(token: Any) {
 		val (epoch, callbacks) = synchronized(CancellationLock) {
+			if (token !in pending) return
+			if (uiAcknowledgements[token]?.count?.let { it > 0 } == true) {
+				cleanedTickets.add(token)
+				return
+			}
+			cleanedTickets.remove(token)
 			ownPending.remove(token)
 			pending.remove(token)
 			revoked.remove(token)
