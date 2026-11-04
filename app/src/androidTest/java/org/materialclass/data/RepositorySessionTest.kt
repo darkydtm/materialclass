@@ -48,6 +48,25 @@ class RepositorySessionTest {
 	fun cleanup() { coordinator.logout() }
 
 	@Test
+	fun reentrantLoginInvalidatesRestoreClearWithoutRevokingNewSession() {
+		saved()
+		lateinit var repo: SchoolRepository
+		var clear: DiaryState? = null
+		repo = SchoolRepository(gateway, IdentityVerifier { session, _ -> proof(session) }, coordinator, cache, { 1L }, { event ->
+			if (event is DiaryState.RestoreClear) {
+				assertFalse(Thread.holdsLock(org.materialclass.security.StorageLock))
+				assertTrue(repo.acceptsDiary(event))
+				assertTrue(repo.login("synthetic", charArrayOf('x')) is GatewayResult.Success)
+				clear = event
+			}
+		}, store)
+		assertEquals(RestoreResult.Cancelled, repo.restore())
+		assertNotNull(clear)
+		assertFalse(repo.acceptsDiary(clear!!))
+		assertNotNull(repo.ownedEpoch())
+	}
+
+	@Test
 	fun failedRestoreActivationCallbackRevokesSession() {
 		saved()
 		val repo = repository(IdentityVerifier { session, _ -> proof(session) })
