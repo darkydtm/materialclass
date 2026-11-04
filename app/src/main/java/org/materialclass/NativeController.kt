@@ -44,7 +44,11 @@ internal interface NativeUiController {
 	fun close()
 }
 
-internal class NativeController(private val repositoryFactory: ((DiaryState) -> Unit) -> SchoolRepository) : NativeUiController {
+internal class NativeController(
+	private val uiDispatch: ((() -> Unit) -> Boolean) = { action -> Handler(Looper.getMainLooper()).post(action) },
+	private val applyUiRevocation: ((() -> Unit) -> Unit) = { action -> action() },
+	private val repositoryFactory: ((DiaryState) -> Unit) -> SchoolRepository,
+) : NativeUiController {
 	private val executor = Executors.newSingleThreadExecutor()
 	private val logoutExecutor = Executors.newSingleThreadExecutor()
 	private var logoutTicket: Any? = null
@@ -55,7 +59,6 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 			if (epoch != observedEpoch) {
 				val event = repository.sessionEvent()
 				if (event.epoch != epoch) return
-				observedEpoch = epoch
 				if (event.change == SessionChange.ACTIVATED && repository.ownedEpoch() == epoch) {
 					currentTaskEpoch = epoch
 				} else if (event.change == SessionChange.EXPIRED && state.busy && !state.signedIn) {
@@ -64,6 +67,7 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 					generation++
 					state = NativeUiState(busy = logoutTicket != null, logoutPending = logoutTicket != null || repository.pendingLogoutTicket() != null, error = if (event.change == SessionChange.EXPIRED) AppError.SESSION_EXPIRED else null)
 				}
+				observedEpoch = epoch
 			} else if (state.logoutPending && logoutTicket == null && repository.pendingLogoutTicket() == null) {
 				state = state.copy(logoutPending = false)
 			}
@@ -73,11 +77,11 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 		handler.post { applyRevocation(epoch) }
 	}
 	private val observeUiLogout: (Long, () -> Unit) -> Unit = { epoch, acknowledge ->
-		check(handler.post {
+		check(uiDispatch {
 			try {
-				applyRevocation(epoch)
+				applyUiRevocation { applyRevocation(epoch) }
 				acknowledge()
-			} catch (_: Exception) { }
+			} catch (_: Exception) { repository.failUiRevocation(acknowledge) }
 		})
 	}
 
