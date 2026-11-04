@@ -108,6 +108,21 @@ class GradesDiaryRaceTest {
 		} finally { gate.release.countDown() }
 	}
 
+	@Test fun accountReplacementRejectsBlockedGradesDelivery() {
+		val fixture = Fixture()
+		val c = fixture.login()
+		val gate = Gate()
+		fixture.gradesGate.set(gate)
+		try {
+			main { c.refreshAnnualGrades() }
+			assertTrue(gate.entered.await(10, TimeUnit.SECONDS))
+			main { c.login("2", charArrayOf('x')) }
+			gate.release.countDown()
+			await { c.state.signedIn && c.state.diary is DiaryState.Ready }
+			main { assertFalse(c.state.gradesLoading); assertNull(c.state.annualGrades) }
+		} finally { gate.release.countDown() }
+	}
+
 	@Test fun logoutRejectsBlockedGradesDelivery() {
 		val fixture = Fixture()
 		val c = fixture.login()
