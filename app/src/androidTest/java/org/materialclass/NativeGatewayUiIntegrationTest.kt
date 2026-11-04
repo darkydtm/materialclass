@@ -82,6 +82,7 @@ class NativeGatewayUiIntegrationTest {
 					if (failLogin.get()) Response(503, "") else Response(200, """{"success":true,"access_token":"synthetic-token","user_info":$profile}""")
 				}
 				"/api/v2/os/user-info" -> Response(200, """{"data":$profile}""")
+				"/api/v4/os/clientoffice/diary/year" -> Response(200, """{"data":{"rows":[{"subjectName":"Synthetic annual subject","attestations":{"quarter1":"4","quarter2":null},"yearScores":{"yearScore":null,"finalScore":null}}]}}""")
 				"/api/v4/os/clientoffice/diary/weeks" -> if (offlineWeeks.get()) throw java.io.IOException("offline") else if (selectableWeeks.get()) Response(200, """{"data":{"week":"01.01.2026","weeks":[{"label":"First","value":"01.01.2026"},{"label":"Second","value":"08.01.2026"}]}}""") else Response(200, """{"data":{"week":"01.01.2026"}}""")
 				"/api/v4/os/clientoffice/diary" -> {
 					val date = request.url.query.split('&').single { it.startsWith("date=") }.substringAfter('=')
@@ -137,6 +138,25 @@ class NativeGatewayUiIntegrationTest {
 		instrumentation.runOnMainSync { controller.login("synthetic-user", "synthetic-password".toCharArray()) }
 	}
 
+
+	@Test fun annualGradesReachVisibleUiThroughGatewayAndRepository() = exercise { exchange, controller ->
+		signIn(controller)
+		waitFor(context.getString(R.string.logout))
+		instrumentation.runOnMainSync { controller.refreshAnnualGrades() }
+		val deadline = SystemClock.uptimeMillis() + 15000
+		while (true) {
+			var ready = false
+			instrumentation.runOnMainSync { ready = controller.state.annualGrades is org.materialclass.api.GatewayResult.Success }
+			if (ready) break
+			check(SystemClock.uptimeMillis() < deadline)
+			SystemClock.sleep(50)
+		}
+		click(context.getString(R.string.grades))
+		waitFor("Synthetic annual subject")
+		waitFor("Quarter 1: 4")
+		waitFor("Quarter 2: Unknown")
+		assertTrue(exchange.paths.contains("/api/v4/os/clientoffice/diary/year"))
+	}
 
 	@Test fun offlineWeekShowsSavedPeriodInActualUi() = exercise { exchange, controller ->
 		signIn(controller)
