@@ -8,6 +8,9 @@
 	<string name="app_name">MaterialClass</string>
 	<string name="login">Вход</string>
 	<string name="diary">Дневник</string>
+	<string name="diary_selected_week">Выбранная неделя: %1$s</string>
+	<string name="diary_choose_week">Выберите неделю дневника</string>
+	<string name="diary_week_option">%1$s - %2$s</string>
 	<string name="schedule">Расписание</string>
 	<string name="settings">Настройки</string>
 	<string name="backend_unavailable">Настоящий сервер недоступен. Вход и школьные данные не подключены.</string>

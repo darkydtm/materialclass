@@ -27,6 +27,8 @@ internal data class NativeUiState(
 	val busy: Boolean = false,
 	val logoutPending: Boolean = false,
 	val diary: DiaryState = DiaryState.Cleared,
+	val diaryWeeks: List<org.materialclass.api.DiaryWeekOption> = emptyList(),
+	val selectedDiaryDate: String? = null,
 	val schedule: Schedule? = null,
 	val scheduleSnapshot: ScheduleSnapshot? = null,
 	val error: AppError? = null,
@@ -37,6 +39,7 @@ internal interface NativeUiController {
 	fun start()
 	fun login(username: String, password: CharArray)
 	fun refresh()
+	fun selectDiaryWeek(date: String) {}
 	fun logout()
 	fun close()
 }
@@ -145,13 +148,16 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 		if (closed || !state.signedIn) return
 		val task = ++generation
 		val epoch = observedEpoch
+		val selected = state.selectedDiaryDate
 		state = state.copy(error = null)
 		executor.execute {
 			if (closed || generation != task) return@execute
 			currentTaskGeneration = task
 			currentTaskEpoch = epoch
 			try {
-				repository.refreshCurrent()
+				if (selected != null) repository.refreshDate(selected) else repository.refreshCurrent { weeks ->
+					post(task) { state = state.copy(diaryWeeks = weeks.options, selectedDiaryDate = weeks.currentWeek) }
+				}
 				repository.currentWeek { week ->
 					if (closed || generation != task || repository.revocationEpoch() != epoch) return@currentWeek
 					when (week) {
@@ -165,6 +171,19 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 					}
 				}
 			} catch (_: Exception) { post(task) { if (state.error != AppError.SESSION_EXPIRED) state = state.copy(error = AppError.UNAVAILABLE) } }
+		}
+	}
+
+	override fun selectDiaryWeek(date: String) {
+		if (closed || !state.signedIn || state.diaryWeeks.none { it.value == date }) return
+		val task = ++generation
+		val epoch = observedEpoch
+		state = state.copy(selectedDiaryDate = date, diary = DiaryState.Loading, error = null)
+		executor.execute {
+			if (closed || generation != task || repository.revocationEpoch() != epoch) return@execute
+			currentTaskGeneration = task
+			currentTaskEpoch = epoch
+			repository.refreshDate(date)
 		}
 	}
 

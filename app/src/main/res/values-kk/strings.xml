@@ -8,6 +8,9 @@
 	<string name="app_name">MaterialClass</string>
 	<string name="login">Кіру</string>
 	<string name="diary">Күнделік</string>
+	<string name="diary_selected_week">Таңдалған апта: %1$s</string>
+	<string name="diary_choose_week">Күнделік аптасын таңдаңыз</string>
+	<string name="diary_week_option">%1$s - %2$s</string>
 	<string name="schedule">Сабақ кестесі</string>
 	<string name="settings">Баптаулар</string>
 	<string name="backend_unavailable">Нақты сервер қолжетімсіз. Кіру және мектеп деректері қосылмаған.</string>

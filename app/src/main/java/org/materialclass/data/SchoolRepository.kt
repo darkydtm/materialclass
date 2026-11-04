@@ -270,7 +270,7 @@ internal class SchoolRepository(
 		}
 	}
 
-	fun refreshCurrent() {
+	fun refreshCurrent(onWeeks: (org.materialclass.api.DiaryWeeks) -> Unit = {}) {
 		val active = session ?: return
 		val request = coordinator.ifActive(active) {
 			val requestRevision = coordinator.requestRevision()
@@ -294,7 +294,7 @@ internal class SchoolRepository(
 		beforeRequestAdmission()
 		val lease = coordinator.admit(active, request.third) ?: return
 		try {
-			val week = try { gateway.currentWeek(proof, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
+			val week = try { gateway.diaryWeeks(proof, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
 			if (week is GatewayResult.Failure) {
 				val state = coordinator.ifActive(active) {
 					if (lease.cancelled || request.second != refreshRevision) return@ifActive null
@@ -303,25 +303,27 @@ internal class SchoolRepository(
 						remote = null; scheduleSession = null; diarySession = null; session = null
 						coordinator.revokeIfActive(active, expired = true)
 						DiaryState.Error(week.error)
-					} else if (week.error == AppError.OFFLINE || week.error == AppError.TIMEOUT) {
-						try {
-							val context = proof.remote.context!!.diary("")
-							val saved = cache.read(active)?.let { decode(it, context) }
-							if (saved == null) DiaryState.Error(week.error) else DiaryState.Ready(saved, week.error)
-						} catch (_: Exception) { DiaryState.Error(AppError.CACHE_UNREADABLE) }
 					} else DiaryState.Error(week.error)
 					guarded(value, active, request.second, request.third, expired)
 				}
 				if (state != null) emit(state)
 				return
 			}
-			val date = (week as GatewayResult.Success).value
+			val weeks = (week as GatewayResult.Success).value
+			val date = weeks.currentWeek
 			val context = proof.remote.context?.diary(date) ?: return
-			if (coordinator.ifActive(active) { !lease.cancelled && request.second == refreshRevision } != true) return
+			if (coordinator.ifActive(active) { !lease.cancelled && request.second == refreshRevision && request.third == coordinator.requestRevision() } != true) return
+			onWeeks(weeks)
 			val result = try { gateway.diary(proof, context, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
 			val state = diaryResult(active, context, result, lease, request.second, request.third)
 			if (state != null) emit(state)
 		} finally { coordinator.finish(lease) }
+	}
+
+	fun refreshDate(date: String) {
+		val active = session ?: return
+		val context = coordinator.ifActive(active) { remote?.context?.diary(date) } ?: return
+		refresh(context)
 	}
 
 	fun refresh(context: DiaryContext) {

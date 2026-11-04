@@ -397,7 +397,7 @@ class SchoolRepositoryTest {
 	}
 
 	@Test
-	fun offlineCurrentWeekRetainsVerifiedAccountCache() {
+	fun offlineCurrentWeekDoesNotUseCacheWithoutKnownDate() {
 		var offline = false
 		val gateway = object : TestSchoolGateway() {
 			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", "1", "student", SchoolContext(1, 2026, 2)))
@@ -410,11 +410,7 @@ class SchoolRepositoryTest {
 		repo.refreshCurrent()
 		offline = true
 		repo.refreshCurrent()
-		assertTrue(events.last() is DiaryState.Ready)
-		val state = events.last() as DiaryState.Ready
-		assertEquals(AppError.OFFLINE, state.staleError)
-		assertEquals(context.date, state.snapshot.diary.date)
-		assertEquals(1234L, state.snapshot.lastSuccessMillis)
+		assertEquals(AppError.OFFLINE, (events.last() as DiaryState.Error).error)
 	}
 
 	@Test

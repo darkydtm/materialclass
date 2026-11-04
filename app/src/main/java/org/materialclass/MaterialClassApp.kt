@@ -96,6 +96,17 @@ internal fun MaterialClassApp(example: ExampleData? = null, nativeEnabled: Boole
 							if (nativeState != null) {
 								if (!nativeState.signedIn) Text(stringResource(R.string.data_unavailable))
 								else if (screen == "diary" || screen == "homework") {
+									nativeState.selectedDiaryDate?.let { Text(stringResource(R.string.diary_selected_week, it)) }
+									if (nativeState.diaryWeeks.isNotEmpty()) {
+										Text(stringResource(R.string.diary_choose_week))
+										Column(Modifier.selectableGroup()) {
+											nativeState.diaryWeeks.forEach { option ->
+												Box(Modifier.selectable(selected = nativeState.selectedDiaryDate == option.value, role = Role.RadioButton, onClick = { controller.selectDiaryWeek(option.value) }).padding(12.dp)) {
+												Text(stringResource(R.string.diary_week_option, option.label, option.value))
+												}
+											}
+										}
+									}
 									when (val diary = nativeState.diary) {
 										is DiaryState.Ready -> {
 											diary.staleError?.let { Text(stringResource(R.string.stale_data, stringResource(errorMessage(it)))) }

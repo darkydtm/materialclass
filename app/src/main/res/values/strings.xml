@@ -2,6 +2,9 @@
 	<string name="app_name">MaterialClass</string>
 	<string name="login">Login</string>
 	<string name="diary">Diary</string>
+	<string name="diary_selected_week">Selected week: %1$s</string>
+	<string name="diary_choose_week">Choose diary week</string>
+	<string name="diary_week_option">%1$s - %2$s</string>
 	<string name="schedule">Schedule</string>
 	<string name="settings">Settings</string>
 	<string name="backend_unavailable">The real backend is unavailable. Sign-in and school data are not connected.</string>

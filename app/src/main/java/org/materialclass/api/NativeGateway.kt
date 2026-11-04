@@ -18,6 +18,10 @@ interface SchoolGateway {
 	fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession>
 	fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary>
 	fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String>
+	fun diaryWeeks(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<DiaryWeeks> = when (val result = currentWeek(session, lease)) {
+		is GatewayResult.Success -> GatewayResult.Success(DiaryWeeks(result.value, emptyList()))
+		is GatewayResult.Failure -> result
+	}
 	fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule>
 
 }
@@ -88,6 +92,9 @@ class DiaryContext(val schoolId: Long, val eduYear: Int, val groupId: Long, val 
 	override fun toString(): String = "DiaryContext([redacted])"
 }
 
+data class DiaryWeekOption(val label: String, val value: String)
+data class DiaryWeeks(val currentWeek: String, val options: List<DiaryWeekOption>)
+
 class Diary(val date: String, val days: List<DiaryDay>)
 class DiaryDay(val day: String, val date: String, val subjects: List<DiarySubject>)
 class DiarySubject(val label: String, val type: String, val scheduleUuid: String, val homeworkType: String, val homeworkBody: String?, val homeworkUuid: String?, val hasBooks: Boolean, val hasFiles: Boolean)
@@ -134,7 +141,12 @@ class NativeGateway internal constructor(private val exchange: Exchange) : Schoo
 		}
 	}
 
-	override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> {
+	override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = when (val result = diaryWeeks(session, lease)) {
+		is GatewayResult.Success -> GatewayResult.Success(result.value.currentWeek)
+		is GatewayResult.Failure -> result
+	}
+
+	override fun diaryWeeks(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<DiaryWeeks> {
 		return try {
 			val remote = session.remote
 			val context = remote.context ?: return GatewayResult.Failure(AppError.INCOMPATIBLE_RESPONSE)
@@ -143,9 +155,22 @@ class NativeGateway internal constructor(private val exchange: Exchange) : Schoo
 			val headers = mapOf("Authorization" to "Bearer ${remote.token}", "x-school-id" to context.schoolId.toString())
 			val response = exchange.execute(request("/api/v4/os/clientoffice/diary/weeks?$query", "GET", headers, null, lease))
 			if (lease.isCancelled() || response.status != 200) return GatewayResult.Failure(AppError.UNAVAILABLE)
-			val week = JSONObject(response.body).getJSONObject("data").strictString("week")
+			val data = JSONObject(response.body).getJSONObject("data")
+			val week = data.strictString("week")
 			if (calendarDate(week) == null) return GatewayResult.Failure(AppError.INCOMPATIBLE_RESPONSE)
-			GatewayResult.Success(week)
+			val options = mutableListOf<DiaryWeekOption>()
+			val seen = mutableSetOf<String>()
+			val array = data.opt("weeks") as? JSONArray
+			if (array != null && array.length() <= 256) {
+				for (index in 0 until array.length()) {
+					val item = array.opt(index) as? JSONObject ?: continue
+					val label = item.opt("label") as? String ?: continue
+					val value = item.opt("value") as? String ?: continue
+					if (label.isBlank() || label.length > 256 || calendarDate(value) == null || !seen.add(value)) continue
+					options.add(DiaryWeekOption(label, value))
+				}
+			}
+			GatewayResult.Success(DiaryWeeks(week, options))
 		} catch (_: SocketTimeoutException) {
 			GatewayResult.Failure(AppError.TIMEOUT)
 		} catch (_: java.io.IOException) {
