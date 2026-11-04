@@ -81,6 +81,7 @@ internal class SchoolRepository(
 	private var scheduleSession: VerifiedScheduleSession? = null
 	private var diarySession: VerifiedDiarySession? = null
 	private var profile: org.materialclass.api.StudentProfile? = null
+	private var verifiedScheduleRemote: UnverifiedSession? = null
 	private var refreshRevision = 0L
 	private var profileRevision = 0L
 	private var scheduleRevision = 0L
@@ -125,6 +126,7 @@ internal class SchoolRepository(
 					session = activated
 					remote = candidate
 					scheduleSession = verification.scheduleSession
+					verifiedScheduleRemote = if (scheduleSession != null) candidate else null
 					diarySession = verification.diarySession
 					profile = verification.profile
 					activated
@@ -175,6 +177,7 @@ internal class SchoolRepository(
 					session = active
 					remote = candidate
 					scheduleSession = scheduleCandidate
+					verifiedScheduleRemote = if (scheduleCandidate != null) candidate else null
 					diarySession = diaryCandidate
 					profile = profileCandidate
 					true
@@ -221,11 +224,14 @@ internal class SchoolRepository(
 					null
 				} else {
 					val verified = verification as? SessionVerification.Verified
-					diarySession = verified?.diarySession?.takeIf { it.remote === request.first && it.account == active.account.value }
 					scheduleSession = verified?.scheduleSession?.takeIf { it.remote === request.first && it.account == active.account.value }
+					val lostVerifiedUuid = verifiedScheduleRemote === request.first && scheduleSession == null
+					if (scheduleSession != null) verifiedScheduleRemote = request.first
+					diarySession = verified?.diarySession?.takeIf { !lostVerifiedUuid && it.remote === request.first && it.account == active.account.value }
 					profile = if (diarySession != null) verified?.profile else null
 					val usable = diarySession != null
 					if (!usable || scheduleSession == null) {
+						coordinator.invalidateSchoolRequests(active, lease)
 						refreshRevision++; scheduleRevision++; weekRevision++; gradesRevision++
 						verifiedWeek = null
 					}

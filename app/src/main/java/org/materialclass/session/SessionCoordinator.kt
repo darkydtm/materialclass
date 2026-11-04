@@ -116,6 +116,20 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		if (active !== session || pending.isNotEmpty()) null else RequestLease(session).also { leases.add(it) }
 	}
 	internal fun requestRevision(): Long = synchronized(CancellationLock) { revision }
+	internal fun invalidateSchoolRequests(session: ActiveSession, except: RequestLease) {
+		val disconnects = synchronized(CancellationLock) {
+			if (active !== session || pending.isNotEmpty()) return
+			revision++
+			val cancelled = leases.filter { it.owner === session && it !== except }
+			cancelled.forEach { it.cancelled = true }
+			leases.removeAll(cancelled.toSet())
+			cancelled.mapNotNull { lease -> lease.disconnect.also { lease.disconnect = null } }
+		}
+		disconnects.forEach { disconnect -> disconnectExecutor.execute {
+			synchronized(StorageLock) { }
+			try { disconnect() } catch (_: Exception) { }
+		} }
+	}
 	internal fun admit(session: ActiveSession, expected: Long): RequestLease? = synchronized(CancellationLock) {
 		if (active !== session || pending.isNotEmpty() || revision != expected) null else RequestLease(session).also { leases.add(it) }
 	}

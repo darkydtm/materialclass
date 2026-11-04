@@ -389,6 +389,7 @@ class NativeGatewayUiIntegrationTest {
 	@Test fun changedSchoolContextCannotReuseVerifiedProofs() = rejectChangedContext(profile.replace("\"school_id\":1", "\"school_id\":9"))
 	@Test fun changedGroupContextCannotReuseVerifiedProofs() = rejectChangedContext(profile.replace("\"id\":2", "\"id\":9"))
 	@Test fun changedYearContextCannotReuseVerifiedProofs() = rejectChangedContext(profile.replace("\"eduYear\":2026", "\"eduYear\":2027"))
+	@Test fun changedUuidCannotReuseVerifiedProofs() = rejectChangedContext(profile.replace("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "bbbbbbbb-bbbb-cccc-dddd-eeeeeeeeeeee"))
 	@Test fun missingProfileCannotReuseVerifiedProofs() = rejectChangedContext("{}")
 	@Test fun unknownRoleCannotReuseVerifiedProofs() = rejectChangedContext(profile.replace("\"student\"", "\"future-role\""))
 
