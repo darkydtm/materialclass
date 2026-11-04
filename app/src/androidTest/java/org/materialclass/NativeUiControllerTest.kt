@@ -127,6 +127,34 @@ class NativeUiControllerTest {
 
 	private fun AccessibilityNodeInfo.boundsInScreenTop(): Int = android.graphics.Rect().also { getBoundsInScreen(it) }.top
 
+	@Test fun diaryShowsAttachmentIndicatorsWithoutHomeworkBody() {
+		val context = ApplicationProvider.getApplicationContext<Context>()
+		context.getSharedPreferences("appearance", 0).edit().putBoolean("warning_seen", true).putString("language", "en").commit()
+		val fake = object : NativeUiController {
+			override var state by mutableStateOf(NativeUiState(signedIn = true, diary = DiaryState.Ready(DiarySnapshot(Diary("01.01.2026", listOf(DiaryDay("Thursday", "01.01.2026", listOf(DiarySubject("Math <&>", "lesson", "id", "none", null, null, true, true))))), 1))))
+			override fun start() { }
+			override fun login(username: String, password: CharArray) { password.fill('\u0000') }
+			override fun refresh() { }
+			override fun logout() { state = NativeUiState() }
+			override fun close() { }
+		}
+		val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
+		try {
+			instrumentation.runOnMainSync { activity.setContent { MaterialClassApp(nativeEnabled = true, controllerFactory = { fake }) } }
+			waitFor(context.getString(R.string.logout))
+			click("Diary")
+			waitFor("Math <&>")
+			waitFor(context.getString(R.string.homework_files))
+			waitFor(context.getString(R.string.homework_books))
+			instrumentation.runOnMainSync { fake.state = NativeUiState() }
+			waitFor(context.getString(R.string.data_unavailable))
+			assertNull(find(instrumentation.uiAutomation.rootInActiveWindow, "Math <&>"))
+		} finally {
+			activity.finish()
+			context.getSharedPreferences("appearance", 0).edit().clear().commit()
+		}
+	}
+
 	@Test fun emptyDiaryIsDistinctFromUnavailable() {
 		val context = ApplicationProvider.getApplicationContext<Context>()
 		context.getSharedPreferences("appearance", 0).edit().putBoolean("warning_seen", true).commit()
