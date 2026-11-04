@@ -114,6 +114,15 @@ class NativeGatewayUiIntegrationTest {
 		try {
 			instrumentation.runOnMainSync { activity.setContent { MaterialClassApp(nativeEnabled = true, controllerFactory = { controller }) } }
 			waitFor(context.getString(R.string.sign_in))
+			val deadline = SystemClock.uptimeMillis() + 15000
+			while (true) {
+				var ready = false
+				instrumentation.runOnMainSync { ready = !controller.state.busy }
+				if (ready) break
+				check(SystemClock.uptimeMillis() < deadline) { "Restore did not complete" }
+				SystemClock.sleep(50)
+			}
+			instrumentation.waitForIdleSync()
 			action(exchange, controller)
 		} finally {
 			exchange.release.countDown()
