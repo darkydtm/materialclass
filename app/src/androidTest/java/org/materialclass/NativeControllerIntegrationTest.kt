@@ -157,6 +157,47 @@ class NativeControllerIntegrationTest {
 		}
 	}
 
+	@Test fun failedUiDeliveryRetriesWithoutAcknowledgingAnotherObserver() {
+		val cleaned = CountDownLatch(1)
+		val shared = SessionCoordinator { cleaned.countDown() }
+		val attempts = java.util.concurrent.atomic.AtomicInteger()
+		val held = java.util.concurrent.atomic.AtomicReference<(() -> Unit)?>()
+		val delivered = CountDownLatch(1)
+		val failing: (Long, () -> Unit) -> Unit = { _, acknowledge ->
+			if (attempts.incrementAndGet() == 1) throw IllegalStateException("Synthetic delivery failure")
+			acknowledge()
+		}
+		val delayed: (Long, () -> Unit) -> Unit = { _, acknowledge ->
+			held.set(acknowledge)
+			delivered.countDown()
+		}
+		shared.observeUiRevocations(failing)
+		shared.observeUiRevocations(delayed)
+		val ticket = shared.cancelInFlightNow()
+		val finished = CountDownLatch(1)
+		val worker = kotlin.concurrent.thread {
+			try { shared.logout(ticket) } finally { finished.countDown() }
+		}
+		try {
+			assertTrue(delivered.await(10, TimeUnit.SECONDS))
+			assertTrue(cleaned.await(10, TimeUnit.SECONDS))
+			assertEquals(2, attempts.get())
+			assertSame(ticket, shared.pendingLogoutTicket())
+			assertNull(shared.admit(shared.beginLogin()))
+			assertFalse("The remaining observer has not acknowledged", finished.await(1, TimeUnit.SECONDS))
+			held.get()!!.invoke()
+			assertTrue(finished.await(10, TimeUnit.SECONDS))
+			assertNull(shared.pendingLogoutTicket())
+		} finally {
+			held.get()?.invoke()
+			shared.removeUiRevocationObserver(failing)
+			shared.removeUiRevocationObserver(delayed)
+			worker.join(10000)
+			shared.pendingLogoutTicket()?.let { shared.logout(it) }
+		}
+		assertFalse(worker.isAlive)
+	}
+
 	@Test fun failedUiObserverKeepsExpiryPendingUntilUnsubscribed() {
 		val shared = SessionCoordinator { }
 		val session = shared.activate(AccountId("synthetic-expiry"))
