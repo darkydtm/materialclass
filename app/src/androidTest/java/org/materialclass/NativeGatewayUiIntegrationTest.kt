@@ -257,6 +257,38 @@ class NativeGatewayUiIntegrationTest {
 		} finally { exchange.profileRelease.countDown(); instrumentation.runOnMainSync { second.close() } }
 	}
 
+	private fun contradictoryRefresh(response: String) = exercise { exchange, controller ->
+		signIn(controller)
+		waitFor(context.getString(R.string.logout))
+		click("Profile")
+		waitFor("Synthetic Surname")
+		drain(controller)
+		instrumentation.runOnMainSync {
+			assertTrue(controller.state.diary is DiaryState.Ready)
+			assertNotNull(controller.state.schedule)
+		}
+		exchange.profileResponse = response
+		instrumentation.runOnMainSync { controller.refresh() }
+		waitFor(context.getString(R.string.session_expired))
+		drain(controller)
+		instrumentation.runOnMainSync {
+			assertFalse(controller.state.signedIn)
+			assertNull(controller.state.profile)
+			assertNull(controller.state.schedule)
+			assertNull(controller.state.scheduleSnapshot)
+			assertTrue(controller.state.diary is DiaryState.Cleared)
+			assertTrue(controller.state.diaryWeeks.isEmpty())
+		}
+		waitFor(context.getString(R.string.sign_in))
+		assertNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, "Synthetic Surname") })
+		assertNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, "Synthetic School") })
+		assertFalse(java.io.File(context.noBackupFilesDir, "session").exists())
+		assertTrue(java.io.File(context.noBackupFilesDir, "session-revoked").exists())
+	}
+
+	@Test fun refreshedWrongRoleRevokesSession() = contradictoryRefresh(profile.replace("\"student\"", "\"teacher\""))
+	@Test fun refreshedWrongIdRevokesSession() = contradictoryRefresh(profile.replace("\"userId\":123", "\"userId\":124"))
+
 	@Test fun refreshDisplaysNewVerifiedProfile() = exercise { exchange, controller ->
 		signIn(controller)
 		waitFor(context.getString(R.string.logout))
