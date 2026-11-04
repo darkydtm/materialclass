@@ -55,6 +55,8 @@ internal data class DiarySnapshot(val diary: Diary, val lastSuccessMillis: Long)
 internal sealed class DiaryState {
 	data object Loading : DiaryState()
 	data object Cleared : DiaryState()
+	// Validate at dequeue; invoking an arbitrary callback does not make delivery atomic.
+	data class RestoreClear(val active: ActiveSession, val epoch: Long) : DiaryState()
 	data class Ready(val snapshot: DiarySnapshot, val staleError: AppError? = null, val guard: DiaryGuard? = null) : DiaryState()
 	data class Error(val error: AppError, val guard: DiaryGuard? = null) : DiaryState()
 }
@@ -161,7 +163,10 @@ internal class SchoolRepository(
 				} == true
 				if (installed) {
 					afterRestoreActivation()
-					if (coordinator.ifActive(active) { session === active } == true) emit(DiaryState.Cleared)
+					val clear = coordinator.ifActive(active) {
+						if (session === active) coordinator.ownedEpoch(active)?.let { DiaryState.RestoreClear(active, it) } else null
+					}
+					if (clear != null) emit(clear)
 				}
 			} catch (error: Exception) {
 				synchronized(StorageLock) {
@@ -296,6 +301,9 @@ internal class SchoolRepository(
 	}
 
 	internal fun acceptsDiary(state: DiaryState): Boolean {
+		if (state is DiaryState.RestoreClear) return synchronized(StorageLock) {
+			session === state.active && coordinator.ownedEpoch(state.active) == state.epoch
+		}
 		val guard = when (state) {
 			is DiaryState.Ready -> state.guard
 			is DiaryState.Error -> state.guard
