@@ -460,7 +460,8 @@ internal class SchoolRepository(
 	internal fun ownedEpoch() = coordinator.ownedEpoch(session)
 
 	fun logout(token: Any? = null) {
-		val acknowledgement = coordinator.uiAcknowledgement(token)
+		var acknowledgement: java.util.concurrent.CountDownLatch? = null
+		val selected: (Any) -> Unit = { acknowledgement = coordinator.uiAcknowledgement(it) }
 		val outcome: Result<Boolean> = synchronized(StorageLock) {
 			if (token != null && !coordinator.isPendingLogout(token)) return@synchronized Result.success(false)
 			runCatching {
@@ -470,20 +471,20 @@ internal class SchoolRepository(
 					remote = null
 					scheduleSession = null
 					diarySession = null
-					coordinator.logout(token)
+					coordinator.logout(token, selected)
 				} else {
 					val pending = loginRevision
 					loginRevision = null
 					val active = session
 					if (active == null) {
-						if (!coordinator.logoutIfNoActive()) pending?.let { coordinator.cancelLogin(it) }
+						if (!coordinator.logoutIfNoActive(selected = selected)) pending?.let { coordinator.cancelLogin(it) }
 					} else {
 						remote = null
 						scheduleSession = null
 						diarySession = null
 						session = null
-						val revoked = coordinator.revokeIfActive(active)
-						if (!revoked) coordinator.logoutIfNoActive()
+						val revoked = coordinator.revokeIfActive(active, selected = selected)
+						if (!revoked) coordinator.logoutIfNoActive(selected = selected)
 						pending?.let { coordinator.cancelLogin(it) }
 					}
 				}
