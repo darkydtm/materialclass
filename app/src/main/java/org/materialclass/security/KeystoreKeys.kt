@@ -7,7 +7,8 @@ import javax.crypto.KeyGenerator
 import javax.crypto.Mac
 import javax.crypto.SecretKey
 
-class StorageUnreadableException(cause: Throwable? = null) : Exception("Encrypted storage is unreadable", cause)
+open class StorageUnreadableException(cause: Throwable? = null) : Exception("Encrypted storage is unreadable", cause)
+internal class StorageCorruptException(cause: Throwable? = null) : StorageUnreadableException(cause)
 
 internal class KeystoreKeys {
 	private val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }

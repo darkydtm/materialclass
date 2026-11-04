@@ -7,6 +7,7 @@ import org.materialclass.cache.CacheFiles
 import org.materialclass.security.EncryptedFile
 import org.materialclass.security.KeystoreKeys
 import org.materialclass.security.StorageUnreadableException
+import org.materialclass.security.StorageCorruptException
 import java.io.File
 import java.io.IOException
 
@@ -77,15 +78,16 @@ internal class FileCleanupJournal(context: Context) : CleanupJournal {
 	private fun readFile(source: EncryptedFile): CacheNamespace? {
 		val bytes = source.read() ?: return null
 		try {
-			return try { CacheNamespace(bytes.toString(Charsets.UTF_8)) } catch (_: IllegalArgumentException) { throw StorageUnreadableException() }
+			return try { CacheNamespace(bytes.toString(Charsets.UTF_8)) } catch (_: IllegalArgumentException) { throw StorageCorruptException() }
 		} finally { bytes.fill(0) }
 	}
 
 	override fun read(): CacheNamespace? {
-		val recorded = readFile(file)
-		val saved = readFile(backup)
+		var corrupt: StorageCorruptException? = null
+		val recorded = try { readFile(file) } catch (error: StorageCorruptException) { corrupt = error; null }
+		val saved = try { readFile(backup) } catch (error: StorageCorruptException) { corrupt = error; null }
 		if (recorded != null && saved != null && recorded.value != saved.value) throw StorageUnreadableException()
-		return recorded ?: saved
+		return recorded ?: saved ?: corrupt?.let { throw it }
 	}
 
 	override fun write(namespace: CacheNamespace) {
@@ -95,8 +97,8 @@ internal class FileCleanupJournal(context: Context) : CleanupJournal {
 		try {
 			var durable = false
 			var failure: Exception? = null
-			try { backup.write(bytes); syncDirectory(); durable = true } catch (error: Exception) { failure = error }
-			try { file.write(bytes); syncDirectory(); durable = true } catch (error: Exception) {
+			try { backup.write(bytes, replaceCorrupt = true); syncDirectory(); durable = true } catch (error: Exception) { failure = error }
+			try { file.write(bytes, replaceCorrupt = true); syncDirectory(); durable = true } catch (error: Exception) {
 				if (failure == null) failure = error else failure.addSuppressed(error)
 			}
 			failure?.let { throw CleanupWriteException(it, durable) }

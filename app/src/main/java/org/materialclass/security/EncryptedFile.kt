@@ -15,11 +15,13 @@ internal class EncryptedFile(
 		if (!file.exists()) return null
 		try {
 			val bytes = file.readBytes()
-			if (bytes.size < 29 || bytes[0] != 1.toByte()) throw StorageUnreadableException()
+			if (bytes.size < 29 || bytes[0] != 1.toByte()) throw StorageCorruptException()
 			val cipher = Cipher.getInstance("AES/GCM/NoPadding")
 			cipher.init(Cipher.DECRYPT_MODE, keys.key(alias, false), GCMParameterSpec(128, bytes.copyOfRange(1, 13)))
 			cipher.updateAAD(alias.toByteArray(Charsets.UTF_8))
 			return cipher.doFinal(bytes.copyOfRange(13, bytes.size))
+		} catch (error: javax.crypto.AEADBadTagException) {
+			throw StorageCorruptException(error)
 		} catch (error: StorageUnreadableException) {
 			throw error
 		} catch (error: Exception) {
@@ -27,8 +29,10 @@ internal class EncryptedFile(
 		}
 	}
 
-	fun write(value: ByteArray) {
-		if (file.exists()) read()
+	fun write(value: ByteArray, replaceCorrupt: Boolean = false) {
+		if (file.exists()) {
+			try { read() } catch (error: StorageCorruptException) { if (!replaceCorrupt) throw error }
+		}
 		val cipher = Cipher.getInstance("AES/GCM/NoPadding")
 		cipher.init(Cipher.ENCRYPT_MODE, keys.key(alias, !file.exists()))
 		cipher.updateAAD(alias.toByteArray(Charsets.UTF_8))
