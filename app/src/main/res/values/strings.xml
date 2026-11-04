@@ -42,4 +42,9 @@
 	<string name="error_unknown">Something went wrong. Try again later.</string>
 	<string name="error_cache_unreadable">Saved data could not be read.</string>
 	<string name="last_updated">Last updated: %1$s</string>
+	<string name="homework">Homework</string>
+	<string name="homework_empty">No homework in the current diary.</string>
+	<string name="homework_record_date">Record date: %1$s</string>
+	<string name="homework_files">Files are indicated in the diary; downloads are unavailable.</string>
+	<string name="homework_books">Books are indicated in the diary; downloads are unavailable.</string>
 </resources>

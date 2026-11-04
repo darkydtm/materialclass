@@ -42,4 +42,9 @@
 	<string name="error_unknown">Бір қате орын алды. Кейінірек қайталап көріңіз.</string>
 	<string name="error_cache_unreadable">Сақталған деректерді оқу мүмкін болмады.</string>
 	<string name="last_updated">Жаңартылған уақыты: %1$s</string>
+	<string name="homework">Үй тапсырмасы</string>
+	<string name="homework_empty">Ағымдағы күнделікте үй тапсырмасы жоқ.</string>
+	<string name="homework_record_date">Жазба күні: %1$s</string>
+	<string name="homework_files">Күнделікте файлдар көрсетілген; жүктеп алу қолжетімсіз.</string>
+	<string name="homework_books">Күнделікте кітаптар көрсетілген; жүктеп алу қолжетімсіз.</string>
 </resources>

@@ -64,7 +64,7 @@ class NativeUiControllerTest {
 			click("Homework")
 			waitFor("Mathematics")
 			waitFor("Solve exercises")
-			waitFor("01.01.2026")
+			waitFor("Record date: 01.01.2026")
 		} finally {
 			activity.finish()
 			context.getSharedPreferences("appearance", 0).edit().clear().commit()

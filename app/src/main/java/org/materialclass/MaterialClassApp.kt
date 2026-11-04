@@ -85,25 +85,38 @@ internal fun MaterialClassApp(example: ExampleData? = null, nativeEnabled: Boole
 						TextButton(onClick = { warning = false; preferences.edit().putBoolean("warning_seen", true).apply() }) { Text(stringResource(R.string.ok)) }
 					}
 					Row(modifier = Modifier.horizontalScroll(rememberScrollState()).selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-						listOf("login" to R.string.login, "diary" to R.string.diary, "schedule" to R.string.schedule, "settings" to R.string.settings).forEach { (value, label) ->
+						listOf("login" to R.string.login, "homework" to R.string.homework, "diary" to R.string.diary, "schedule" to R.string.schedule, "settings" to R.string.settings).forEach { (value, label) ->
 							Box(Modifier.selectable(selected = screen == value, role = Role.Tab, onClick = { screen = value }).padding(12.dp)) { Text(stringResource(label)) }
 						}
 					}
 					when (screen) {
 						"login" -> LoginScreen(controller, nativeState)
-						"diary", "schedule" -> {
-							Text(stringResource(if (screen == "diary") R.string.diary else R.string.schedule), style = MaterialTheme.typography.headlineSmall)
+						"diary", "homework", "schedule" -> {
+							Text(stringResource(when (screen) { "diary" -> R.string.diary; "homework" -> R.string.homework; else -> R.string.schedule }), style = MaterialTheme.typography.headlineSmall)
 							if (nativeState != null) {
 								if (!nativeState.signedIn) Text(stringResource(R.string.data_unavailable))
-								else if (screen == "diary") {
+								else if (screen == "diary" || screen == "homework") {
 									when (val diary = nativeState.diary) {
 										is DiaryState.Ready -> {
 											diary.staleError?.let { Text(stringResource(R.string.stale_data, stringResource(errorMessage(it)))) }
 											Text(stringResource(R.string.last_updated, formatTimestamp(diary.snapshot.lastSuccessMillis, localized)))
-											if (diary.snapshot.diary.days.all { it.subjects.isEmpty() }) Text(stringResource(R.string.diary_empty))
-											diary.snapshot.diary.days.forEach { day -> Text(day.date); day.subjects.forEach { subject -> Text(subject.label); subject.homeworkBody?.let { Text(it) } } }
+											if (screen == "homework") {
+												val records = diary.snapshot.diary.days.flatMap { day -> day.subjects.filter { !it.homeworkBody.isNullOrBlank() }.map { day.date to it } }
+												if (records.isEmpty()) Text(stringResource(R.string.homework_empty))
+												records.forEach { (date, subject) ->
+													Text(stringResource(R.string.homework_record_date, date))
+													Text(subject.label)
+													Text(subject.homeworkBody.orEmpty())
+													if (subject.hasFiles) Text(stringResource(R.string.homework_files))
+													if (subject.hasBooks) Text(stringResource(R.string.homework_books))
+												}
+											} else {
+												if (diary.snapshot.diary.days.all { it.subjects.isEmpty() }) Text(stringResource(R.string.diary_empty))
+												diary.snapshot.diary.days.forEach { day -> Text(day.date); day.subjects.forEach { subject -> Text(subject.label); subject.homeworkBody?.let { Text(it) } } }
+											}
 										}
 										DiaryState.Loading -> Text(stringResource(R.string.loading))
+										is DiaryState.Error -> { Text(stringResource(errorMessage(diary.error))); Text(stringResource(R.string.data_unavailable)) }
 										else -> Text(stringResource(R.string.data_unavailable))
 									}
 								} else {
@@ -118,7 +131,7 @@ internal fun MaterialClassApp(example: ExampleData? = null, nativeEnabled: Boole
 									}
 								}
 								if (nativeState.signedIn) Button(onClick = { controller.refresh() }) { Text(stringResource(R.string.refresh)) }
-							} else if (example == null) Text(stringResource(R.string.data_unavailable)) else {
+							} else if (example == null || screen == "homework") Text(stringResource(R.string.data_unavailable)) else {
 								Text(stringResource(R.string.example_only))
 								(screen.let { if (it == "diary") example.diary else example.schedule }).forEach { Text(it) }
 							}

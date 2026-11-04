@@ -42,4 +42,9 @@
 	<string name="error_unknown">Что-то пошло не так. Повторите попытку позже.</string>
 	<string name="error_cache_unreadable">Не удалось прочитать сохранённые данные.</string>
 	<string name="last_updated">Обновлено: %1$s</string>
+	<string name="homework">Домашнее задание</string>
+	<string name="homework_empty">В текущем дневнике нет домашних заданий.</string>
+	<string name="homework_record_date">Дата записи: %1$s</string>
+	<string name="homework_files">В дневнике указаны файлы; скачивание недоступно.</string>
+	<string name="homework_books">В дневнике указаны книги; скачивание недоступно.</string>
 </resources>
