@@ -538,11 +538,17 @@ internal class SchoolRepository(
 	fun pendingLogoutTicket() = coordinator.pendingLogoutTicket()
 	internal fun observeRevocations(observer: (Long) -> Unit) = coordinator.observeRevocations(observer)
 	internal fun removeRevocationObserver(observer: (Long) -> Unit) = coordinator.removeRevocationObserver(observer)
+	internal fun observeUiRevocations(observer: (Long, () -> Unit) -> Unit) = coordinator.observeUiRevocations(observer)
+	internal fun failUiRevocation(acknowledge: () -> Unit) = coordinator.failUiRevocation(acknowledge)
+	internal fun removeUiRevocationObserver(observer: (Long, () -> Unit) -> Unit) = coordinator.removeUiRevocationObserver(observer)
 	internal fun revocationEpoch() = coordinator.revocationEpoch()
 	internal fun sessionEvent() = coordinator.event()
 	internal fun ownedEpoch() = coordinator.ownedEpoch(session)
 
 	fun logout(token: Any? = null) {
+		val nested = Thread.holdsLock(StorageLock)
+		var acknowledgement: java.util.concurrent.CountDownLatch? = null
+		val selected: (Any) -> Unit = { acknowledgement = coordinator.uiAcknowledgement(it) }
 		val outcome: Result<Boolean> = synchronized(StorageLock) {
 			if (token != null && !coordinator.isPendingLogout(token)) return@synchronized Result.success(false)
 			runCatching {
@@ -552,20 +558,20 @@ internal class SchoolRepository(
 					remote = null
 					scheduleSession = null
 					diarySession = null; profile = null
-					coordinator.logout(token)
+					coordinator.logout(token, selected)
 				} else {
 					val pending = loginRevision
 					loginRevision = null
 					val active = session
 					if (active == null) {
-						if (!coordinator.logoutIfNoActive()) pending?.let { coordinator.cancelLogin(it) }
+						if (!coordinator.logoutIfNoActive(selected = selected)) pending?.let { coordinator.cancelLogin(it) }
 					} else {
 						remote = null
 						scheduleSession = null
 						diarySession = null; profile = null
 						session = null
-						val revoked = coordinator.revokeIfActive(active)
-						if (!revoked) coordinator.logoutIfNoActive()
+						val revoked = coordinator.revokeIfActive(active, selected = selected)
+						if (!revoked) coordinator.logoutIfNoActive(selected = selected)
 						pending?.let { coordinator.cancelLogin(it) }
 					}
 				}
@@ -573,6 +579,7 @@ internal class SchoolRepository(
 			}
 		}
 		if (outcome.isFailure || outcome.getOrNull() == true) emit(DiaryState.Cleared)
+		if (!nested && outcome.isSuccess) coordinator.awaitUiAcknowledgement(acknowledgement)
 		outcome.getOrThrow()
 	}
 }

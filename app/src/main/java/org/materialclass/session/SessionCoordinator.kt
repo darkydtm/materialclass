@@ -4,6 +4,9 @@ import android.content.Context
 import org.materialclass.security.StorageLock
 import java.security.SecureRandom
 import java.util.concurrent.Executors
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 @JvmInline
 value class AccountId(val value: String) {
@@ -49,6 +52,12 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		private var revocationEpoch = 0L
 		private var lastEvent = SessionEvent(0L, SessionChange.LOGOUT, null)
 		private val observers = mutableSetOf<(Long) -> Unit>()
+		private val uiObservers = mutableSetOf<(Long, () -> Unit) -> Unit>()
+		private val uiAcknowledgements = mutableMapOf<Any, CountDownLatch>()
+		private val uiPendingObservers = mutableMapOf<Any, MutableMap<(Long, () -> Unit) -> Unit, () -> Unit>>()
+		private val cleanedTickets = mutableSetOf<Any>()
+		private val failedUiCallbacks = mutableMapOf<Any, MutableList<() -> Unit>>()
+		private val uiFailures = mutableMapOf<() -> Unit, () -> Unit>()
 		private val pending = mutableSetOf<Any>()
 		private val revoked = mutableMapOf<Any, CacheNamespace?>()
 		private val leases = mutableSetOf<RequestLease>()
@@ -77,6 +86,28 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		Pair(revocationEpoch, pending.isNotEmpty())
 	}
 	internal fun removeRevocationObserver(observer: (Long) -> Unit) = synchronized(CancellationLock) { observers.remove(observer) }
+	internal fun observeUiRevocations(observer: (Long, () -> Unit) -> Unit): Pair<Long, Boolean> = synchronized(CancellationLock) {
+		uiObservers.add(observer)
+		Pair(revocationEpoch, pending.isNotEmpty())
+	}
+	internal fun removeUiRevocationObserver(observer: (Long, () -> Unit) -> Unit) {
+		val acknowledgements = synchronized(CancellationLock) {
+			uiObservers.remove(observer)
+			uiPendingObservers.values.mapNotNull { it[observer] }
+		}
+		acknowledgements.forEach { it() }
+	}
+	internal fun failUiRevocation(acknowledge: () -> Unit) {
+		val failure = synchronized(CancellationLock) { uiFailures[acknowledge] }
+		failure?.invoke()
+	}
+	internal fun uiAcknowledgement(token: Any?): CountDownLatch? = synchronized(CancellationLock) { uiAcknowledgements[token] }
+	internal fun awaitUiAcknowledgement(acknowledgement: CountDownLatch?) {
+		if (acknowledgement == null || android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) return
+		while (!acknowledgement.await(100, TimeUnit.MILLISECONDS)) {
+			if (synchronized(CancellationLock) { failedUiCallbacks.keys.any { uiAcknowledgements[it] === acknowledgement } }) throw IllegalStateException("UI revocation failed")
+		}
+	}
 	internal fun revocationEpoch(): Long = synchronized(CancellationLock) { revocationEpoch }
 	internal fun event(): SessionEvent = synchronized(CancellationLock) { lastEvent }
 	internal fun ownedEpoch(session: ActiveSession?): Long? = synchronized(CancellationLock) { if (session != null && active === session && pending.isEmpty()) revocationEpoch else null }
@@ -94,23 +125,71 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 	fun pendingLogoutTicket(): Any? = synchronized(CancellationLock) { pending.firstOrNull() }
 	internal fun isPendingLogout(token: Any): Boolean = synchronized(CancellationLock) { token in pending }
 
+	private fun prepareUiRevocation(token: Any, epoch: Long): () -> Unit {
+		val callbacks = uiObservers.toList()
+		val acknowledgement = CountDownLatch(callbacks.size)
+		if (callbacks.isNotEmpty()) uiAcknowledgements[token] = acknowledgement
+		val deliveries = callbacks.map { observer ->
+			val completed = AtomicBoolean(false)
+			val acknowledge = {
+				if (completed.compareAndSet(false, true)) {
+					synchronized(CancellationLock) {
+						uiPendingObservers[token]?.remove(observer)?.let { uiFailures.remove(it) }
+						acknowledgement.countDown()
+						if (acknowledgement.count == 0L) {
+							uiPendingObservers.remove(token)
+							uiAcknowledgements.remove(token)
+							failedUiCallbacks.remove(token)
+							if (token in cleanedTickets) finishImmediateLogout(token)
+						}
+					}
+				}
+				Unit
+			}
+			uiPendingObservers.getOrPut(token) { mutableMapOf() }[observer] = acknowledge
+			lateinit var deliver: () -> Unit
+			val fail = {
+				synchronized(CancellationLock) {
+					if (!completed.get()) {
+						val failures = failedUiCallbacks.getOrPut(token) { mutableListOf() }
+						if (deliver !in failures) failures.add(deliver)
+					}
+				}
+				Unit
+			}
+			uiFailures[acknowledge] = fail
+			deliver = {
+				if (!completed.get()) try { observer(epoch, acknowledge) } catch (_: Exception) { fail() }
+			}
+			deliver
+		}
+		return { deliveries.forEach { it() } }
+	}
+
+	private fun deliverUiAfterStorage(deliver: () -> Unit) {
+		if (Thread.holdsLock(StorageLock)) disconnectExecutor.execute { synchronized(StorageLock) { }; deliver() } else deliver()
+	}
+
 	fun cancelInFlightNow(): Any {
 		val token = Any()
-		val (disconnects, epoch, callbacks) = synchronized(CancellationLock) {
+		val (disconnects, epoch, callbacks, deliver) = synchronized(CancellationLock) {
 			pending.add(token)
 			revoked[token] = active?.cacheNamespace
 			ownPending.addLast(token)
 			revision++
 			leases.forEach { it.cancelled = true }
-			val callbacks = leases.mapNotNull { lease -> lease.disconnect.also { lease.disconnect = null } }
+			val disconnects = leases.mapNotNull { lease -> lease.disconnect.also { lease.disconnect = null } }
 			leases.clear()
 			lastEvent = SessionEvent(++revocationEpoch, SessionChange.LOGOUT, null)
-			Triple(callbacks, revocationEpoch, observers.toList())
+			UiNotification(disconnects, revocationEpoch, observers.toList(), prepareUiRevocation(token, revocationEpoch))
 		}
+		deliverUiAfterStorage(deliver)
 		if (Thread.holdsLock(StorageLock)) notifyAfterStorage(epoch, callbacks) else notifyRevocation(epoch, callbacks)
 		disconnects.forEach { disconnect -> disconnectExecutor.execute { try { disconnect() } catch (_: Exception) { } } }
 		return token
 	}
+
+	private data class UiNotification(val disconnects: List<() -> Unit>, val epoch: Long, val callbacks: List<(Long) -> Unit>, val deliver: () -> Unit)
 
 	internal fun admit(session: ActiveSession): RequestLease? = synchronized(CancellationLock) {
 		if (active !== session || pending.isNotEmpty()) null else RequestLease(session).also { leases.add(it) }
@@ -150,9 +229,9 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		if (!matches(expected)) return@synchronized null
 		activateChecked(account, expected)
 	}
-	internal fun logoutIfNoActive(token: Any? = null): Boolean = synchronized(StorageLock) {
+	internal fun logoutIfNoActive(token: Any? = null, selected: (Any) -> Unit = {}): Boolean = synchronized(StorageLock) {
 		if (synchronized(CancellationLock) { active != null }) return@synchronized false
-		logout(token)
+		logout(token, selected)
 		true
 	}
 	internal fun cancelLogin(expected: Long) = synchronized(StorageLock) {
@@ -172,7 +251,9 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		failure?.let { throw it }
 	}
 
-	internal fun revokeIfActive(session: ActiveSession, expired: Boolean = false): Boolean = synchronized(StorageLock) {
+	private data class UiNotificationWithToken(val token: Any, val epoch: Long, val callbacks: List<(Long) -> Unit>, val deliver: () -> Unit)
+
+	internal fun revokeIfActive(session: ActiveSession, expired: Boolean = false, selected: (Any) -> Unit = {}): Boolean = synchronized(StorageLock) {
 		val result = synchronized(CancellationLock) {
 			if (active !== session) null else {
 				active = null; restorationAllowed = false
@@ -181,13 +262,15 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 				revoked[token] = session.cacheNamespace
 				ownPending.addLast(token)
 				lastEvent = SessionEvent(++revocationEpoch, if (expired) SessionChange.EXPIRED else SessionChange.LOGOUT, session)
-				Triple(token, revocationEpoch, observers.toList())
+				UiNotificationWithToken(token, revocationEpoch, observers.toList(), prepareUiRevocation(token, revocationEpoch))
 			}
 		} ?: return@synchronized false
-		notifyAfterStorage(result.second, result.third)
+		selected(result.token)
+		deliverUiAfterStorage(result.deliver)
+		notifyAfterStorage(result.epoch, result.callbacks)
 		cancelRequests(session)
 		cleanup(session.cacheNamespace)
-		finishImmediateLogout(result.first)
+		finishImmediateLogout(result.token)
 		true
 	}
 	internal fun activate(account: AccountId): ActiveSession = synchronized(StorageLock) {
@@ -268,7 +351,12 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		cleanup(namespace)
 		finishImmediateLogout(token)
 	}
-	fun logout(token: Any? = null) = synchronized(StorageLock) {
+	fun logout(token: Any? = null) = logout(token) { }
+	internal fun logout(token: Any?, selected: (Any) -> Unit) {
+		val nested = Thread.holdsLock(StorageLock)
+		var acknowledgement: CountDownLatch? = null
+		var retries = emptyList<() -> Unit>()
+		synchronized(StorageLock) {
 		if (token != null && !isPendingLogout(token)) return@synchronized
 		val (ownedToken, event) = synchronized(CancellationLock) {
 			val existing = token ?: ownPending.firstOrNull { it in pending }
@@ -278,16 +366,28 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 			revision++; restorationAllowed = false
 			Pair(owned, if (existing == null) {
 				lastEvent = SessionEvent(++revocationEpoch, SessionChange.LOGOUT, null)
-				Pair(revocationEpoch, observers.toList())
+				Triple(revocationEpoch, observers.toList(), prepareUiRevocation(owned, revocationEpoch))
 			} else null)
 		}
-		if (event != null) notifyAfterStorage(event.first, event.second)
+		selected(ownedToken)
+		acknowledgement = uiAcknowledgement(ownedToken)
+		if (event != null) { deliverUiAfterStorage(event.third); notifyAfterStorage(event.first, event.second) }
 		cancelRequests()
 		cleanup(synchronized(CancellationLock) { revoked[ownedToken] })
+		retries = synchronized(CancellationLock) { failedUiCallbacks.remove(ownedToken)?.toList() ?: emptyList() }
 		finishImmediateLogout(ownedToken)
+		}
+		if (nested) disconnectExecutor.execute { synchronized(StorageLock) { }; retries.forEach { it() } }
+		else { retries.forEach { it() }; awaitUiAcknowledgement(acknowledgement) }
 	}
 	internal fun finishImmediateLogout(token: Any) {
 		val (epoch, callbacks) = synchronized(CancellationLock) {
+			if (token !in pending) return
+			if (uiAcknowledgements[token]?.count?.let { it > 0 } == true) {
+				cleanedTickets.add(token)
+				return
+			}
+			cleanedTickets.remove(token)
 			ownPending.remove(token)
 			pending.remove(token)
 			revoked.remove(token)

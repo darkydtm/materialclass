@@ -51,36 +51,46 @@ internal interface NativeUiController {
 
 internal class NativeController(
 	private val onState: (NativeUiState) -> Unit = {},
+	private val uiDispatch: ((() -> Unit) -> Boolean) = { action -> Handler(Looper.getMainLooper()).post(action) },
+	private val applyUiRevocation: ((() -> Unit) -> Unit) = { action -> action() },
 	private val repositoryFactory: ((DiaryState) -> Unit) -> SchoolRepository,
 ) : NativeUiController {
-
 	private val executor = Executors.newSingleThreadExecutor()
 	private val logoutExecutor = Executors.newSingleThreadExecutor()
 	private var logoutTicket: Any? = null
 	private val handler = Handler(Looper.getMainLooper())
 	@Volatile private var observedEpoch = 0L
-	private val observeLogout: (Long) -> Unit = { epoch ->
-		val apply = apply@{
-			if (!closed && epoch == repository.revocationEpoch()) {
-				if (epoch != observedEpoch) {
-					val event = repository.sessionEvent()
-					if (event.epoch != epoch) return@apply
-					observedEpoch = epoch
-					if (event.change == SessionChange.ACTIVATED && repository.ownedEpoch() == epoch) {
-						currentTaskEpoch = epoch
-					} else if (event.change == SessionChange.EXPIRED && state.busy && !state.signedIn && repository.pendingLogoutTicket() == null) {
-						currentTaskEpoch = epoch
-					} else {
-						generation++
-						state = NativeUiState(busy = logoutTicket != null, logoutPending = logoutTicket != null || repository.pendingLogoutTicket() != null, error = if (event.change == SessionChange.EXPIRED) AppError.SESSION_EXPIRED else null)
-					}
-				} else if (state.logoutPending && logoutTicket == null && repository.pendingLogoutTicket() == null) {
-					state = NativeUiState()
+	private fun applyRevocation(epoch: Long) {
+		if (!closed && epoch == repository.revocationEpoch()) {
+			if (epoch != observedEpoch) {
+				val event = repository.sessionEvent()
+				if (event.epoch != epoch) return
+				if (event.change == SessionChange.ACTIVATED && repository.ownedEpoch() == epoch) {
+					currentTaskEpoch = epoch
+				} else if (event.change == SessionChange.EXPIRED && state.busy && !state.signedIn) {
+					currentTaskEpoch = epoch
+				} else {
+					generation++
+					state = NativeUiState(busy = logoutTicket != null, logoutPending = logoutTicket != null || repository.pendingLogoutTicket() != null, error = if (event.change == SessionChange.EXPIRED) AppError.SESSION_EXPIRED else null)
 				}
+				observedEpoch = epoch
+			} else if (state.logoutPending && logoutTicket == null && repository.pendingLogoutTicket() == null) {
+				state = state.copy(logoutPending = false)
 			}
 		}
-		if (Looper.myLooper() == Looper.getMainLooper()) apply() else handler.post { apply() }
 	}
+	private val observeLogout: (Long) -> Unit = { epoch ->
+		handler.post { applyRevocation(epoch) }
+	}
+	private val observeUiLogout: (Long, () -> Unit) -> Unit = { epoch, acknowledge ->
+		check(uiDispatch {
+			try {
+				applyUiRevocation { applyRevocation(epoch) }
+				acknowledge()
+			} catch (_: Exception) { repository.failUiRevocation(acknowledge) }
+		})
+	}
+
 	@Volatile private var generation = 0L
 	@Volatile private var profileRevision = 0L
 	@Volatile private var diaryRevision = 0L
@@ -109,6 +119,7 @@ internal class NativeController(
 
 	init {
 		val snapshot = repository.observeRevocations(observeLogout)
+		repository.observeUiRevocations(observeUiLogout)
 		observedEpoch = snapshot.first
 		if (snapshot.second) state = NativeUiState(logoutPending = true)
 	}
@@ -287,6 +298,7 @@ internal class NativeController(
 	override fun close() {
 		closed = true
 		repository.removeRevocationObserver(observeLogout)
+		repository.removeUiRevocationObserver(observeUiLogout)
 		generation++
 		executor.shutdown()
 		logoutExecutor.shutdown()

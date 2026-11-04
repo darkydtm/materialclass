@@ -36,6 +36,332 @@ class NativeControllerIntegrationTest {
 		main { controller?.close() }
 		coordinator.logout()
 	}
+	@Test fun logoutCompletionWaitsForUiRevocation() {
+		val cleaned = CountDownLatch(1)
+		val shared = SessionCoordinator { cleaned.countDown() }
+		val gateway = object : SchoolGateway {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Failure(AppError.UNAVAILABLE)
+			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = GatewayResult.Failure(AppError.UNAVAILABLE)
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = GatewayResult.Failure(AppError.UNAVAILABLE)
+			override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> = GatewayResult.Failure(AppError.UNAVAILABLE)
+		}
+		val cache = object : DiaryCache {
+			override fun read(session: ActiveSession): ByteArray? = null
+			override fun write(session: ActiveSession, bytes: ByteArray) = true
+		}
+		main { controller = NativeController { emit -> SchoolRepository(gateway, IdentityVerifier { _, _ -> SessionVerification.Retry }, shared, cache, { 1L }, emit, SessionStore(context, shared)) } }
+		val entered = CountDownLatch(1)
+		val release = CountDownLatch(1)
+		val completed = CountDownLatch(1)
+		val cancelled = CountDownLatch(1)
+		android.os.Handler(android.os.Looper.getMainLooper()).post { entered.countDown(); release.await(30, TimeUnit.SECONDS) }
+		var worker: Thread? = null
+		try {
+			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			worker = kotlin.concurrent.thread {
+				val token = shared.cancelInFlightNow()
+				cancelled.countDown()
+				shared.logout(token)
+				completed.countDown()
+			}
+			assertTrue(cancelled.await(10, TimeUnit.SECONDS))
+			assertTrue("Durable cleanup did not complete", cleaned.await(10, TimeUnit.SECONDS))
+			synchronized(org.materialclass.security.StorageLock) { }
+			assertNotNull("Admission must remain closed until UI revocation", shared.pendingLogoutTicket())
+			assertFalse("Logout completed before the UI processed revocation", completed.await(2, TimeUnit.SECONDS))
+		} finally {
+			release.countDown()
+			worker?.join(10000)
+		}
+		assertFalse(worker!!.isAlive)
+		assertTrue(completed.await(1, TimeUnit.SECONDS))
+	}
+	@Test fun privateDataAndLoginStayGatedUntilBothControllersAcknowledge() {
+		val cleaned = CountDownLatch(2)
+		val shared = SessionCoordinator { cleaned.countDown() }
+		val gateway = object : SchoolGateway {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic", login, "student", SchoolContext(1, 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
+			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = GatewayResult.Success("01.01.2026")
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
+			override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> = GatewayResult.Success(Schedule(emptyList()))
+		}
+		val verifier = IdentityVerifier { session, _ ->
+			val profile = JSONObject("""{"userId":${session.identityCandidate},"role":"student","school_id":1,"group":{"id":2},"studentInfo":{"studentSchoolUuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}""")
+			SessionVerification.Verified(AccountId(session.identityCandidate!!), true, VerifiedScheduleSession.compare(session, profile), VerifiedDiarySession.compare(session, profile))
+		}
+		val cache = object : DiaryCache {
+			override fun read(session: ActiveSession): ByteArray? = null
+			override fun write(session: ActiveSession, bytes: ByteArray) = true
+		}
+		val held = java.util.concurrent.atomic.AtomicReference<(() -> Unit)?>()
+		val secondDelivered = CountDownLatch(1)
+		lateinit var secondEmit: (DiaryState) -> Unit
+		fun create(secondController: Boolean = false) = NativeController(
+			uiDispatch = { action ->
+				if (secondController) { held.set(action); secondDelivered.countDown(); true }
+				else android.os.Handler(android.os.Looper.getMainLooper()).post(action)
+			},
+		) { emit ->
+			if (secondController) secondEmit = emit
+			SchoolRepository(gateway, verifier, shared, cache, { 1L }, emit, SessionStore(context, shared))
+		}
+		lateinit var second: NativeController
+		main { controller = create(); second = create(true); controller!!.login("1", charArrayOf('x')) }
+		await { controller!!.state.signedIn && controller!!.state.diary is DiaryState.Ready }
+		main {
+			val generation = NativeController::class.java.getDeclaredField("generation").apply { isAccessible = true }.getLong(second)
+			NativeController::class.java.getDeclaredField("currentTaskGeneration").apply { isAccessible = true }.setLong(second, generation)
+			NativeController::class.java.getDeclaredField("currentTaskEpoch").apply { isAccessible = true }.setLong(second, shared.revocationEpoch())
+			secondEmit(DiaryState.Ready(DiarySnapshot(Diary("01.01.2026", emptyList()), 1L)))
+		}
+		await { second.state.diary is DiaryState.Ready }
+		val cancelled = CountDownLatch(1)
+		val completed = CountDownLatch(1)
+		val worker = kotlin.concurrent.thread {
+			val ticket = shared.cancelInFlightNow()
+			cancelled.countDown()
+			shared.logout(ticket)
+			completed.countDown()
+		}
+		try {
+			assertTrue(cancelled.await(10, TimeUnit.SECONDS))
+			assertTrue(secondDelivered.await(10, TimeUnit.SECONDS))
+			assertTrue(cleaned.await(10, TimeUnit.SECONDS))
+			await { controller!!.state.diary is DiaryState.Cleared }
+			assertNotNull(shared.pendingLogoutTicket())
+			assertNull(shared.admit(shared.beginLogin()))
+			main { held.get()!!.invoke(); assertTrue(second.state.diary is DiaryState.Cleared) }
+			assertTrue(completed.await(10, TimeUnit.SECONDS))
+			await { shared.pendingLogoutTicket() == null && !second.state.logoutPending }
+			main { second.login("2", charArrayOf('x')) }
+			await { second.state.signedIn && second.state.diary is DiaryState.Ready }
+		} finally {
+			main { held.get()?.invoke(); second.close() }
+			worker.join(10000)
+		}
+	}
+
+	@Test fun expiryAndUnticketedLogoutKeepAdmissionClosedUntilUiAcknowledges() {
+		for (expiry in listOf(true, false)) {
+			val shared = SessionCoordinator { }
+			val session = shared.activate(AccountId("synthetic-old"))
+			val delivered = CountDownLatch(1)
+			val finished = CountDownLatch(1)
+			var acknowledge: (() -> Unit)? = null
+			val observer: (Long, () -> Unit) -> Unit = { _, ack ->
+				assertFalse(Thread.holdsLock(org.materialclass.security.StorageLock))
+				acknowledge = ack
+				delivered.countDown()
+			}
+			shared.observeUiRevocations(observer)
+			val worker = kotlin.concurrent.thread {
+				try {
+					if (expiry) shared.revokeIfActive(session, expired = true) else shared.logout()
+				} finally { finished.countDown() }
+			}
+			try {
+				assertTrue("UI revocation was not delivered", delivered.await(10, TimeUnit.SECONDS))
+				assertNotNull("Cleanup must not release admission before UI clear", shared.pendingLogoutTicket())
+				assertNull(shared.admit(shared.beginLogin()))
+				if (!expiry) assertFalse("Unticketed logout returned before UI acknowledgement", finished.await(1, TimeUnit.SECONDS))
+			} finally {
+				acknowledge?.invoke()
+				shared.removeUiRevocationObserver(observer)
+				worker.join(10000)
+				shared.pendingLogoutTicket()?.let { shared.logout(it) }
+			}
+			assertTrue(finished.await(10, TimeUnit.SECONDS))
+			assertNull(shared.pendingLogoutTicket())
+		}
+	}
+
+	@Test fun repositoryUnticketedLogoutWaitsForSelectedUiAcknowledgement() {
+		val shared = SessionCoordinator { }
+		val gateway = object : SchoolGateway {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Failure(AppError.UNAVAILABLE)
+			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = GatewayResult.Failure(AppError.UNAVAILABLE)
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = GatewayResult.Failure(AppError.UNAVAILABLE)
+			override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> = GatewayResult.Failure(AppError.UNAVAILABLE)
+		}
+		val cache = object : DiaryCache {
+			override fun read(session: ActiveSession): ByteArray? = null
+			override fun write(session: ActiveSession, bytes: ByteArray) = true
+		}
+		val repository = SchoolRepository(gateway, IdentityVerifier { _, _ -> SessionVerification.Retry }, shared, cache, { 1L }, {}, SessionStore(context, shared))
+		val delivered = CountDownLatch(1)
+		val finished = CountDownLatch(1)
+		val held = java.util.concurrent.atomic.AtomicReference<(() -> Unit)?>()
+		val failure = java.util.concurrent.atomic.AtomicReference<Throwable?>()
+		val observer: (Long, () -> Unit) -> Unit = { _, ack -> held.set(ack); delivered.countDown() }
+		shared.observeUiRevocations(observer)
+		val worker = kotlin.concurrent.thread {
+			try { repository.logout() } catch (error: Throwable) { failure.set(error) } finally { finished.countDown() }
+		}
+		try {
+			assertTrue(delivered.await(10, TimeUnit.SECONDS))
+			val ticket = shared.pendingLogoutTicket()
+			assertNotNull(ticket)
+			assertNull(shared.admit(shared.beginLogin()))
+			assertFalse("Repository returned before UI acknowledgement", finished.await(1, TimeUnit.SECONDS))
+			held.get()!!.invoke()
+			assertTrue(finished.await(10, TimeUnit.SECONDS))
+			assertNull(failure.get())
+			assertNull(shared.pendingLogoutTicket())
+			val newer = shared.activate(AccountId("synthetic-new"))
+			shared.logout(ticket)
+			assertNotNull(shared.admit(newer))
+		} finally {
+			held.get()?.invoke()
+			shared.removeUiRevocationObserver(observer)
+			worker.join(10000)
+			shared.pendingLogoutTicket()?.let { shared.logout(it) }
+			shared.logout()
+		}
+	}
+
+	@Test fun failedUiDeliveryReportsFailureAndKeepsTicketPending() {
+		val shared = SessionCoordinator { }
+		val observer: (Long, () -> Unit) -> Unit = { _, _ -> throw IllegalStateException("Synthetic delivery failure") }
+		shared.observeUiRevocations(observer)
+		val ticket = shared.cancelInFlightNow()
+		try {
+			try {
+				shared.logout(ticket)
+				fail("Failed UI delivery must report cleanup failure")
+			} catch (_: IllegalStateException) { }
+			assertSame(ticket, shared.pendingLogoutTicket())
+			assertNull(shared.admit(shared.beginLogin()))
+		} finally {
+			shared.removeUiRevocationObserver(observer)
+			shared.pendingLogoutTicket()?.let { shared.logout(it) }
+		}
+	}
+
+	@Test fun controllerRetriesFailedDispatchAndFailedApply() {
+		for (failDispatch in listOf(true, false)) {
+			val shared = SessionCoordinator { }
+			val failing = java.util.concurrent.atomic.AtomicBoolean(true)
+			val handler = android.os.Handler(android.os.Looper.getMainLooper())
+			val gateway = object : SchoolGateway {
+				override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Failure(AppError.UNAVAILABLE)
+				override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = GatewayResult.Failure(AppError.UNAVAILABLE)
+				override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = GatewayResult.Failure(AppError.UNAVAILABLE)
+				override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> = GatewayResult.Failure(AppError.UNAVAILABLE)
+			}
+			val cache = object : DiaryCache {
+				override fun read(session: ActiveSession): ByteArray? = null
+				override fun write(session: ActiveSession, bytes: ByteArray) = true
+			}
+			fun create() = NativeController(
+				uiDispatch = { action -> if (failDispatch && failing.get()) false else handler.post(action) },
+				applyUiRevocation = { action -> if (!failDispatch && failing.get()) throw IllegalStateException("Synthetic apply failure") else action() },
+			) { emit -> SchoolRepository(gateway, IdentityVerifier { _, _ -> SessionVerification.Retry }, shared, cache, { 1L }, emit, SessionStore(context, shared)) }
+			try {
+				main { controller = create(); controller!!.logout() }
+				await { controller!!.state.logoutPending && !controller!!.state.busy && controller!!.state.error == AppError.UNAVAILABLE }
+				val ticket = shared.pendingLogoutTicket()
+				assertNotNull(ticket)
+				assertNull(shared.admit(shared.beginLogin()))
+				failing.set(false)
+				main { controller!!.logout() }
+				await { shared.pendingLogoutTicket() == null && !controller!!.state.busy }
+				main { controller!!.close(); controller = create(); controller!!.start() }
+				await { !controller!!.state.busy }
+				main { assertFalse(controller!!.state.logoutPending) }
+			} finally {
+				failing.set(false)
+				main { controller?.close(); controller = null }
+				shared.pendingLogoutTicket()?.let { shared.logout(it) }
+			}
+		}
+	}
+
+	@Test fun failedUiDeliveryRetriesWithoutAcknowledgingAnotherObserver() {
+		val cleaned = CountDownLatch(1)
+		val shared = SessionCoordinator { cleaned.countDown() }
+		val attempts = java.util.concurrent.atomic.AtomicInteger()
+		val retried = CountDownLatch(1)
+		val held = java.util.concurrent.atomic.AtomicReference<(() -> Unit)?>()
+		val delivered = CountDownLatch(1)
+		val failing: (Long, () -> Unit) -> Unit = { _, acknowledge ->
+			if (attempts.incrementAndGet() == 1) throw IllegalStateException("Synthetic delivery failure")
+			retried.countDown()
+			acknowledge()
+		}
+		val delayed: (Long, () -> Unit) -> Unit = { _, acknowledge ->
+			held.set(acknowledge)
+			delivered.countDown()
+		}
+		shared.observeUiRevocations(failing)
+		shared.observeUiRevocations(delayed)
+		val ticket = shared.cancelInFlightNow()
+		val finished = CountDownLatch(1)
+		val worker = kotlin.concurrent.thread {
+			try { shared.logout(ticket) } finally { finished.countDown() }
+		}
+		try {
+			assertTrue(delivered.await(10, TimeUnit.SECONDS))
+			assertTrue(cleaned.await(10, TimeUnit.SECONDS))
+			assertTrue(retried.await(10, TimeUnit.SECONDS))
+			assertEquals(2, attempts.get())
+			assertSame(ticket, shared.pendingLogoutTicket())
+			assertNull(shared.admit(shared.beginLogin()))
+			assertFalse("The remaining observer has not acknowledged", finished.await(1, TimeUnit.SECONDS))
+			held.get()!!.invoke()
+			assertTrue(finished.await(10, TimeUnit.SECONDS))
+			assertNull(shared.pendingLogoutTicket())
+		} finally {
+			held.get()?.invoke()
+			shared.removeUiRevocationObserver(failing)
+			shared.removeUiRevocationObserver(delayed)
+			worker.join(10000)
+			shared.pendingLogoutTicket()?.let { shared.logout(it) }
+		}
+		assertFalse(worker.isAlive)
+	}
+
+	@Test fun failedUiObserverKeepsExpiryPendingUntilUnsubscribed() {
+		val shared = SessionCoordinator { }
+		val session = shared.activate(AccountId("synthetic-expiry"))
+		val delivered = CountDownLatch(1)
+		val observer: (Long, () -> Unit) -> Unit = { _, _ ->
+			delivered.countDown()
+			throw IllegalStateException("Synthetic observer failure")
+		}
+		shared.observeUiRevocations(observer)
+		try {
+			assertTrue(shared.revokeIfActive(session, expired = true))
+			assertTrue(delivered.await(10, TimeUnit.SECONDS))
+			assertNotNull(shared.pendingLogoutTicket())
+			assertNull(shared.admit(shared.beginLogin()))
+		} finally {
+			shared.removeUiRevocationObserver(observer)
+		}
+		assertNull(shared.pendingLogoutTicket())
+		val newer = shared.activate(AccountId("synthetic-new"))
+		assertFalse(shared.revokeIfActive(session, expired = true))
+		assertNotNull(shared.admit(newer))
+		shared.logout()
+	}
+
+	@Test fun mainThreadRevocationAppliesAfterCurrentTurn() {
+		val gateway = object : SchoolGateway {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Failure(AppError.UNAVAILABLE)
+			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = GatewayResult.Failure(AppError.UNAVAILABLE)
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = GatewayResult.Failure(AppError.UNAVAILABLE)
+			override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> = GatewayResult.Failure(AppError.UNAVAILABLE)
+		}
+		val cache = object : DiaryCache {
+			override fun read(session: ActiveSession): ByteArray? = null
+			override fun write(session: ActiveSession, bytes: ByteArray) = true
+		}
+		main {
+			controller = NativeController { emit -> SchoolRepository(gateway, IdentityVerifier { _, _ -> SessionVerification.Retry }, coordinator, cache, { 1L }, emit, SessionStore(context, coordinator)) }
+			coordinator.cancelInFlightNow()
+			assertFalse(controller!!.state.logoutPending)
+		}
+		await { controller!!.state.logoutPending }
+	}
 	@Test fun delayedRestoreClearCannotEraseNewLoginDiary() {
 		val entered = CountDownLatch(1)
 		val release = CountDownLatch(1)
@@ -77,6 +403,7 @@ class NativeControllerIntegrationTest {
 			repository.logout()
 			val observed = NativeController::class.java.getDeclaredField("observedEpoch").apply { isAccessible = true }
 			await { observed.getLong(controller) == coordinator.revocationEpoch() }
+			await { coordinator.pendingLogoutTicket() == null && !controller!!.state.logoutPending }
 			main { controller!!.login("2", charArrayOf('x')) }
 			await { controller!!.state.signedIn && controller!!.state.diary is DiaryState.Ready }
 			release.countDown()
@@ -162,6 +489,7 @@ class NativeControllerIntegrationTest {
 			assertTrue(shared.revokeIfActive(old, expired = true))
 			await { !first.state.signedIn && first.state.error == AppError.SESSION_EXPIRED }
 			main { assertTrue(first.state.diary is DiaryState.Cleared); assertNull(first.state.schedule); assertTrue(second.state.busy); assertFalse(second.state.signedIn) }
+			await { shared.pendingLogoutTicket() == null }
 			release.countDown()
 			await { second.state.signedIn && second.state.diary is DiaryState.Ready }
 		} finally { release.countDown(); main { second.close() }; shared.logout() }
@@ -457,12 +785,8 @@ class NativeControllerIntegrationTest {
 		main { assertEquals("Synthetic lesson", (c.state.diary as DiaryState.Ready).snapshot.diary.days[0].subjects[0].label); assertEquals("Synthetic schedule", c.state.schedule!!.days[0].lessons[0].themeLabel) }
 		val other = NativeController { emit -> SchoolRepository(gateway, verifier, coordinator, cache, { 1L }, emit, SessionStore(context, coordinator)) }
 		try {
-			main {
-				other.logout()
-				val deadline = android.os.SystemClock.uptimeMillis() + 10000
-				while (coordinator.pendingLogoutTicket() != null && android.os.SystemClock.uptimeMillis() < deadline) Thread.sleep(10)
-				assertNull(coordinator.pendingLogoutTicket())
-			}
+			main { other.logout() }
+			await { coordinator.pendingLogoutTicket() == null }
 			main { assertFalse(c.state.signedIn); assertNull(c.state.schedule); assertTrue(c.state.diary is DiaryState.Cleared) }
 		} finally { main { other.close() } }
 		main { c.login("synthetic", charArrayOf('x')) }
