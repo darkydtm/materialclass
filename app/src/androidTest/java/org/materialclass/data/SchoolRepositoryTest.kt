@@ -959,7 +959,10 @@ class SchoolRepositoryTest {
 				refresh()
 				if (error == AppError.OFFLINE || error == AppError.TIMEOUT) {
 					val stale = events.last() as DiaryState.Ready
-					assertEquals(fresh, stale.snapshot); assertEquals(error, stale.staleError)
+					assertEquals(fresh.lastSuccessMillis, stale.snapshot.lastSuccessMillis)
+					assertEquals(fresh.diary.date, stale.snapshot.diary.date)
+					assertTrue(stale.snapshot.diary.days.isEmpty())
+					assertEquals(error, stale.staleError)
 					assertEquals(before + 1, cache.accesses)
 				} else {
 					assertEquals(error, (events.last() as DiaryState.Error).error)

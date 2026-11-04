@@ -176,7 +176,7 @@ class NativeGatewayUiIntegrationTest {
 		click(context.getString(R.string.diary))
 		waitFor("Homework for 01.01.2026")
 		exchange.blockDiary.set(true)
-		click("First - 01.01.2026")
+		instrumentation.runOnMainSync { controller.selectDiaryWeek("01.01.2026") }
 		assertTrue(exchange.entered.await(15, TimeUnit.SECONDS))
 		click("Second - 08.01.2026")
 		waitFor("Selected week: 08.01.2026")
@@ -216,6 +216,7 @@ class NativeGatewayUiIntegrationTest {
 		click("Second - 08.01.2026")
 		assertTrue(exchange.entered.await(15, TimeUnit.SECONDS))
 		instrumentation.runOnMainSync { controller.logout() }
+		click(context.getString(R.string.login))
 		waitFor(context.getString(R.string.sign_in))
 		exchange.release.countDown()
 		assertTrue(exchange.returned.await(15, TimeUnit.SECONDS))
