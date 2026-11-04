@@ -57,6 +57,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		private val uiPendingObservers = mutableMapOf<Any, MutableMap<(Long, () -> Unit) -> Unit, () -> Unit>>()
 		private val cleanedTickets = mutableSetOf<Any>()
 		private val failedUiCallbacks = mutableMapOf<Any, MutableList<() -> Unit>>()
+		private val uiFailures = mutableMapOf<() -> Unit, () -> Unit>()
 		private val pending = mutableSetOf<Any>()
 		private val revoked = mutableMapOf<Any, CacheNamespace?>()
 		private val leases = mutableSetOf<RequestLease>()
@@ -96,11 +97,15 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		}
 		acknowledgements.forEach { it() }
 	}
+	internal fun failUiRevocation(acknowledge: () -> Unit) {
+		val failure = synchronized(CancellationLock) { uiFailures[acknowledge] }
+		failure?.invoke()
+	}
 	internal fun uiAcknowledgement(token: Any?): CountDownLatch? = synchronized(CancellationLock) { uiAcknowledgements[token] }
 	internal fun awaitUiAcknowledgement(acknowledgement: CountDownLatch?) {
 		if (acknowledgement == null || android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) return
 		while (!acknowledgement.await(100, TimeUnit.MILLISECONDS)) {
-			if (synchronized(CancellationLock) { failedUiCallbacks.keys.any { uiAcknowledgements[it] === acknowledgement } }) return
+			if (synchronized(CancellationLock) { failedUiCallbacks.keys.any { uiAcknowledgements[it] === acknowledgement } }) throw IllegalStateException("UI revocation failed")
 		}
 	}
 	internal fun revocationEpoch(): Long = synchronized(CancellationLock) { revocationEpoch }
@@ -129,7 +134,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 			val acknowledge = {
 				if (completed.compareAndSet(false, true)) {
 					synchronized(CancellationLock) {
-						uiPendingObservers[token]?.remove(observer)
+						uiPendingObservers[token]?.remove(observer)?.let { uiFailures.remove(it) }
 						acknowledgement.countDown()
 						if (acknowledgement.count == 0L) {
 							uiPendingObservers.remove(token)
@@ -143,10 +148,18 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 			}
 			uiPendingObservers.getOrPut(token) { mutableMapOf() }[observer] = acknowledge
 			lateinit var deliver: () -> Unit
-			deliver = {
-				if (!completed.get()) try { observer(epoch, acknowledge) } catch (_: Exception) {
-					synchronized(CancellationLock) { if (!completed.get()) failedUiCallbacks.getOrPut(token) { mutableListOf() }.add(deliver) }
+			val fail = {
+				synchronized(CancellationLock) {
+					if (!completed.get()) {
+						val failures = failedUiCallbacks.getOrPut(token) { mutableListOf() }
+						if (deliver !in failures) failures.add(deliver)
+					}
 				}
+				Unit
+			}
+			uiFailures[acknowledge] = fail
+			deliver = {
+				if (!completed.get()) try { observer(epoch, acknowledge) } catch (_: Exception) { fail() }
 			}
 			deliver
 		}

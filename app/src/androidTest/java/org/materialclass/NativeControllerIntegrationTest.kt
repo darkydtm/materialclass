@@ -93,35 +93,50 @@ class NativeControllerIntegrationTest {
 			override fun read(session: ActiveSession): ByteArray? = null
 			override fun write(session: ActiveSession, bytes: ByteArray) = true
 		}
-		fun create() = NativeController { emit -> SchoolRepository(gateway, verifier, shared, cache, { 1L }, emit, SessionStore(context, shared)) }
+		val held = java.util.concurrent.atomic.AtomicReference<(() -> Unit)?>()
+		val secondDelivered = CountDownLatch(1)
+		lateinit var secondEmit: (DiaryState) -> Unit
+		fun create(secondController: Boolean = false) = NativeController(
+			uiDispatch = { action ->
+				if (secondController) { held.set(action); secondDelivered.countDown(); true }
+				else android.os.Handler(android.os.Looper.getMainLooper()).post(action)
+			},
+		) { emit ->
+			if (secondController) secondEmit = emit
+			SchoolRepository(gateway, verifier, shared, cache, { 1L }, emit, SessionStore(context, shared))
+		}
 		lateinit var second: NativeController
-		main { controller = create(); second = create(); controller!!.login("1", charArrayOf('x')) }
+		main { controller = create(); second = create(true); controller!!.login("1", charArrayOf('x')) }
 		await { controller!!.state.signedIn && controller!!.state.diary is DiaryState.Ready }
-		val entered = CountDownLatch(1)
-		val release = CountDownLatch(1)
+		main {
+			NativeController::class.java.getDeclaredField("currentTaskEpoch").apply { isAccessible = true }.setLong(second, shared.revocationEpoch())
+			secondEmit(DiaryState.Ready(DiarySnapshot(Diary("01.01.2026", emptyList()), 1L)))
+		}
+		await { second.state.diary is DiaryState.Ready }
 		val cancelled = CountDownLatch(1)
 		val completed = CountDownLatch(1)
-		android.os.Handler(android.os.Looper.getMainLooper()).post { entered.countDown(); release.await(30, TimeUnit.SECONDS) }
-		var worker: Thread? = null
+		val worker = kotlin.concurrent.thread {
+			val ticket = shared.cancelInFlightNow()
+			cancelled.countDown()
+			shared.logout(ticket)
+			completed.countDown()
+		}
 		try {
-			assertTrue(entered.await(10, TimeUnit.SECONDS))
-			worker = kotlin.concurrent.thread {
-				val ticket = shared.cancelInFlightNow()
-				cancelled.countDown()
-				shared.logout(ticket)
-				completed.countDown()
-			}
 			assertTrue(cancelled.await(10, TimeUnit.SECONDS))
+			assertTrue(secondDelivered.await(10, TimeUnit.SECONDS))
 			assertTrue(cleaned.await(10, TimeUnit.SECONDS))
-			synchronized(org.materialclass.security.StorageLock) { }
+			await { controller!!.state.diary is DiaryState.Cleared }
 			assertNotNull(shared.pendingLogoutTicket())
 			assertNull(shared.admit(shared.beginLogin()))
-		} finally { release.countDown(); worker?.join(10000) }
-		assertTrue(completed.await(10, TimeUnit.SECONDS))
-		await { !controller!!.state.signedIn && controller!!.state.diary !is DiaryState.Ready && !second.state.logoutPending }
-		main { second.login("2", charArrayOf('x')) }
-		await { second.state.signedIn && second.state.diary is DiaryState.Ready }
-		main { second.close() }
+			main { held.get()!!.invoke(); assertTrue(second.state.diary is DiaryState.Cleared) }
+			assertTrue(completed.await(10, TimeUnit.SECONDS))
+			await { shared.pendingLogoutTicket() == null && !second.state.logoutPending }
+			main { second.login("2", charArrayOf('x')) }
+			await { second.state.signedIn && second.state.diary is DiaryState.Ready }
+		} finally {
+			main { held.get()?.invoke(); second.close() }
+			worker.join(10000)
+		}
 	}
 
 	@Test fun expiryAndUnticketedLogoutKeepAdmissionClosedUntilUiAcknowledges() {
@@ -172,6 +187,45 @@ class NativeControllerIntegrationTest {
 		} finally {
 			shared.removeUiRevocationObserver(observer)
 			shared.pendingLogoutTicket()?.let { shared.logout(it) }
+		}
+	}
+
+	@Test fun controllerRetriesFailedDispatchAndFailedApply() {
+		for (failDispatch in listOf(true, false)) {
+			val shared = SessionCoordinator { }
+			val failing = java.util.concurrent.atomic.AtomicBoolean(true)
+			val handler = android.os.Handler(android.os.Looper.getMainLooper())
+			val gateway = object : SchoolGateway {
+				override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Failure(AppError.UNAVAILABLE)
+				override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = GatewayResult.Failure(AppError.UNAVAILABLE)
+				override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = GatewayResult.Failure(AppError.UNAVAILABLE)
+				override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> = GatewayResult.Failure(AppError.UNAVAILABLE)
+			}
+			val cache = object : DiaryCache {
+				override fun read(session: ActiveSession): ByteArray? = null
+				override fun write(session: ActiveSession, bytes: ByteArray) = true
+			}
+			fun create() = NativeController(
+				uiDispatch = { action -> if (failDispatch && failing.get()) false else handler.post(action) },
+				applyUiRevocation = { action -> if (!failDispatch && failing.get()) throw IllegalStateException("Synthetic apply failure") else action() },
+			) { emit -> SchoolRepository(gateway, IdentityVerifier { _, _ -> SessionVerification.Retry }, shared, cache, { 1L }, emit, SessionStore(context, shared)) }
+			try {
+				main { controller = create(); controller!!.logout() }
+				await { controller!!.state.logoutPending && !controller!!.state.busy && controller!!.state.error == AppError.UNAVAILABLE }
+				val ticket = shared.pendingLogoutTicket()
+				assertNotNull(ticket)
+				assertNull(shared.admit(shared.beginLogin()))
+				failing.set(false)
+				main { controller!!.logout() }
+				await { shared.pendingLogoutTicket() == null && !controller!!.state.busy }
+				main { controller!!.close(); controller = create(); controller!!.start() }
+				await { !controller!!.state.busy }
+				main { assertFalse(controller!!.state.logoutPending) }
+			} finally {
+				failing.set(false)
+				main { controller?.close(); controller = null }
+				shared.pendingLogoutTicket()?.let { shared.logout(it) }
+			}
 		}
 	}
 

@@ -453,6 +453,7 @@ internal class SchoolRepository(
 	internal fun observeRevocations(observer: (Long) -> Unit) = coordinator.observeRevocations(observer)
 	internal fun removeRevocationObserver(observer: (Long) -> Unit) = coordinator.removeRevocationObserver(observer)
 	internal fun observeUiRevocations(observer: (Long, () -> Unit) -> Unit) = coordinator.observeUiRevocations(observer)
+	internal fun failUiRevocation(acknowledge: () -> Unit) = coordinator.failUiRevocation(acknowledge)
 	internal fun removeUiRevocationObserver(observer: (Long, () -> Unit) -> Unit) = coordinator.removeUiRevocationObserver(observer)
 	internal fun revocationEpoch() = coordinator.revocationEpoch()
 	internal fun sessionEvent() = coordinator.event()
