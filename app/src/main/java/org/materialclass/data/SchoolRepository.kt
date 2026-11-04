@@ -80,12 +80,13 @@ internal class SchoolRepository(
 	internal var beforeIdentityAdmission: () -> Unit = {}
 
 	fun login(username: String, password: CharArray): GatewayResult<Unit> {
-		val revision = synchronized(StorageLock) {
-			coordinator.beginLogin().also { loginRevision = it }
-		}
+		var revision: Long? = null
 		try {
+			val currentRevision = synchronized(StorageLock) {
+				coordinator.beginLogin().also { loginRevision = it; revision = it }
+			}
 			beforeIdentityAdmission()
-			val lease = coordinator.admit(revision) ?: return GatewayResult.Failure(AppError.UNAVAILABLE)
+			val lease = coordinator.admit(currentRevision) ?: return GatewayResult.Failure(AppError.UNAVAILABLE)
 			val result = try { gateway.login(username, password, lease) } catch (error: CancellationException) {
 				throw error
 			} catch (_: Exception) {
@@ -94,12 +95,12 @@ internal class SchoolRepository(
 			if (result is GatewayResult.Failure) return result
 			val candidate = (result as GatewayResult.Success).value
 			beforeIdentityAdmission()
-			val profileLease = coordinator.admit(revision) ?: return GatewayResult.Failure(AppError.UNAVAILABLE)
+			val profileLease = coordinator.admit(currentRevision) ?: return GatewayResult.Failure(AppError.UNAVAILABLE)
 			val verification = try { verifier.verify(candidate, profileLease) } catch (error: CancellationException) { throw error } catch (_: Exception) { SessionVerification.Retry } finally { coordinator.finish(profileLease) }
 			if (candidate.role != "student" || verification !is SessionVerification.Verified || !verification.pupil) return GatewayResult.Failure(AppError.UNAVAILABLE)
 			return try {
 				val active = synchronized(StorageLock) {
-					val activated = coordinator.activateIfUnchanged(revision, verification.account) {
+					val activated = coordinator.activateIfUnchanged(currentRevision, verification.account) {
 						session = null
 						remote = null
 						scheduleSession = null
@@ -130,7 +131,7 @@ internal class SchoolRepository(
 		} finally {
 			password.fill('\u0000')
 			synchronized(StorageLock) {
-				if (loginRevision == revision) loginRevision = null
+				if (revision != null && loginRevision == revision) loginRevision = null
 			}
 		}
 	}

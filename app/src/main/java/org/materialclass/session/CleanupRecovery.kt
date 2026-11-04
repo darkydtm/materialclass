@@ -19,20 +19,21 @@ internal interface CleanupJournal {
 internal class CleanupRecovery(private val journal: CleanupJournal, private val clearCache: (CacheNamespace) -> Unit, private val clearSession: () -> Unit) {
 	fun recover() {
 		val namespace = journal.read() ?: return
+		journal.write(namespace)
 		perform(namespace)
 	}
 
 	fun cleanup(namespace: CacheNamespace?) {
 		if (namespace == null) {
+			recover()
 			clearSession()
 			return
 		}
 		try {
 			val recorded = journal.read()
 			if (recorded != null && recorded.value != namespace.value) throw IOException("Another cleanup is pending")
-			if (recorded == null) journal.write(namespace)
+			journal.write(namespace)
 		} catch (error: Exception) {
-			try { clearSession() } catch (other: Exception) { error.addSuppressed(other) }
 			throw LogoutStorageException(error)
 		}
 		perform(namespace)
