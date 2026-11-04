@@ -59,6 +59,7 @@ class NativeGatewayUiIntegrationTest {
 		val paths = java.util.Collections.synchronizedList(mutableListOf<String>())
 		val failLogin = AtomicBoolean(false)
 		val failDiary = AtomicBoolean(false)
+		val offlineWeeks = AtomicBoolean(false)
 		val blockDiary = AtomicBoolean(false)
 		val selectableWeeks = AtomicBoolean(false)
 		val requestedDates = java.util.Collections.synchronizedList(mutableListOf<String>())
@@ -80,7 +81,7 @@ class NativeGatewayUiIntegrationTest {
 					if (failLogin.get()) Response(503, "") else Response(200, """{"success":true,"access_token":"synthetic-token","user_info":$profile}""")
 				}
 				"/api/v2/os/user-info" -> Response(200, """{"data":$profile}""")
-				"/api/v4/os/clientoffice/diary/weeks" -> if (selectableWeeks.get()) Response(200, """{"data":{"week":"01.01.2026","weeks":[{"label":"First","value":"01.01.2026"},{"label":"Second","value":"08.01.2026"}]}}""") else Response(200, """{"data":{"week":"01.01.2026"}}""")
+				"/api/v4/os/clientoffice/diary/weeks" -> if (offlineWeeks.get()) throw java.io.IOException("offline") else if (selectableWeeks.get()) Response(200, """{"data":{"week":"01.01.2026","weeks":[{"label":"First","value":"01.01.2026"},{"label":"Second","value":"08.01.2026"}]}}""") else Response(200, """{"data":{"week":"01.01.2026"}}""")
 				"/api/v4/os/clientoffice/diary" -> {
 					val date = request.url.query.split('&').single { it.startsWith("date=") }.substringAfter('=')
 					requestedDates.add(date)
@@ -107,7 +108,8 @@ class NativeGatewayUiIntegrationTest {
 			override fun read(session: ActiveSession): ByteArray? = null
 			override fun write(session: ActiveSession, bytes: ByteArray) = true
 		}
-		val controller = NativeController { emit -> SchoolRepository(NativeGateway(exchange), NativeIdentityVerifier(exchange), coordinator, cache, { 1L }, emit, SessionStore(context, coordinator)) }
+		val scheduleCache = org.materialclass.data.EncryptedDiaryCache(org.materialclass.cache.EncryptedCache(context, coordinator, "schedule"))
+		val controller = NativeController { emit -> SchoolRepository(NativeGateway(exchange), NativeIdentityVerifier(exchange), coordinator, cache, { 1L }, emit, SessionStore(context, coordinator), scheduleCache) }
 		activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
 		try {
 			instrumentation.runOnMainSync { controller.start(); activity.setContent { MaterialClassApp(nativeEnabled = true, controllerFactory = { controller }) } }
@@ -132,6 +134,23 @@ class NativeGatewayUiIntegrationTest {
 
 	private fun signIn(controller: NativeController) {
 		instrumentation.runOnMainSync { controller.login("synthetic-user", "synthetic-password".toCharArray()) }
+	}
+
+
+	@Test fun offlineWeekShowsSavedPeriodInActualUi() = exercise { exchange, controller ->
+		signIn(controller)
+		waitFor(context.getString(R.string.logout))
+		click(context.getString(R.string.schedule))
+		waitFor("Synthetic schedule lesson")
+		exchange.offlineWeeks.set(true)
+		instrumentation.runOnMainSync { controller.refresh() }
+		waitFor(context.getString(R.string.saved_period))
+		waitFor("29.12.2025")
+		waitFor("04.01.2026")
+		var snapshot: org.materialclass.data.ScheduleSnapshot? = null
+		instrumentation.runOnMainSync { snapshot = controller.state.scheduleSnapshot }
+		assertTrue(snapshot!!.savedPeriod)
+		assertTrue(snapshot!!.schedule.days.none { it.isCurrent })
 	}
 
 	@Test fun selectingDiaryWeekUpdatesHomework() = exercise { exchange, controller ->
