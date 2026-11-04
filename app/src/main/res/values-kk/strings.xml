@@ -1,4 +1,7 @@
 <resources>
+	<string name="profile">Профиль</string>
+	<string name="profile_unavailable">Профиль қолжетімсіз.</string>
+	<string name="profile_empty">Профиль деректері жоқ.</string>
 	<string name="logout">Шығу</string>
 	<string name="refresh">Жаңарту</string>
 	<string name="loading">Жүктелуде</string>

@@ -31,6 +31,7 @@ internal data class NativeUiState(
 	val selectedDiaryDate: String? = null,
 	val schedule: Schedule? = null,
 	val scheduleSnapshot: ScheduleSnapshot? = null,
+	val profile: org.materialclass.api.StudentProfile? = null,
 	val error: AppError? = null,
 )
 
@@ -117,7 +118,7 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 			if (result is RestoreResult.Restored) repository.ownedEpoch()?.let { currentTaskEpoch = it }
 			post(task) {
 				if (result is RestoreResult.Restored) observedEpoch = currentTaskEpoch
-				state = state.copy(busy = false, signedIn = result is RestoreResult.Restored, error = if (result is RestoreResult.Retry) AppError.UNAVAILABLE else null)
+				state = state.copy(busy = false, signedIn = result is RestoreResult.Restored, profile = if (result is RestoreResult.Restored) repository.currentProfile() else null, error = if (result is RestoreResult.Retry) AppError.UNAVAILABLE else null)
 				if (result is RestoreResult.Restored) refresh()
 			}
 		}
@@ -137,7 +138,7 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 				if (result is GatewayResult.Success) repository.ownedEpoch()?.let { currentTaskEpoch = it }
 				post(task) {
 					if (result is GatewayResult.Success) observedEpoch = currentTaskEpoch
-					state = state.copy(busy = false, signedIn = result is GatewayResult.Success, error = (result as? GatewayResult.Failure)?.error)
+					state = state.copy(busy = false, signedIn = result is GatewayResult.Success, profile = if (result is GatewayResult.Success) repository.currentProfile() else null, error = (result as? GatewayResult.Failure)?.error)
 					if (result is GatewayResult.Success) refresh()
 				}
 			}

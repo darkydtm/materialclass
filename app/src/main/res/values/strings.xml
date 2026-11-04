@@ -1,4 +1,7 @@
 <resources>
+	<string name="profile">Profile</string>
+	<string name="profile_unavailable">Profile is unavailable.</string>
+	<string name="profile_empty">No profile details are available.</string>
 	<string name="app_name">MaterialClass</string>
 	<string name="login">Login</string>
 	<string name="diary">Diary</string>

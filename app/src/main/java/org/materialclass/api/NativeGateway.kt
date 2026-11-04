@@ -63,6 +63,10 @@ class VerifiedScheduleSession private constructor(internal val remote: Unverifie
 	}
 }
 
+class StudentProfile(val surname: String?, val firstname: String?, val school: String?, val group: String?) {
+	override fun toString(): String = "StudentProfile([redacted])"
+}
+
 class Schedule(val days: List<ScheduleDay>)
 class ScheduleDay(val date: Long, val dateFormat: String, val isCurrent: Boolean, val isHoliday: Boolean, val lessons: List<ScheduleLesson>)
 class ScheduleLesson(val type: String, val cabinetId: Long, val themeLabel: String)

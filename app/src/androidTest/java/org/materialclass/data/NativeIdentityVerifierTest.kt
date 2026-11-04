@@ -26,6 +26,22 @@ class NativeIdentityVerifierTest {
 	fun cleanup() { coordinator.logout() }
 
 	@Test
+	fun profileRequiresMatchingContextAndTreatsMissingFieldsAsUnknown() {
+		val named = success.replace("\"role\":\"student\"", "\"surname\":\"Synthetic Surname\",\"firstname\":\"Synthetic Firstname\",\"role\":\"student\"")
+		val verified = NativeIdentityVerifier(Exchange { Response(200, named) }).verify(session) as SessionVerification.Verified
+		assertEquals("Synthetic Surname", verified.profile?.surname)
+		assertEquals("Synthetic Firstname", verified.profile?.firstname)
+		assertNull(verified.profile?.school)
+		assertNull(verified.profile?.group)
+		val changed = named.replace("\"school_id\":7", "\"school_id\":8")
+		assertNull((NativeIdentityVerifier(Exchange { Response(200, changed) }).verify(session) as SessionVerification.Verified).profile)
+		val malformed = named.replace("\"Synthetic Surname\"", "42").replace("\"Synthetic Firstname\"", "null")
+		val empty = (NativeIdentityVerifier(Exchange { Response(200, malformed) }).verify(session) as SessionVerification.Verified).profile!!
+		assertNull(empty.surname)
+		assertNull(empty.firstname)
+	}
+
+	@Test
 	fun verifiesOnlyObservedEndpointAndStudentIdentity() {
 		var calls = 0
 		val verifier = NativeIdentityVerifier(Exchange { request ->

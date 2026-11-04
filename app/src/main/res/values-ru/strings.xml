@@ -1,4 +1,7 @@
 <resources>
+	<string name="profile">Профиль</string>
+	<string name="profile_unavailable">Профиль недоступен.</string>
+	<string name="profile_empty">Данные профиля отсутствуют.</string>
 	<string name="logout">Выйти</string>
 	<string name="refresh">Обновить</string>
 	<string name="loading">Загрузка</string>

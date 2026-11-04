@@ -86,12 +86,24 @@ internal fun MaterialClassApp(example: ExampleData? = null, nativeEnabled: Boole
 						TextButton(onClick = { warning = false; preferences.edit().putBoolean("warning_seen", true).apply() }) { Text(stringResource(R.string.ok)) }
 					}
 					Row(modifier = Modifier.horizontalScroll(rememberScrollState()).selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-						listOf("login" to R.string.login, "homework" to R.string.homework, "diary" to R.string.diary, "schedule" to R.string.schedule, "settings" to R.string.settings).forEach { (value, label) ->
+						listOf("login" to R.string.login, "profile" to R.string.profile, "homework" to R.string.homework, "diary" to R.string.diary, "schedule" to R.string.schedule, "settings" to R.string.settings).forEach { (value, label) ->
 							Box(Modifier.selectable(selected = screen == value, role = Role.Tab, onClick = { screen = value }).padding(12.dp)) { Text(stringResource(label)) }
 						}
 					}
 					when (screen) {
 						"login" -> LoginScreen(controller, nativeState)
+						"profile" -> {
+							Text(stringResource(R.string.profile), style = MaterialTheme.typography.headlineSmall)
+							val profile = nativeState?.profile
+							if (nativeState?.signedIn != true || profile == null) Text(stringResource(R.string.profile_unavailable))
+							else if (listOf(profile.surname, profile.firstname, profile.school, profile.group).all { it == null }) Text(stringResource(R.string.profile_empty))
+							else {
+								profile.surname?.let { Text(it) }
+								profile.firstname?.let { Text(it) }
+								profile.school?.let { Text(it) }
+								profile.group?.let { Text(it) }
+							}
+						}
 						"diary", "homework", "schedule" -> {
 							Text(stringResource(when (screen) { "diary" -> R.string.diary; "homework" -> R.string.homework; else -> R.string.schedule }), style = MaterialTheme.typography.headlineSmall)
 							if (nativeState != null) {
