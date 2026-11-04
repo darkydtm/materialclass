@@ -70,6 +70,7 @@ internal class SchoolRepository(
 	private val emit: (DiaryState) -> Unit,
 	private val store: SessionStore,
 	private val scheduleCache: DiaryCache? = null,
+	private val beforeSavedScheduleDelivery: () -> Unit = {},
 ) {
 	@Volatile private var session: ActiveSession? = null
 	private var remote: UnverifiedSession? = null
@@ -83,7 +84,6 @@ internal class SchoolRepository(
 	internal var afterRestoreActivation: () -> Unit = {}
 	internal var beforeRequestAdmission: () -> Unit = {}
 	internal var beforeIdentityAdmission: () -> Unit = {}
-	internal var beforeSavedScheduleDelivery: () -> Unit = {}
 
 	fun login(username: String, password: CharArray): GatewayResult<Unit> {
 		val revision = synchronized(StorageLock) {
