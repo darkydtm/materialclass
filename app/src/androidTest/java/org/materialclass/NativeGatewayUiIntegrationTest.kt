@@ -357,7 +357,7 @@ class NativeGatewayUiIntegrationTest {
 		assertTrue(java.io.File(context.noBackupFilesDir, "session-revoked").exists())
 	}
 
-	@Test fun changedSchoolContextCannotReuseVerifiedProofs() = exercise { exchange, controller ->
+	private fun rejectChangedContext(response: String) = exercise { exchange, controller ->
 		signIn(controller)
 		waitFor(context.getString(R.string.logout))
 		drain(controller)
@@ -369,7 +369,7 @@ class NativeGatewayUiIntegrationTest {
 			assertNotNull(controller.state.annualGrades)
 		}
 		val before = synchronized(exchange.paths) { exchange.paths.count { it.startsWith("/api/v4/") } }
-		exchange.profileResponse = profile.replace("\"school_id\":1", "\"school_id\":9")
+		exchange.profileResponse = response
 		instrumentation.runOnMainSync { controller.refresh() }
 		drain(controller)
 		instrumentation.runOnMainSync { controller.refreshAnnualGrades() }
@@ -384,6 +384,33 @@ class NativeGatewayUiIntegrationTest {
 			assertFalse(controller.state.gradesLoading)
 		}
 		assertEquals(before, synchronized(exchange.paths) { exchange.paths.count { it.startsWith("/api/v4/") } })
+	}
+
+	@Test fun changedSchoolContextCannotReuseVerifiedProofs() = rejectChangedContext(profile.replace("\"school_id\":1", "\"school_id\":9"))
+	@Test fun changedGroupContextCannotReuseVerifiedProofs() = rejectChangedContext(profile.replace("\"id\":2", "\"id\":9"))
+	@Test fun changedYearContextCannotReuseVerifiedProofs() = rejectChangedContext(profile.replace("\"eduYear\":2026", "\"eduYear\":2027"))
+	@Test fun missingProfileCannotReuseVerifiedProofs() = rejectChangedContext("{}")
+	@Test fun unknownRoleCannotReuseVerifiedProofs() = rejectChangedContext(profile.replace("\"student\"", "\"future-role\""))
+
+	@Test fun newerProfileRefreshRejectsEarlierResponse() = exercise { exchange, controller ->
+		signIn(controller)
+		waitFor(context.getString(R.string.logout))
+		drain(controller)
+		exchange.profileResponse = profile.replace("Synthetic", "Old")
+		exchange.blockProfile.set(true)
+		instrumentation.runOnMainSync { controller.refresh() }
+		assertTrue(exchange.profileEntered.await(15, TimeUnit.SECONDS))
+		exchange.profileResponse = profile.replace("Synthetic", "New")
+		instrumentation.runOnMainSync { controller.refresh() }
+		exchange.blockProfile.set(false)
+		exchange.profileRelease.countDown()
+		drain(controller)
+		instrumentation.runOnMainSync {
+			assertEquals("New Surname", controller.state.profile?.surname)
+			assertTrue(controller.state.diary is DiaryState.Ready)
+			assertNotNull(controller.state.schedule)
+			assertFalse(controller.state.gradesLoading)
+		}
 	}
 
 	@Test fun refreshedWrongRoleRevokesSession() = contradictoryRefresh(profile.replace("\"student\"", "\"teacher\""))

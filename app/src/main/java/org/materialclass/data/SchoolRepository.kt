@@ -82,6 +82,7 @@ internal class SchoolRepository(
 	private var diarySession: VerifiedDiarySession? = null
 	private var profile: org.materialclass.api.StudentProfile? = null
 	private var refreshRevision = 0L
+	private var profileRevision = 0L
 	private var scheduleRevision = 0L
 	private var weekRevision = 0L
 	private var gradesRevision = 0L
@@ -199,29 +200,40 @@ internal class SchoolRepository(
 		return coordinator.ifActive(active) { if (session === active) profile else null }
 	}
 
-	internal fun refreshProfile(deliver: (org.materialclass.api.StudentProfile?) -> Unit) {
-		val active = session ?: return
+	internal fun beginProfileRefresh(): Long = synchronized(StorageLock) { ++profileRevision }
+
+	internal fun refreshProfile(revision: Long, deliver: (org.materialclass.api.StudentProfile?, Boolean) -> Unit): Boolean {
+		val active = session ?: return false
 		val request = coordinator.ifActive(active) {
 			val candidate = remote ?: return@ifActive null
 			Pair(candidate, coordinator.requestRevision())
-		} ?: return
+		} ?: return false
 		beforeRequestAdmission()
-		val lease = coordinator.admit(active, request.second) ?: return
+		val lease = coordinator.admit(active, request.second) ?: return false
 		try {
 			val verification = try { verifier.verify(request.first, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { SessionVerification.Retry }
-			val updated = coordinator.ifActive(active) {
-				if (lease.cancelled || session !== active || remote !== request.first || request.second != coordinator.requestRevision()) false
+			val outcome = coordinator.ifActive(active) {
+				if (lease.cancelled || session !== active || remote !== request.first || request.second != coordinator.requestRevision() || revision != profileRevision) null
 				else if (verification == SessionVerification.Invalid || verification == SessionVerification.Expired ||
 					(verification is SessionVerification.Verified && (!verification.pupil || verification.account != active.account))) {
 					remote = null; scheduleSession = null; diarySession = null; profile = null; session = null
 					coordinator.revokeIfActive(active, expired = true)
-					false
-				} else if (verification is SessionVerification.Verified) {
-					profile = verification.profile
-					true
-				} else false
-			} == true
-			if (updated) deliver(currentProfile())
+					null
+				} else {
+					val verified = verification as? SessionVerification.Verified
+					diarySession = verified?.diarySession?.takeIf { it.remote === request.first && it.account == active.account.value }
+					scheduleSession = verified?.scheduleSession?.takeIf { it.remote === request.first && it.account == active.account.value }
+					profile = if (diarySession != null) verified?.profile else null
+					val usable = diarySession != null
+					if (!usable || scheduleSession == null) {
+						refreshRevision++; scheduleRevision++; weekRevision++; gradesRevision++
+						verifiedWeek = null
+					}
+					Triple(profile, usable, scheduleSession != null)
+				}
+			}
+			if (outcome != null) deliver(outcome.first, outcome.second && outcome.third)
+			return outcome?.second == true
 		} finally { coordinator.finish(lease) }
 	}
 

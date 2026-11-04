@@ -82,6 +82,7 @@ internal class NativeController(
 		if (Looper.myLooper() == Looper.getMainLooper()) apply() else handler.post { apply() }
 	}
 	@Volatile private var generation = 0L
+	@Volatile private var profileRevision = 0L
 	@Volatile private var diaryRevision = 0L
 	@Volatile private var scheduleRevision = 0L
 	@Volatile private var gradesRevision = 0L
@@ -166,6 +167,8 @@ internal class NativeController(
 		if (closed || !state.signedIn) return
 		val task = generation
 		val revision = ++diaryRevision
+		val profileRequest = ++profileRevision
+		val repositoryProfileRequest = repository.beginProfileRefresh()
 		val scheduleRequest = ++scheduleRevision
 		val epoch = observedEpoch
 		val selected = state.selectedDiaryDate
@@ -176,7 +179,16 @@ internal class NativeController(
 			currentDiaryRevision = revision
 			currentTaskEpoch = epoch
 			try {
-				repository.refreshProfile { profile -> post(task) { state = state.copy(profile = profile) } }
+				val profileUsable = repository.refreshProfile(repositoryProfileRequest) { profile, complete ->
+					post(task) {
+						if (profileRevision != profileRequest) return@post
+						state = if (complete) state.copy(profile = profile) else {
+							gradesRevision++
+							state.copy(profile = profile, diary = DiaryState.Cleared, diaryWeeks = emptyList(), selectedDiaryDate = null, schedule = null, scheduleSnapshot = null, annualGrades = null, gradesLoading = false, error = AppError.UNAVAILABLE)
+						}
+					}
+				}
+				if (profileRevision != profileRequest || !profileUsable) return@execute
 				if (diaryRevision == revision) {
 					if (selected != null) repository.refreshDate(selected) else repository.refreshCurrent { weeks ->
 						post(task) { if (diaryRevision != revision) return@post; state = state.copy(diaryWeeks = weeks.options, selectedDiaryDate = weeks.currentWeek) }
