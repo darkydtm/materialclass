@@ -47,6 +47,30 @@ class NativeUiControllerTest {
 	}
 	private fun editables(node: AccessibilityNodeInfo): List<AccessibilityNodeInfo> = (if (node.isEditable) listOf(node) else emptyList()) + (0 until node.childCount).flatMap { node.getChild(it)?.let(::editables) ?: emptyList() }
 
+	@Test fun homeworkNavigationShowsDiaryHomework() {
+		val context = ApplicationProvider.getApplicationContext<Context>()
+		context.getSharedPreferences("appearance", 0).edit().putBoolean("warning_seen", true).putString("language", "en").commit()
+		val fake = object : NativeUiController {
+			override var state by mutableStateOf(NativeUiState(signedIn = true, diary = DiaryState.Ready(DiarySnapshot(Diary("01.01.2026", listOf(DiaryDay("Thursday", "01.01.2026", listOf(DiarySubject("Mathematics", "lesson", "id", "text", "Solve exercises", null, false, false))))), 1))))
+			override fun start() { }
+			override fun login(username: String, password: CharArray) { password.fill('\u0000') }
+			override fun refresh() { }
+			override fun logout() { state = NativeUiState() }
+			override fun close() { }
+		}
+		val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
+		try {
+			instrumentation.runOnMainSync { activity.setContent { MaterialClassApp(nativeEnabled = true, controllerFactory = { fake }) } }
+			click("Homework")
+			waitFor("Mathematics")
+			waitFor("Solve exercises")
+			waitFor("01.01.2026")
+		} finally {
+			activity.finish()
+			context.getSharedPreferences("appearance", 0).edit().clear().commit()
+		}
+	}
+
 	@Test fun emptyDiaryIsDistinctFromUnavailable() {
 		val context = ApplicationProvider.getApplicationContext<Context>()
 		context.getSharedPreferences("appearance", 0).edit().putBoolean("warning_seen", true).commit()
