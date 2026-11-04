@@ -19,6 +19,12 @@ class NotificationBaselineTest {
 	private fun diary(body: String) = Diary(date, listOf(DiaryDay("Wednesday", date, listOf(DiarySubject("Math", "lesson", "subject-1", "task", body, null, false, false)))))
 	@After fun cleanup() { coordinator.logout(); EncryptedCache(app, coordinator).clearAll() }
 
+	@Test fun unverifiedSnapshotCannotInitializeBaseline() {
+		val session = coordinator.activate(AccountId("unverified"))
+		val baseline = NotificationBaseline(app, coordinator)
+		assertEquals(BaselineResult.Invalid, baseline.observe(session, diaryContext, diary("unverified")))
+	}
+
 	@Test fun firstSnapshotAndAcknowledgementAreRetrySafe() {
 		val session = coordinator.activate(AccountId("synthetic-account"))
 		val baseline = NotificationBaseline(app, coordinator)
