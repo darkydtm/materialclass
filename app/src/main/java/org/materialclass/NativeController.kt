@@ -50,32 +50,37 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 	private var logoutTicket: Any? = null
 	private val handler = Handler(Looper.getMainLooper())
 	@Volatile private var observedEpoch = 0L
-	private val observeLogout: (Long) -> Unit = { epoch ->
-		val apply = apply@{
-			if (!closed && epoch == repository.revocationEpoch()) {
-				if (epoch != observedEpoch) {
-					val event = repository.sessionEvent()
-					if (event.epoch != epoch) return@apply
-					observedEpoch = epoch
-					if (event.change == SessionChange.ACTIVATED && repository.ownedEpoch() == epoch) {
-						currentTaskEpoch = epoch
-					} else if (event.change == SessionChange.EXPIRED && state.busy && !state.signedIn && repository.pendingLogoutTicket() == null) {
-						currentTaskEpoch = epoch
-					} else {
-						generation++
-						state = NativeUiState(busy = logoutTicket != null, logoutPending = logoutTicket != null || repository.pendingLogoutTicket() != null, error = if (event.change == SessionChange.EXPIRED) AppError.SESSION_EXPIRED else null)
-					}
-				} else if (state.logoutPending && logoutTicket == null && repository.pendingLogoutTicket() == null) {
-					state = NativeUiState()
+	private fun applyRevocation(epoch: Long) {
+		if (!closed && epoch == repository.revocationEpoch()) {
+			if (epoch != observedEpoch) {
+				val event = repository.sessionEvent()
+				if (event.epoch != epoch) return
+				observedEpoch = epoch
+				if (event.change == SessionChange.ACTIVATED && repository.ownedEpoch() == epoch) {
+					currentTaskEpoch = epoch
+				} else if (event.change == SessionChange.EXPIRED && state.busy && !state.signedIn && repository.pendingLogoutTicket() == null) {
+					currentTaskEpoch = epoch
+				} else {
+					generation++
+					state = NativeUiState(busy = logoutTicket != null, logoutPending = logoutTicket != null || repository.pendingLogoutTicket() != null, error = if (event.change == SessionChange.EXPIRED) AppError.SESSION_EXPIRED else null)
 				}
+			} else if (state.logoutPending && logoutTicket == null && repository.pendingLogoutTicket() == null) {
+				state = NativeUiState()
 			}
 		}
-		handler.post { apply() }
+	}
+	private val observeLogout: (Long) -> Unit = { epoch ->
+		handler.post { applyRevocation(epoch) }
 	}
 	private val observeUiLogout: (Long, () -> Unit) -> Unit = { epoch, acknowledge ->
-		observeLogout(epoch)
-		check(handler.post { acknowledge() })
+		check(handler.post {
+			try {
+				applyRevocation(epoch)
+				acknowledge()
+			} catch (_: Exception) { }
+		})
 	}
+
 	@Volatile private var generation = 0L
 	@Volatile private var closed = false
 	private var started = false
