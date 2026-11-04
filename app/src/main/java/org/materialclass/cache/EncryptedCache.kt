@@ -9,8 +9,8 @@ import org.materialclass.session.ActiveSession
 import org.materialclass.session.SessionCoordinator
 import java.io.File
 
-class EncryptedCache(context: Context, private val coordinator: SessionCoordinator, private val kind: String = "diary") {
-	private val files by lazy { CacheFiles(context) }
+class EncryptedCache(private val context: Context, private val coordinator: SessionCoordinator, private val kind: String = "diary") {
+	private val files by lazy { CacheFiles(context, kind == "notification-baseline") }
 	private val keys = KeystoreKeys()
 
 	private fun file(session: ActiveSession): EncryptedFile {
@@ -37,7 +37,7 @@ class EncryptedCache(context: Context, private val coordinator: SessionCoordinat
 			val files = CacheFiles(context)
 			val keys = KeystoreKeys()
 			if (!keys.contains("cache-namespace")) {
-				if (files.directory.listFiles()?.isEmpty() != true) throw IOException("Cache namespace key is missing")
+				if (files.directory.listFiles()?.isEmpty() != true || CacheFiles(context, true).directory.listFiles()?.isEmpty() != true) throw IOException("Cache namespace key is missing")
 				return@synchronized
 			}
 			var failure: Exception? = null
@@ -48,6 +48,15 @@ class EncryptedCache(context: Context, private val coordinator: SessionCoordinat
 				} catch (error: Exception) {
 					if (failure == null) failure = error else failure.addSuppressed(error)
 				}
+			}
+			try {
+				val notificationFiles = CacheFiles(context, true)
+				val id = keys.namespace(namespace.value + ":notification-baseline", false)
+				EncryptedFile(File(notificationFiles.directory, id), "cache-$id", keys, notificationFiles).reset()
+				val descriptor = android.system.Os.open(notificationFiles.directory.absolutePath, android.system.OsConstants.O_RDONLY, 0)
+				try { android.system.Os.fsync(descriptor) } finally { android.system.Os.close(descriptor) }
+			} catch (error: Exception) {
+				if (failure == null) failure = error else failure.addSuppressed(error)
 			}
 			try {
 				val descriptor = android.system.Os.open(files.directory.absolutePath, android.system.OsConstants.O_RDONLY, 0)
@@ -63,7 +72,7 @@ class EncryptedCache(context: Context, private val coordinator: SessionCoordinat
 		var failure: Exception? = null
 		try {
 			val entries = files.directory.listFiles() ?: throw IOException("Could not list cache")
-			for (entry in entries) {
+			for (entry in entries + (CacheFiles(context, true).directory.listFiles() ?: throw IOException("Could not list notification cache"))) {
 				try {
 					if (!entry.isFile || !entry.delete()) throw IOException("Could not delete cache")
 				} catch (error: Exception) {

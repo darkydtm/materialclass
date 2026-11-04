@@ -12,9 +12,12 @@ internal class EncryptedFile(
 	private val files: CacheFiles
 ) {
 	fun read(): ByteArray? {
+		if (files.atomic && !file.exists() && File(file.path + ".bak").exists()) android.util.AtomicFile(file).openRead().close()
 		if (!file.exists()) return null
 		try {
-			val bytes = file.readBytes()
+			if (files.atomic && file.length() > 262144) throw StorageUnreadableException()
+			val bytes = if (files.atomic) android.util.AtomicFile(file).readFully() else file.readBytes()
+			if (files.atomic && bytes.size > 262144) throw StorageUnreadableException()
 			if (bytes.size < 29 || bytes[0] != 1.toByte()) throw StorageUnreadableException()
 			val cipher = Cipher.getInstance("AES/GCM/NoPadding")
 			cipher.init(Cipher.DECRYPT_MODE, keys.key(alias, false), GCMParameterSpec(128, bytes.copyOfRange(1, 13)))
@@ -38,7 +41,11 @@ internal class EncryptedFile(
 	fun reset() {
 		var failure: Exception? = null
 		try {
-			if (file.exists() && !file.delete()) throw java.io.IOException("Could not delete encrypted file")
+			if (files.atomic) {
+				for (entry in listOf(file, File(file.path + ".bak"), File(file.path + ".new"))) {
+					if (entry.exists() && !entry.delete()) throw java.io.IOException("Could not delete encrypted file")
+				}
+			} else if (file.exists() && !file.delete()) throw java.io.IOException("Could not delete encrypted file")
 		} catch (error: Exception) {
 			failure = error
 		}

@@ -4,11 +4,27 @@ import android.content.Context
 import android.system.Os
 import java.io.File
 
-internal class CacheFiles(context: Context) {
-	val directory = File(context.filesDir, "backup-cache").apply { check(mkdirs() || isDirectory) }
+internal class CacheFiles(context: Context, noBackup: Boolean = false) {
+	val directory = File(if (noBackup) context.noBackupFilesDir else context.filesDir, if (noBackup) "notification-cache" else "backup-cache").apply { check(mkdirs() || isDirectory) }
+	internal val atomic = noBackup
 	private val temporary by lazy { File(context.noBackupFilesDir, "storage-tmp").apply { check(mkdirs() || isDirectory) } }
 
 	fun replace(target: File, bytes: ByteArray) {
+		if (atomic) {
+			val file = android.util.AtomicFile(target)
+			val stream = file.startWrite()
+			try {
+				stream.write(bytes)
+				stream.fd.sync()
+				file.finishWrite(stream)
+			} catch (error: Exception) {
+				file.failWrite(stream)
+				throw error
+			}
+			val descriptor = Os.open(directory.absolutePath, android.system.OsConstants.O_RDONLY, 0)
+			try { Os.fsync(descriptor) } finally { Os.close(descriptor) }
+			return
+		}
 		val temp = File.createTempFile("encrypted-", ".tmp", temporary)
 		try {
 			temp.outputStream().use { it.write(bytes); it.fd.sync() }
