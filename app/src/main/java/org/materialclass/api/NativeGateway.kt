@@ -359,7 +359,17 @@ internal fun schoolContext(user: JSONObject): SchoolContext? {
 	if (current.size != 1) return null
 	val year = current.single().opt("eduYear").integerValue() ?: return null
 	if (schoolId <= 0 || groupId <= 0 || year <= 0 || year > Int.MAX_VALUE) return null
-	return SchoolContext(schoolId, year.toInt(), groupId, user.optJSONObject("studentInfo")?.opt("studentSchoolUuid") as? String)
+	val studentInfo = user.opt("studentInfo")
+	val uuid = when (studentInfo) {
+		null, JSONObject.NULL -> null
+		is JSONObject -> when (val value = studentInfo.opt("studentSchoolUuid")) {
+			null, JSONObject.NULL -> null
+			is String -> value
+			else -> return null
+		}
+		else -> return null
+	}
+	return SchoolContext(schoolId, year.toInt(), groupId, uuid)
 }
 
 private fun Any?.integerValue(): Long? = when (this) {

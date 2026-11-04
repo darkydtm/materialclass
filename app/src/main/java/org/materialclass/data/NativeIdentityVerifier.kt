@@ -34,10 +34,11 @@ internal class NativeIdentityVerifier(private val exchange: Exchange = HttpsExch
 			if ((raw as Number).toLong() <= 0) return SessionVerification.Retry
 			val id = raw.toString()
 			if (candidate != id) return SessionVerification.Invalid
-			val diary = VerifiedDiarySession.compare(session, data)
+			val schedule = VerifiedScheduleSession.compare(session, data)
+			val diary = if (session.context?.studentSchoolUuid != null && schedule == null) null else VerifiedDiarySession.compare(session, data)
 			fun field(obj: JSONObject?, key: String): String? = (obj?.opt(key) as? String)?.trim()?.takeIf { it.isNotEmpty() && it.length <= 256 }
 			val profile = if (diary == null) null else org.materialclass.api.StudentProfile(field(data, "surname"), field(data, "firstname"), field(data.optJSONObject("school"), "name"), field(data.optJSONObject("group"), "name"))
-			SessionVerification.Verified(AccountId(id), true, VerifiedScheduleSession.compare(session, data), diary, profile)
+			SessionVerification.Verified(AccountId(id), true, schedule, diary, profile)
 		} catch (error: CancellationException) {
 			throw error
 		} catch (_: IOException) {
