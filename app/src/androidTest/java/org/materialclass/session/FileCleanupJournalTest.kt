@@ -127,6 +127,60 @@ class FileCleanupJournalTest {
 	}
 
 	@Test
+	fun recoveryRepairsCopyBeforeScopedCleanup() {
+		FileCleanupJournal(context).write(namespace)
+		val bytes = path.readBytes()
+		bytes[bytes.lastIndex] = (bytes.last().toInt() xor 1).toByte()
+		path.writeBytes(bytes)
+		var cleared = false
+		CleanupRecovery(FileCleanupJournal(context), {
+			val backup = File(context.noBackupFilesDir, "cleanup-recovery")
+			check(backup.delete())
+			assertEquals(namespace.value, FileCleanupJournal(context).read()?.value)
+			assertEquals(namespace.value, it.value)
+			cleared = true
+		}, {}).recover()
+		assertTrue(cleared)
+	}
+
+	@Test
+	fun failedRepairDoesNotStartCleanup() {
+		FileCleanupJournal(context).write(namespace)
+		val bytes = path.readBytes()
+		bytes[bytes.lastIndex] = (bytes.last().toInt() xor 1).toByte()
+		path.writeBytes(bytes)
+		check(primaryTemporary.createNewFile())
+		var cleared = false
+		try {
+			try { CleanupRecovery(FileCleanupJournal(context), { cleared = true }, { cleared = true }).recover(); fail("Repair must fail") } catch (_: java.io.IOException) { }
+			assertFalse(cleared)
+			assertEquals(namespace.value, FileCleanupJournal(context).read()?.value)
+		} finally { primaryTemporary.delete() }
+	}
+
+	@Test
+	fun secondReadFailurePreservesSessionKeyAndSkipsCleanup() {
+		val keys = KeystoreKeys()
+		keys.key("session", true)
+		val backup = File(context.noBackupFilesDir, "cleanup-recovery")
+		val real = FileCleanupJournal(context)
+		var cleared = false
+		val journal = object : CleanupJournal {
+			override fun read() = real.read()
+			override fun write(namespace: CacheNamespace) {
+				check(backup.mkdir())
+				real.write(namespace)
+			}
+			override fun clear() { throw AssertionError("Unexpected clear") }
+		}
+		try {
+			try { CleanupRecovery(journal, { cleared = true }, { cleared = true }, { keys.delete("session") }).cleanup(namespace); fail("Read failure must fail closed") } catch (_: LogoutStorageException) { }
+			assertFalse(cleared)
+			assertTrue(KeystoreKeys().contains("session"))
+		} finally { backup.delete(); keys.delete("session") }
+	}
+
+	@Test
 	fun bothCorruptCopiesFailClosed() {
 		FileCleanupJournal(context).write(namespace)
 		for (copy in listOf(path, File(context.noBackupFilesDir, "cleanup-recovery"))) {
