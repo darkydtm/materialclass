@@ -61,6 +61,7 @@ class NativeUiControllerTest {
 		val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
 		try {
 			instrumentation.runOnMainSync { activity.setContent { MaterialClassApp(nativeEnabled = true, controllerFactory = { fake }) } }
+			waitFor(context.getString(R.string.logout))
 			click("Homework")
 			waitFor("Mathematics")
 			waitFor("Solve exercises")
@@ -90,6 +91,7 @@ class NativeUiControllerTest {
 		val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
 		try {
 			instrumentation.runOnMainSync { activity.setContent { MaterialClassApp(nativeEnabled = true, controllerFactory = { fake }) } }
+			waitFor(context.getString(R.string.logout))
 			click("Homework")
 			waitFor(context.getString(R.string.loading))
 			instrumentation.runOnMainSync { fake.state = fake.state.copy(diary = DiaryState.Ready(DiarySnapshot(diary, 1), AppError.OFFLINE)) }
