@@ -452,11 +452,14 @@ internal class SchoolRepository(
 	fun pendingLogoutTicket() = coordinator.pendingLogoutTicket()
 	internal fun observeRevocations(observer: (Long) -> Unit) = coordinator.observeRevocations(observer)
 	internal fun removeRevocationObserver(observer: (Long) -> Unit) = coordinator.removeRevocationObserver(observer)
+	internal fun observeUiRevocations(observer: (Long, () -> Unit) -> Unit) = coordinator.observeUiRevocations(observer)
+	internal fun removeUiRevocationObserver(observer: (Long, () -> Unit) -> Unit) = coordinator.removeUiRevocationObserver(observer)
 	internal fun revocationEpoch() = coordinator.revocationEpoch()
 	internal fun sessionEvent() = coordinator.event()
 	internal fun ownedEpoch() = coordinator.ownedEpoch(session)
 
 	fun logout(token: Any? = null) {
+		val acknowledgement = coordinator.uiAcknowledgement(token)
 		val outcome: Result<Boolean> = synchronized(StorageLock) {
 			if (token != null && !coordinator.isPendingLogout(token)) return@synchronized Result.success(false)
 			runCatching {
@@ -487,6 +490,7 @@ internal class SchoolRepository(
 			}
 		}
 		if (outcome.isFailure || outcome.getOrNull() == true) emit(DiaryState.Cleared)
+		coordinator.awaitUiAcknowledgement(acknowledgement)
 		outcome.getOrThrow()
 	}
 }
