@@ -45,8 +45,13 @@ class GradesDiaryRaceTest {
 	private class Gate {
 		val entered = CountDownLatch(1)
 		val release = CountDownLatch(1)
-		fun waitHere() { entered.countDown(); check(release.await(15, TimeUnit.SECONDS)) }
+		val returned = CountDownLatch(1)
+		fun waitHere() { entered.countDown(); check(release.await(30, TimeUnit.SECONDS)) }
 	}
+
+	private fun grades(account: String) = AnnualGrades(listOf(AnnualGradeRow("Subject-$account", listOf("Q1-$account", "Q2-$account", "Q3-$account", "Q4-$account"), "Year-$account", "Final-$account")))
+
+	private fun contents(state: NativeUiState): List<String?>? = (state.annualGrades as? GatewayResult.Success)?.value?.rows?.flatMap { listOf(it.subjectName) + it.quarters + listOf(it.yearScore, it.finalScore) }
 
 	private inner class Fixture {
 		val diaryGate = AtomicReference<Gate?>(null)
@@ -69,8 +74,12 @@ class GradesDiaryRaceTest {
 				return GatewayResult.Success(result)
 			}
 			override fun annualGrades(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<AnnualGrades> {
-				gradesGate.getAndSet(null)?.waitHere()
-				return gradesError.get()?.let { GatewayResult.Failure(it) } ?: GatewayResult.Success(AnnualGrades(listOf(AnnualGradeRow("Subject", listOf(null, null, null, null), null, ""))))
+				val account = session.account
+				val gate = gradesGate.getAndSet(null)
+				gate?.waitHere()
+				val result = gradesError.get()?.let { GatewayResult.Failure(it) } ?: GatewayResult.Success(grades(account))
+				gate?.returned?.countDown()
+				return result
 			}
 		}
 		val verifier = IdentityVerifier { session, _ ->
@@ -81,8 +90,8 @@ class GradesDiaryRaceTest {
 			override fun read(session: ActiveSession): ByteArray? = null
 			override fun write(session: ActiveSession, bytes: ByteArray) = true
 		}
-		fun login(): NativeController {
-			main { controller = NativeController { emit -> SchoolRepository(gateway, verifier, coordinator, cache, { 1L }, emit, SessionStore(context, coordinator)) }; controller!!.login("1", charArrayOf('x')) }
+		fun login(account: String = "1"): NativeController {
+			main { controller = NativeController { emit -> SchoolRepository(gateway, verifier, coordinator, cache, { 1L }, emit, SessionStore(context, coordinator)) }; controller!!.login(account, charArrayOf('x')) }
 			val c = controller!!
 			await { c.state.signedIn && c.state.diary is DiaryState.Ready && c.state.schedule != null && c.state.diaryWeeks.isNotEmpty() }
 			return c
@@ -145,21 +154,40 @@ class GradesDiaryRaceTest {
 		} finally { gate.release.countDown() }
 	}
 
-	@Test fun accountReplacementRejectsBlockedGradesDelivery() {
+	private fun replacementRejectsBlockedGrades(oldAccount: String, newAccount: String) {
 		val fixture = Fixture()
-		val c = fixture.login()
+		val c = fixture.login(oldAccount)
 		val gate = Gate()
+		val trace = mutableListOf<NativeUiState>()
 		fixture.gradesGate.set(gate)
 		try {
 			main { c.refreshAnnualGrades() }
 			assertTrue(gate.entered.await(10, TimeUnit.SECONDS))
-			main { replacement = NativeController { emit -> SchoolRepository(fixture.gateway, fixture.verifier, coordinator, fixture.cache, { 1L }, emit, SessionStore(context, coordinator)) }; replacement!!.login("2", charArrayOf('x')) }
-			await { replacement!!.state.signedIn && replacement!!.state.diary is DiaryState.Ready }
+			main { replacement = NativeController(onState = { trace.add(it) }) { emit -> SchoolRepository(fixture.gateway, fixture.verifier, coordinator, fixture.cache, { 1L }, emit, SessionStore(context, coordinator)) }; replacement!!.login(newAccount, charArrayOf('x')) }
+			val b = replacement!!
+			await { b.state.signedIn && b.state.diary is DiaryState.Ready }
+			main { b.refreshAnnualGrades() }
+			val expected = contents(NativeUiState(annualGrades = GatewayResult.Success(grades(newAccount))))
+			val forbidden = contents(NativeUiState(annualGrades = GatewayResult.Success(grades(oldAccount))))!!
+			await { !b.state.gradesLoading && contents(b.state) == expected }
 			gate.release.countDown()
+			assertTrue(gate.returned.await(10, TimeUnit.SECONDS))
 			drain(c)
-			main { assertFalse(c.state.gradesLoading); assertNull(c.state.annualGrades) }
+			drain(b)
+			main {
+				assertTrue(b.state.signedIn)
+				assertEquals(expected, contents(b.state))
+				assertTrue(trace.any { contents(it) == expected })
+				trace.forEach { state -> assertTrue("Old account grade in replacement trace", contents(state).orEmpty().none { it in forbidden }) }
+				assertFalse(c.state.gradesLoading)
+				assertNull(c.state.annualGrades)
+			}
 		} finally { gate.release.countDown() }
 	}
+
+	@Test fun accountReplacementRejectsBlockedGradesDelivery() = replacementRejectsBlockedGrades("1", "2")
+
+	@Test fun reverseAccountReplacementRejectsBlockedGradesDelivery() = replacementRejectsBlockedGrades("2", "1")
 
 	@Test fun logoutRejectsBlockedGradesDelivery() {
 		val fixture = Fixture()
@@ -172,6 +200,7 @@ class GradesDiaryRaceTest {
 			main { c.logout() }
 			await { !c.state.logoutPending && !c.state.busy }
 			gate.release.countDown()
+			assertTrue(gate.returned.await(10, TimeUnit.SECONDS))
 			drain(c)
 			main { assertFalse(c.state.signedIn); assertFalse(c.state.gradesLoading); assertNull(c.state.annualGrades) }
 		} finally { gate.release.countDown() }

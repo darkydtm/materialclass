@@ -47,7 +47,10 @@ internal interface NativeUiController {
 	fun close()
 }
 
-internal class NativeController(private val repositoryFactory: ((DiaryState) -> Unit) -> SchoolRepository) : NativeUiController {
+internal class NativeController(
+	private val onState: (NativeUiState) -> Unit = {},
+	private val repositoryFactory: ((DiaryState) -> Unit) -> SchoolRepository,
+) : NativeUiController {
 	private val executor = Executors.newSingleThreadExecutor()
 	private val logoutExecutor = Executors.newSingleThreadExecutor()
 	private var logoutTicket: Any? = null
@@ -84,8 +87,10 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 	private var started = false
 	private var currentTaskGeneration = 0L
 	@Volatile private var currentTaskEpoch = 0L
-	override var state by mutableStateOf(NativeUiState())
-		private set
+	private var stateValue by mutableStateOf(NativeUiState())
+	override var state: NativeUiState
+		get() = stateValue
+		private set(value) { stateValue = value; onState(value) }
 	private val repository: SchoolRepository = repositoryFactory { diary ->
 		val task = currentTaskGeneration
 		val revision = currentDiaryRevision
