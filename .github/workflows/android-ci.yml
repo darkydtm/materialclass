@@ -1,13 +1,13 @@
 name: Android test only
 on:
   push:
-    branches: [ci-android-toolchain, fix/verified-session-restore, feat/integrate-student-work]
+    branches: [ci-android-toolchain, fix/verified-session-restore, feat/integrate-student-work, test/diary-date-concurrency]
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   build:
-    if: github.ref == 'refs/heads/ci-android-toolchain' || github.ref == 'refs/heads/fix/verified-session-restore' || github.ref == 'refs/heads/feat/integrate-student-work'
+    if: github.ref == 'refs/heads/ci-android-toolchain' || github.ref == 'refs/heads/fix/verified-session-restore' || github.ref == 'refs/heads/feat/integrate-student-work' || github.ref == 'refs/heads/test/diary-date-concurrency'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -41,7 +41,7 @@ jobs:
           print('Merged debug manifest minSdkVersion=24')
           PY
   device:
-    if: github.ref == 'refs/heads/ci-android-toolchain' || github.ref == 'refs/heads/fix/verified-session-restore' || github.ref == 'refs/heads/feat/integrate-student-work'
+    if: github.ref == 'refs/heads/ci-android-toolchain' || github.ref == 'refs/heads/fix/verified-session-restore' || github.ref == 'refs/heads/feat/integrate-student-work' || github.ref == 'refs/heads/test/diary-date-concurrency'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
