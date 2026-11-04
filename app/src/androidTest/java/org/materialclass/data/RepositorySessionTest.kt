@@ -164,12 +164,7 @@ class RepositorySessionTest {
 
 	@Test
 	fun verifiedLoginPersistsEncryptedSession() {
-		val constructor = SchoolRepository::class.java.declaredConstructors.firstOrNull { constructor ->
-			constructor.parameterTypes.any { it == SessionStore::class.java }
-		}
-		assertNotNull("Repository must accept the secure session store", constructor)
-		constructor!!.isAccessible = true
-		val repository = constructor.newInstance(gateway, IdentityVerifier { session, _ -> proof(session) }, coordinator, cache, { 1L }, { _: DiaryState -> }, store) as SchoolRepository
+		val repository = SchoolRepository(gateway, IdentityVerifier { session, _ -> proof(session) }, coordinator, cache, { 1L }, { _: DiaryState -> }, store)
 		assertTrue(repository.login("synthetic", charArrayOf('x')) is GatewayResult.Success)
 		val bytes = File(context.noBackupFilesDir, "session").readBytes().toString(Charsets.ISO_8859_1)
 		assertFalse(bytes.contains("synthetic-token"))
