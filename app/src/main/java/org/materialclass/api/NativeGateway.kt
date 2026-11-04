@@ -89,6 +89,16 @@ class SchoolContext(val schoolId: Long, val eduYear: Int, val groupId: Long, int
 }
 
 class DiaryContext(val schoolId: Long, val eduYear: Int, val groupId: Long, val date: String) {
+	override fun equals(other: Any?): Boolean = other is DiaryContext &&
+		schoolId == other.schoolId && eduYear == other.eduYear && groupId == other.groupId && date == other.date
+
+	override fun hashCode(): Int {
+		var result = schoolId.hashCode()
+		result = 31 * result + eduYear
+		result = 31 * result + groupId.hashCode()
+		return 31 * result + date.hashCode()
+	}
+
 	override fun toString(): String = "DiaryContext([redacted])"
 }
 
