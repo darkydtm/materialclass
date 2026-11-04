@@ -16,7 +16,8 @@ internal interface CleanupJournal {
 	fun clear()
 }
 
-private class CleanupBackupException(cause: Throwable) : IOException("Could not preserve cleanup recovery", cause)
+private class CleanupWriteException(cause: Throwable, val durable: Boolean) : IOException("Could not preserve cleanup recovery", cause)
+private class CleanupReadException(cause: Throwable) : IOException("Could not inspect cleanup recovery", cause)
 
 internal class CleanupRecovery(private val journal: CleanupJournal, private val clearCache: (CacheNamespace) -> Unit, private val clearSession: () -> Unit, private val invalidateSession: () -> Unit = {}) {
 	fun recover() {
@@ -40,10 +41,11 @@ internal class CleanupRecovery(private val journal: CleanupJournal, private val 
 		try {
 			journal.write(namespace)
 		} catch (error: Exception) {
-			if (error is CleanupBackupException) {
-				try { clearCache(namespace) } catch (failure: Exception) { error.addSuppressed(failure) }
+			var canInvalidate = error !is CleanupReadException
+			if (error is CleanupWriteException && !error.durable) {
+				canInvalidate = try { clearCache(namespace); true } catch (failure: Exception) { error.addSuppressed(failure); false }
 			}
-			try { invalidateSession() } catch (failure: Exception) { error.addSuppressed(failure) }
+			if (canInvalidate) try { invalidateSession() } catch (failure: Exception) { error.addSuppressed(failure) }
 			throw LogoutStorageException(error)
 		}
 		perform(namespace)
@@ -87,13 +89,17 @@ internal class FileCleanupJournal(context: Context) : CleanupJournal {
 	}
 
 	override fun write(namespace: CacheNamespace) {
-		val existing = read()
-		if (existing != null && existing.value != namespace.value) throw IOException("Another cleanup is pending")
+		val existing = try { read() } catch (error: Exception) { throw CleanupReadException(error) }
+		if (existing != null && existing.value != namespace.value) throw CleanupReadException(IOException("Another cleanup is pending"))
 		val bytes = namespace.value.toByteArray(Charsets.UTF_8)
 		try {
-			try { backup.write(bytes); syncDirectory() } catch (error: Exception) { throw CleanupBackupException(error) }
-			file.write(bytes)
-			syncDirectory()
+			var durable = false
+			var failure: Exception? = null
+			try { backup.write(bytes); syncDirectory(); durable = true } catch (error: Exception) { failure = error }
+			try { file.write(bytes); syncDirectory(); durable = true } catch (error: Exception) {
+				if (failure == null) failure = error else failure.addSuppressed(error)
+			}
+			failure?.let { throw CleanupWriteException(it, durable) }
 		} finally { bytes.fill(0) }
 	}
 
