@@ -10,6 +10,29 @@ import java.net.URL
 @RunWith(AndroidJUnit4::class)
 class NativeGatewayTest {
 	@Test
+	fun diaryWeeksExposeValidatedServerOptionsWithoutLosingCurrentWeek() {
+		val coordinator = org.materialclass.session.SessionCoordinator { }
+		val active = coordinator.activate(org.materialclass.session.AccountId("123"))
+		val lease = coordinator.admit(active)!!
+		try {
+			val remote = UnverifiedSession("synthetic-token", "123", "student", SchoolContext(1, 2026, 2))
+			val verified = VerifiedDiarySession.compare(remote, profile)!!
+			var body = """{"data":{"week":"01.01.2026","weeks":[{"label":"First","value":"01.01.2026"},{"label":"Second","value":"08.01.2026"},{"label":"Duplicate","value":"08.01.2026"},{"label":12,"value":"15.01.2026"},{"label":"Invalid","value":"31.02.2026"}]}}"""
+			val gateway = NativeGateway(Exchange { Response(200, body) })
+			val method = gateway.javaClass.methods.singleOrNull { it.name == "diaryWeeks" }
+			assertNotNull("Diary weeks operation must expose validated options", method)
+			fun read(): Any = (method!!.invoke(gateway, verified, lease) as GatewayResult.Success<*>).value!!
+			fun property(value: Any, name: String): Any? = value.javaClass.getMethod(name).invoke(value)
+			val weeks = read()
+			assertEquals("01.01.2026", property(weeks, "getCurrentWeek"))
+			val options = property(weeks, "getOptions") as List<*>
+			assertEquals(listOf("01.01.2026", "08.01.2026"), options.map { property(it!!, "getValue") })
+			body = """{"data":{"week":"01.01.2026","weeks":{}}}"""
+			assertEquals(emptyList<Any>(), property(read(), "getOptions"))
+		} finally { coordinator.finish(lease); coordinator.logout() }
+	}
+
+	@Test
 	fun currentWeekRequiresVerifiedSessionAndLease() {
 		val method = SchoolGateway::class.java.methods.singleOrNull { it.name == "currentWeek" }
 		assertNotNull("Current week operation must exist", method)
