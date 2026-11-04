@@ -22,6 +22,7 @@ class GradesDiaryRaceTest {
 	private val coordinator = SessionCoordinator(context)
 	private val instrumentation = InstrumentationRegistry.getInstrumentation()
 	private var controller: NativeController? = null
+	private var replacement: NativeController? = null
 	private fun main(action: () -> Unit) = instrumentation.runOnMainSync(action)
 	private fun await(condition: () -> Boolean) {
 		val deadline = android.os.SystemClock.uptimeMillis() + 15000
@@ -33,7 +34,13 @@ class GradesDiaryRaceTest {
 		}
 		fail("Timed out waiting for controller state")
 	}
-	@After fun cleanup() { main { controller?.close() }; coordinator.logout() }
+	@After fun cleanup() { main { controller?.close(); replacement?.close() }; coordinator.logout() }
+
+	private fun drain(c: NativeController) {
+		val field = NativeController::class.java.getDeclaredField("executor").apply { isAccessible = true }
+		(field.get(c) as java.util.concurrent.ExecutorService).submit {}.get(15, TimeUnit.SECONDS)
+		instrumentation.waitForIdleSync()
+	}
 
 	private class Gate {
 		val entered = CountDownLatch(1)
@@ -44,6 +51,8 @@ class GradesDiaryRaceTest {
 	private inner class Fixture {
 		val diaryGate = AtomicReference<Gate?>(null)
 		val gradesGate = AtomicReference<Gate?>(null)
+		val scheduleGate = AtomicReference<Gate?>(null)
+		val scheduleResult = AtomicReference(Schedule(emptyList()))
 		val diaryError = AtomicReference<AppError?>(null)
 		val gradesError = AtomicReference<AppError?>(null)
 		val gateway: SchoolGateway = object : SchoolGateway, DiaryWeeksGateway, AnnualGradesGateway {
@@ -54,7 +63,11 @@ class GradesDiaryRaceTest {
 				diaryGate.getAndSet(null)?.waitHere()
 				return diaryError.get()?.let { GatewayResult.Failure(it) } ?: GatewayResult.Success(Diary(context.date, emptyList()))
 			}
-			override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> = GatewayResult.Success(Schedule(emptyList()))
+			override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> {
+				val result = scheduleResult.get()
+				scheduleGate.getAndSet(null)?.waitHere()
+				return GatewayResult.Success(result)
+			}
 			override fun annualGrades(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<AnnualGrades> {
 				gradesGate.getAndSet(null)?.waitHere()
 				return gradesError.get()?.let { GatewayResult.Failure(it) } ?: GatewayResult.Success(AnnualGrades(listOf(AnnualGradeRow("Subject", listOf(null, null, null, null), null, ""))))
@@ -95,6 +108,10 @@ class GradesDiaryRaceTest {
 		val fixture = Fixture()
 		val c = fixture.login()
 		val gate = Gate()
+		val scheduleGate = Gate()
+		val newSchedule = Schedule(emptyList())
+		fixture.scheduleResult.set(newSchedule)
+		fixture.scheduleGate.set(scheduleGate)
 		fixture.diaryGate.set(gate)
 		fixture.diaryError.set(AppError.OFFLINE)
 		fixture.gradesError.set(AppError.INCOMPATIBLE_RESPONSE)
@@ -103,8 +120,28 @@ class GradesDiaryRaceTest {
 			assertTrue(gate.entered.await(10, TimeUnit.SECONDS))
 			main { c.refreshAnnualGrades() }
 			gate.release.countDown()
-			await { !c.state.gradesLoading && c.state.annualGrades is GatewayResult.Failure && c.state.error == AppError.OFFLINE }
+			assertTrue(scheduleGate.entered.await(10, TimeUnit.SECONDS))
+			main { assertNotSame(newSchedule, c.state.schedule) }
+			scheduleGate.release.countDown()
+			await { c.state.schedule === newSchedule && !c.state.gradesLoading && c.state.annualGrades is GatewayResult.Failure && c.state.error == AppError.OFFLINE }
 			main { assertEquals(AppError.INCOMPATIBLE_RESPONSE, (c.state.annualGrades as GatewayResult.Failure).error); assertNotNull(c.state.schedule) }
+		} finally { gate.release.countDown(); scheduleGate.release.countDown() }
+	}
+
+	@Test fun selectingDiaryWeekDoesNotSuppressInFlightSchedule() {
+		val fixture = Fixture()
+		val c = fixture.login()
+		val gate = Gate()
+		val newSchedule = Schedule(emptyList())
+		fixture.scheduleResult.set(newSchedule)
+		fixture.scheduleGate.set(gate)
+		try {
+			main { c.refresh() }
+			assertTrue(gate.entered.await(10, TimeUnit.SECONDS))
+			main { c.selectDiaryWeek("08.01.2026"); assertNotSame(newSchedule, c.state.schedule) }
+			gate.release.countDown()
+			drain(c)
+			await { c.state.schedule === newSchedule && c.state.diary is DiaryState.Ready && c.state.selectedDiaryDate == "08.01.2026" }
 		} finally { gate.release.countDown() }
 	}
 
@@ -116,9 +153,10 @@ class GradesDiaryRaceTest {
 		try {
 			main { c.refreshAnnualGrades() }
 			assertTrue(gate.entered.await(10, TimeUnit.SECONDS))
-			main { c.login("2", charArrayOf('x')) }
+			main { replacement = NativeController { emit -> SchoolRepository(fixture.gateway, fixture.verifier, coordinator, fixture.cache, { 1L }, emit, SessionStore(context, coordinator)) }; replacement!!.login("2", charArrayOf('x')) }
+			await { replacement!!.state.signedIn && replacement!!.state.diary is DiaryState.Ready }
 			gate.release.countDown()
-			await { c.state.signedIn && c.state.diary is DiaryState.Ready }
+			drain(c)
 			main { assertFalse(c.state.gradesLoading); assertNull(c.state.annualGrades) }
 		} finally { gate.release.countDown() }
 	}
@@ -134,7 +172,7 @@ class GradesDiaryRaceTest {
 			main { c.logout() }
 			await { !c.state.logoutPending && !c.state.busy }
 			gate.release.countDown()
-			main { }
+			drain(c)
 			main { assertFalse(c.state.signedIn); assertFalse(c.state.gradesLoading); assertNull(c.state.annualGrades) }
 		} finally { gate.release.countDown() }
 	}
