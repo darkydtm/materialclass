@@ -28,6 +28,7 @@ class ScheduleCacheTest {
 		var response: GatewayResult<Schedule> = GatewayResult.Success(Schedule(listOf(ScheduleDay(42, "01.01.2026", true, false, listOf(ScheduleLesson("lesson", 7, "Synthetic mathematics"))))))
 		var school = 1L
 		val gateway = object : TestSchoolGateway() {
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = error("unexpected")
 			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic", login, "student", SchoolContext(school, 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
 			override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> = response
 		}
