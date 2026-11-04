@@ -27,7 +27,7 @@ internal class NotificationBaseline(context: Context, private val coordinator: S
 		val observation = DiaryObservation.from(context, diary) ?: return BaselineResult.Invalid
 		return coordinator.ifActive(session) {
 			val entries = read(session)
-			val entry = entries.firstOrNull { it.context == context }
+			val entry = entries.firstOrNull { sameContext(it.context, context) }
 			if (entry == null) {
 				if (entries.size >= 32) throw StorageUnreadableException()
 				entries.add(Entry(context, observation.fingerprint, null))
@@ -48,7 +48,7 @@ internal class NotificationBaseline(context: Context, private val coordinator: S
 
 	fun acknowledge(session: ActiveSession, change: BaselineResult.Change): Boolean = coordinator.ifActive(session) {
 		val entries = read(session)
-		val entry = entries.firstOrNull { it.context == change.context }
+		val entry = entries.firstOrNull { sameContext(it.context, change.context) }
 		if (entry == null || entry.fingerprint != change.previous || entry.pending != change.current) false
 		else {
 			entry.fingerprint = change.current
@@ -56,6 +56,9 @@ internal class NotificationBaseline(context: Context, private val coordinator: S
 			cache.write(session, encode(entries))
 		}
 	} ?: false
+
+	private fun sameContext(first: DiaryContext, second: DiaryContext): Boolean =
+		first.schoolId == second.schoolId && first.eduYear == second.eduYear && first.groupId == second.groupId && first.date == second.date
 
 	private fun read(session: ActiveSession): MutableList<Entry> {
 		val bytes = cache.read(session) ?: return mutableListOf()
@@ -72,7 +75,7 @@ internal class NotificationBaseline(context: Context, private val coordinator: S
 				val fingerprint = input.readUTF()
 				val pending = if (input.readBoolean()) input.readUTF() else null
 				require(fingerprint.matches(Regex("[0-9a-f]{64}")) && (pending == null || pending.matches(Regex("[0-9a-f]{64}")) && pending != fingerprint))
-				require(entries.none { it.context == context })
+				require(entries.none { sameContext(it.context, context) })
 				entries.add(Entry(context, fingerprint, pending))
 			}
 			require(input.available() == 0)
