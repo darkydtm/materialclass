@@ -68,6 +68,7 @@ class SchoolRepositoryTest {
 		val entered = CountDownLatch(1)
 		val release = CountDownLatch(1)
 		val gateway = object : TestSchoolGateway(), AnnualGradesGateway {
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = error("Unexpected diary request")
 			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", login, "student", SchoolContext(1, 2026, 2)))
 			override fun annualGrades(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<AnnualGrades> {
 				if (session.account == "1") { entered.countDown(); check(release.await(30, TimeUnit.SECONDS)) }
@@ -99,6 +100,7 @@ class SchoolRepositoryTest {
 		val loginEntered = CountDownLatch(1); val releaseLogin = CountDownLatch(1)
 		val calls = java.util.concurrent.atomic.AtomicInteger()
 		val gateway = object : TestSchoolGateway(), AnnualGradesGateway {
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = error("Unexpected diary request")
 			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> {
 				if (login == "2") { loginEntered.countDown(); check(releaseLogin.await(30, TimeUnit.SECONDS)) }
 				return GatewayResult.Success(UnverifiedSession("synthetic-token", login, "student", SchoolContext(1, 2026, 2)))
