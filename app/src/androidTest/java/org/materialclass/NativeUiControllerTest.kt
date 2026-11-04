@@ -101,7 +101,7 @@ class NativeUiControllerTest {
 			waitFor(context.getString(R.string.schedule_empty))
 			assertNull(find(instrumentation.uiAutomation.rootInActiveWindow, context.getString(R.string.data_unavailable)))
 			instrumentation.runOnMainSync { fake.state = fake.state.copy(schedule = null, error = AppError.INCOMPATIBLE_RESPONSE) }
-			waitFor(context.getString(R.string.operation_error, "INCOMPATIBLE_RESPONSE"))
+			waitFor("The response could not be understood. Try again later.")
 			waitFor(context.getString(R.string.data_unavailable))
 			assertNull(find(instrumentation.uiAutomation.rootInActiveWindow, context.getString(R.string.schedule_empty)))
 		} finally {
@@ -126,11 +126,53 @@ class NativeUiControllerTest {
 			instrumentation.runOnMainSync { activity.setContent { MaterialClassApp(nativeEnabled = true, controllerFactory = { fake }) } }
 			waitFor("Your session has expired. Sign in again.")
 			instrumentation.runOnMainSync { fake.state = NativeUiState(error = AppError.OFFLINE) }
-			waitFor(context.getString(R.string.operation_error, "OFFLINE"))
+			waitFor("No network connection. Check your connection and try again.")
 			assertNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, "Your session has expired. Sign in again.") })
 		} finally {
 			activity.finish()
 			context.getSharedPreferences("appearance", 0).edit().clear().commit()
+		}
+	}
+
+	@Test fun localizedErrorsAreVisibleForLoginAndCachedDiary() {
+		val context = ApplicationProvider.getApplicationContext<Context>()
+		val messages = mapOf(
+			"en" to listOf("No network connection. Check your connection and try again.", "The request timed out. Try again.", "The service is unavailable. Try again later.", "The response could not be understood. Try again later.", "Something went wrong. Try again later.", "Your session has expired. Sign in again.", "Saved data could not be read."),
+			"ru" to listOf("Нет подключения к сети. Проверьте соединение и повторите попытку.", "Время ожидания запроса истекло. Повторите попытку.", "Сервис недоступен. Повторите попытку позже.", "Не удалось обработать ответ. Повторите попытку позже.", "Что-то пошло не так. Повторите попытку позже.", "Срок действия сеанса истёк. Войдите снова.", "Не удалось прочитать сохранённые данные."),
+			"kk" to listOf("Желіге қосылым жоқ. Қосылымды тексеріп, қайталап көріңіз.", "Сұраудың күту уақыты аяқталды. Қайталап көріңіз.", "Қызмет қолжетімсіз. Кейінірек қайталап көріңіз.", "Жауапты өңдеу мүмкін болмады. Кейінірек қайталап көріңіз.", "Бір қате орын алды. Кейінірек қайталап көріңіз.", "Сеанс мерзімі аяқталды. Қайта кіріңіз.", "Сақталған деректерді оқу мүмкін болмады.")
+		)
+		val errors = listOf(AppError.OFFLINE, AppError.TIMEOUT, AppError.UNAVAILABLE, AppError.INCOMPATIBLE_RESPONSE, AppError.INVALID_CREDENTIALS, AppError.SESSION_EXPIRED, AppError.CACHE_UNREADABLE)
+		for ((language, expected) in messages) {
+			context.getSharedPreferences("appearance", 0).edit().putBoolean("warning_seen", true).putString("language", language).commit()
+			val fake = object : NativeUiController {
+				override var state by mutableStateOf(NativeUiState())
+				override fun start() { }
+				override fun login(username: String, password: CharArray) { password.fill('\u0000') }
+				override fun refresh() { }
+				override fun logout() { }
+				override fun close() { }
+			}
+			val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
+			try {
+				instrumentation.runOnMainSync { activity.setContent { MaterialClassApp(nativeEnabled = true, controllerFactory = { fake }) } }
+				for ((index, error) in errors.withIndex()) {
+					instrumentation.runOnMainSync { fake.state = NativeUiState(error = error) }
+					waitFor(expected[index])
+					assertNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, error.name) })
+				}
+				for (error in listOf(AppError.FORBIDDEN, AppError.SERVER)) {
+					instrumentation.runOnMainSync { fake.state = NativeUiState(error = error) }
+					waitFor(expected[4])
+				}
+				instrumentation.runOnMainSync { fake.state = NativeUiState(signedIn = true, diary = DiaryState.Ready(DiarySnapshot(Diary("01.01.2026", emptyList()), 1), AppError.OFFLINE)) }
+				val diaryLabel = when (language) { "ru" -> "Дневник"; "kk" -> "Күнделік"; else -> "Diary" }
+				click(diaryLabel)
+				val stale = when (language) { "ru" -> "Сохраненные данные - ошибка обновления: "; "kk" -> "Сақталған деректер - жаңарту қатесі: "; else -> "Cached data - refresh failed: " }
+				waitFor(stale + expected[0])
+			} finally {
+				activity.finish()
+				context.getSharedPreferences("appearance", 0).edit().clear().commit()
+			}
 		}
 	}
 
@@ -167,7 +209,7 @@ class NativeUiControllerTest {
 			waitFor(context.getString(R.string.logout))
 			assertTrue(fake.secretCleared)
 			click(context.getString(R.string.diary)); waitFor("UI lesson")
-			click(context.getString(R.string.refresh)); waitFor(context.getString(R.string.operation_error, "OFFLINE"))
+			click(context.getString(R.string.refresh)); waitFor("No network connection. Check your connection and try again.")
 			click(context.getString(R.string.schedule)); waitFor("UI schedule")
 			click(context.getString(R.string.login)); click(context.getString(R.string.logout)); waitFor(context.getString(R.string.sign_in))
 		} finally {
