@@ -411,6 +411,51 @@ class StorageSecurityTest {
 	}
 
 	@Test
+	fun journalFailureSurvivesRecreationAndCleansOnlyRevokedNamespace() {
+		val coordinator = SessionCoordinator(context)
+		val store = SessionStore(context, coordinator)
+		val cache = EncryptedCache(context, coordinator)
+		val session = coordinator.activate(AccountId("synthetic-restart-recovery"))
+		store.write(session, byteArrayOf(1))
+		cache.write(session, byteArrayOf(2))
+		EncryptedCache(context, coordinator, "schedule").write(session, byteArrayOf(3))
+		val keys = KeystoreKeys()
+		val oldIds = listOf("", ":schedule").map { keys.namespace(session.cacheNamespace.value + it, false) }
+		val otherNamespace = org.materialclass.session.CacheNamespace("b".repeat(64))
+		val otherId = keys.namespace(otherNamespace.value, false)
+		val otherFile = File(context.filesDir, "backup-cache/$otherId")
+		EncryptedFile(otherFile, "cache-$otherId", keys, org.materialclass.cache.CacheFiles(context)).write(byteArrayOf(4))
+		val temporary = File(context.noBackupFilesDir, "cleanup-tmp")
+		check(!temporary.exists() || temporary.delete())
+		check(temporary.createNewFile())
+		try {
+			try { coordinator.logout(); fail("Cleanup must fail") } catch (_: org.materialclass.session.LogoutStorageException) { }
+			assertFalse(keys.contains("session"))
+			assertNotNull(coordinator.pendingLogoutTicket())
+			check(temporary.delete())
+			val recovery = org.materialclass.session.CleanupRecovery(
+				org.materialclass.session.FileCleanupJournal(context),
+				{ org.materialclass.cache.EncryptedCache.clearNamespace(context, it) },
+				{ SessionStore.clear(context) }
+			)
+			recovery.recover()
+			for (id in oldIds) {
+				assertFalse(File(context.filesDir, "backup-cache/$id").exists())
+				assertFalse(keys.contains("cache-$id"))
+			}
+			assertTrue(otherFile.exists())
+			assertTrue(keys.contains("cache-$otherId"))
+			assertFalse(File(context.noBackupFilesDir, "session").exists())
+			assertFalse(keys.contains("session"))
+		} finally {
+			temporary.delete()
+			coordinator.pendingLogoutTicket()?.let { coordinator.logout(it) }
+			coordinator.logout()
+			cache.clearAll()
+		}
+	}
+
+	@Test
 	fun clearAllDestroysCacheKeysAfterFileDeletionFailure() {
 		val cache = EncryptedCache(context, SessionCoordinator(context))
 		cache.clearAll()
