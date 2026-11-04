@@ -41,4 +41,5 @@
 	<string name="error_incompatible_response">Жауапты өңдеу мүмкін болмады. Кейінірек қайталап көріңіз.</string>
 	<string name="error_unknown">Бір қате орын алды. Кейінірек қайталап көріңіз.</string>
 	<string name="error_cache_unreadable">Сақталған деректерді оқу мүмкін болмады.</string>
+	<string name="last_updated">Жаңартылған уақыты: %1$s</string>
 </resources>

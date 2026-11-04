@@ -41,4 +41,5 @@
 	<string name="error_incompatible_response">The response could not be understood. Try again later.</string>
 	<string name="error_unknown">Something went wrong. Try again later.</string>
 	<string name="error_cache_unreadable">Saved data could not be read.</string>
+	<string name="last_updated">Last updated: %1$s</string>
 </resources>

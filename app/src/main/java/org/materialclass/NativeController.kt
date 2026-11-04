@@ -11,6 +11,7 @@ import org.materialclass.api.GatewayResult
 import org.materialclass.api.NativeGateway
 import org.materialclass.api.Schedule
 import org.materialclass.cache.EncryptedCache
+import org.materialclass.data.ScheduleSnapshot
 import org.materialclass.data.DiaryState
 import org.materialclass.data.EncryptedDiaryCache
 import org.materialclass.data.NativeIdentityVerifier
@@ -27,6 +28,7 @@ internal data class NativeUiState(
 	val logoutPending: Boolean = false,
 	val diary: DiaryState = DiaryState.Cleared,
 	val schedule: Schedule? = null,
+	val scheduleSnapshot: ScheduleSnapshot? = null,
 	val error: AppError? = null,
 )
 
@@ -153,13 +155,13 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 				repository.currentWeek { week ->
 					if (closed || generation != task || repository.revocationEpoch() != epoch) return@currentWeek
 					when (week) {
-						is GatewayResult.Success -> repository.schedule(week.value) { result ->
+						is GatewayResult.Success -> repository.scheduleSnapshot(week.value) { result ->
 							post(task) { state = when (result) {
-								is GatewayResult.Success -> state.copy(schedule = result.value)
-								is GatewayResult.Failure -> state.copy(schedule = null, error = result.error)
+								is GatewayResult.Success -> state.copy(schedule = result.value.schedule, scheduleSnapshot = result.value)
+								is GatewayResult.Failure -> state.copy(schedule = null, scheduleSnapshot = null, error = result.error)
 							} }
 						}
-						is GatewayResult.Failure -> post(task) { state = state.copy(schedule = null, error = week.error) }
+						is GatewayResult.Failure -> post(task) { state = state.copy(schedule = null, scheduleSnapshot = null, error = week.error) }
 					}
 				}
 			} catch (_: Exception) { post(task) { if (state.error != AppError.SESSION_EXPIRED) state = state.copy(error = AppError.UNAVAILABLE) } }
@@ -205,6 +207,6 @@ internal fun createNativeController(context: Context): NativeUiController {
 	val cache = EncryptedCache(app, coordinator)
 	val store = SessionStore(app, coordinator)
 	return NativeController { emit ->
-		SchoolRepository(NativeGateway(), NativeIdentityVerifier(), coordinator, EncryptedDiaryCache(cache), System::currentTimeMillis, emit, store)
+		SchoolRepository(NativeGateway(), NativeIdentityVerifier(), coordinator, EncryptedDiaryCache(cache), System::currentTimeMillis, emit, store, EncryptedDiaryCache(EncryptedCache(app, coordinator, "schedule")))
 	}
 }

@@ -9,7 +9,7 @@ import org.materialclass.session.ActiveSession
 import org.materialclass.session.SessionCoordinator
 import java.io.File
 
-class EncryptedCache(context: Context, private val coordinator: SessionCoordinator) {
+class EncryptedCache(context: Context, private val coordinator: SessionCoordinator, private val kind: String = "diary") {
 	private val files by lazy { CacheFiles(context) }
 	private val keys = KeystoreKeys()
 
@@ -24,7 +24,7 @@ class EncryptedCache(context: Context, private val coordinator: SessionCoordinat
 		} else if (!java.security.MessageDigest.isEqual(guard, previous)) {
 			throw org.materialclass.security.StorageUnreadableException()
 		}
-		val id = keys.namespace(session.cacheNamespace.value, false)
+		val id = keys.namespace(session.cacheNamespace.value + if (kind == "diary") "" else ":$kind", false)
 		return EncryptedFile(File(files.directory, id), "cache-$id", keys, files)
 	}
 

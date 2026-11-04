@@ -11,6 +11,9 @@ import org.materialclass.api.UnverifiedSession
 import org.materialclass.api.VerifiedScheduleSession
 import org.materialclass.api.VerifiedDiarySession
 import org.materialclass.api.Schedule
+import org.materialclass.api.ScheduleDay
+import org.materialclass.api.ScheduleLesson
+import org.materialclass.api.SchoolContext
 import org.materialclass.cache.EncryptedCache
 import org.materialclass.session.AccountId
 import org.materialclass.session.ActiveSession
@@ -40,6 +43,8 @@ internal class EncryptedDiaryCache(private val cache: EncryptedCache) : DiaryCac
 	override fun write(session: ActiveSession, bytes: ByteArray): Boolean = cache.write(session, bytes)
 }
 
+internal data class ScheduleSnapshot(val schedule: Schedule, val date: String, val lastSuccessMillis: Long, val staleError: AppError? = null)
+
 internal data class DiarySnapshot(val diary: Diary, val lastSuccessMillis: Long)
 
 internal sealed class DiaryState {
@@ -59,6 +64,7 @@ internal class SchoolRepository(
 	private val clock: () -> Long,
 	private val emit: (DiaryState) -> Unit,
 	private val store: SessionStore,
+	private val scheduleCache: DiaryCache? = null,
 ) {
 	@Volatile private var session: ActiveSession? = null
 	private var remote: UnverifiedSession? = null
@@ -187,7 +193,14 @@ internal class SchoolRepository(
 		} finally { coordinator.finish(lease) }
 	}
 
-	fun schedule(date: String, deliver: (GatewayResult<Schedule>) -> Unit) {
+	fun schedule(date: String, deliver: (GatewayResult<Schedule>) -> Unit) = scheduleSnapshot(date) { result ->
+		deliver(when (result) {
+			is GatewayResult.Success -> GatewayResult.Success(result.value.schedule)
+			is GatewayResult.Failure -> result
+		})
+	}
+
+	fun scheduleSnapshot(date: String, deliver: (GatewayResult<ScheduleSnapshot>) -> Unit) {
 		val active = session ?: return
 		val request = coordinator.ifActive(active) {
 			val requestRevision = coordinator.requestRevision()
@@ -210,7 +223,26 @@ internal class SchoolRepository(
 			if (outcome != null) {
 				if (outcome.first) {
 					try { outcome.second!!.getOrThrow() } finally { emit(DiaryState.Error(AppError.SESSION_EXPIRED)) }
-				} else deliver(result)
+				} else {
+					val converted = coordinator.ifActive(active) {
+						if (lease.cancelled || request.second != scheduleRevision || request.third != coordinator.requestRevision()) return@ifActive null
+						val context = request.first?.remote?.context
+						try {
+							when (result) {
+								is GatewayResult.Success -> {
+									val snapshot = ScheduleSnapshot(result.value, date, clock())
+									if (context != null && scheduleCache != null) check(scheduleCache.write(active, encodeSchedule(context, snapshot)))
+									GatewayResult.Success(snapshot)
+								}
+								is GatewayResult.Failure -> {
+									val saved = if (context != null && (result.error == AppError.OFFLINE || result.error == AppError.TIMEOUT)) scheduleCache?.read(active)?.let { decodeSchedule(it, context, date) } else null
+									if (saved == null) result else GatewayResult.Success(saved.copy(staleError = result.error))
+								}
+							}
+						} catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.CACHE_UNREADABLE) }
+					}
+					if (converted != null && !lease.cancelled && coordinator.ifActive(active) { request.second == scheduleRevision && request.third == coordinator.requestRevision() } == true) deliver(converted)
+				}
 			}
 		} finally { coordinator.finish(lease) }
 	}
@@ -467,4 +499,34 @@ private fun decode(bytes: ByteArray, context: DiaryContext): DiarySnapshot? {
 	}
 	check(input.available() == 0)
 	return DiarySnapshot(Diary(date, days), time)
+}
+
+
+private fun encodeSchedule(context: SchoolContext, snapshot: ScheduleSnapshot): ByteArray {
+	val bytes = ByteArrayOutputStream()
+	DataOutputStream(bytes).use { out ->
+		out.writeInt(1); out.writeLong(context.schoolId); out.writeInt(context.eduYear); out.writeLong(context.groupId)
+		out.writeUTF(context.studentSchoolUuid ?: ""); out.writeUTF(snapshot.date); out.writeLong(snapshot.lastSuccessMillis)
+		out.writeInt(snapshot.schedule.days.size)
+		snapshot.schedule.days.forEach { day ->
+			out.writeLong(day.date); out.writeUTF(day.dateFormat); out.writeBoolean(day.isCurrent); out.writeBoolean(day.isHoliday); out.writeInt(day.lessons.size)
+			day.lessons.forEach { out.writeUTF(it.type); out.writeLong(it.cabinetId); out.writeUTF(it.themeLabel) }
+		}
+	}
+	return bytes.toByteArray()
+}
+
+private fun decodeSchedule(bytes: ByteArray, context: SchoolContext, date: String): ScheduleSnapshot? {
+	val input = DataInputStream(ByteArrayInputStream(bytes))
+	check(input.readInt() == 1)
+	val school = input.readLong(); val year = input.readInt(); val group = input.readLong(); val uuid = input.readUTF(); val savedDate = input.readUTF()
+	if (school != context.schoolId || year != context.eduYear || group != context.groupId || uuid != (context.studentSchoolUuid ?: "") || savedDate != date) return null
+	val time = input.readLong()
+	fun count() = input.readInt().also { require(it in 0..10000) }
+	val days = List(count()) {
+		val timestamp = input.readLong(); val formatted = input.readUTF(); val current = input.readBoolean(); val holiday = input.readBoolean()
+		ScheduleDay(timestamp, formatted, current, holiday, List(count()) { ScheduleLesson(input.readUTF(), input.readLong(), input.readUTF()) })
+	}
+	check(input.available() == 0)
+	return ScheduleSnapshot(Schedule(days), savedDate, time)
 }

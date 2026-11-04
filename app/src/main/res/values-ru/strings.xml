@@ -41,4 +41,5 @@
 	<string name="error_incompatible_response">Не удалось обработать ответ. Повторите попытку позже.</string>
 	<string name="error_unknown">Что-то пошло не так. Повторите попытку позже.</string>
 	<string name="error_cache_unreadable">Не удалось прочитать сохранённые данные.</string>
+	<string name="last_updated">Обновлено: %1$s</string>
 </resources>

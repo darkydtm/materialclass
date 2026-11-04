@@ -99,6 +99,7 @@ internal fun MaterialClassApp(example: ExampleData? = null, nativeEnabled: Boole
 									when (val diary = nativeState.diary) {
 										is DiaryState.Ready -> {
 											diary.staleError?.let { Text(stringResource(R.string.stale_data, stringResource(errorMessage(it)))) }
+											Text(stringResource(R.string.last_updated, formatTimestamp(diary.snapshot.lastSuccessMillis, localized)))
 											if (diary.snapshot.diary.days.all { it.subjects.isEmpty() }) Text(stringResource(R.string.diary_empty))
 											diary.snapshot.diary.days.forEach { day -> Text(day.date); day.subjects.forEach { subject -> Text(subject.label); subject.homeworkBody?.let { Text(it) } } }
 										}
@@ -108,7 +109,11 @@ internal fun MaterialClassApp(example: ExampleData? = null, nativeEnabled: Boole
 								} else {
 									val schedule = nativeState.schedule
 									if (schedule == null) Text(stringResource(R.string.data_unavailable)) else {
-										if (schedule.days.all { it.lessons.isEmpty() }) Text(stringResource(R.string.schedule_empty))
+										nativeState.scheduleSnapshot?.let { snapshot ->
+												snapshot.staleError?.let { Text(stringResource(R.string.stale_data, stringResource(errorMessage(it)))) }
+												Text(stringResource(R.string.last_updated, formatTimestamp(snapshot.lastSuccessMillis, localized)))
+											}
+											if (schedule.days.all { it.lessons.isEmpty() }) Text(stringResource(R.string.schedule_empty))
 										schedule.days.forEach { day -> Text(day.dateFormat); day.lessons.forEach { Text(it.themeLabel) } }
 									}
 								}
@@ -171,4 +176,9 @@ private fun LoginScreen(controller: NativeUiController?, state: NativeUiState?) 
 	OutlinedTextField(value = login, onValueChange = { login = it }, label = { Text(stringResource(R.string.username)) }, singleLine = true)
 	OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text(stringResource(R.string.password)) }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), visualTransformation = PasswordVisualTransformation())
 	Button(onClick = { val secret = password.toCharArray(); password = ""; controller?.login(login, secret) ?: secret.fill('\u0000') }, enabled = controller != null && state?.busy == false) { Text(stringResource(R.string.sign_in)) }
+}
+
+private fun formatTimestamp(value: Long, context: android.content.Context): String {
+	val locale = androidx.core.os.ConfigurationCompat.getLocales(context.resources.configuration)[0] ?: Locale.getDefault()
+	return java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT, locale).format(java.util.Date(value))
 }
