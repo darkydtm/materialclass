@@ -163,6 +163,7 @@ class NativeControllerIntegrationTest {
 				assertTrue("UI revocation was not delivered", delivered.await(10, TimeUnit.SECONDS))
 				assertNotNull("Cleanup must not release admission before UI clear", shared.pendingLogoutTicket())
 				assertNull(shared.admit(shared.beginLogin()))
+				if (!expiry) assertFalse("Unticketed logout returned before UI acknowledgement", finished.await(1, TimeUnit.SECONDS))
 			} finally {
 				acknowledge?.invoke()
 				shared.removeUiRevocationObserver(observer)
