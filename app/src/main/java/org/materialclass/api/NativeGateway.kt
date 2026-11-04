@@ -18,12 +18,12 @@ interface SchoolGateway {
 	fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession>
 	fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary>
 	fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String>
-	fun diaryWeeks(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<DiaryWeeks> = when (val result = currentWeek(session, lease)) {
-		is GatewayResult.Success -> GatewayResult.Success(DiaryWeeks(result.value, emptyList()))
-		is GatewayResult.Failure -> result
-	}
 	fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule>
 
+}
+
+interface DiaryWeeksGateway {
+	fun diaryWeeks(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<DiaryWeeks>
 }
 
 class VerifiedDiarySession private constructor(internal val remote: UnverifiedSession, internal val account: String) {
@@ -105,7 +105,7 @@ internal fun interface Exchange {
 	fun execute(request: Request): Response
 }
 
-class NativeGateway internal constructor(private val exchange: Exchange) : SchoolGateway {
+class NativeGateway internal constructor(private val exchange: Exchange) : SchoolGateway, DiaryWeeksGateway {
 	constructor() : this(HttpsExchange())
 
 	private val deviceId = UUID.randomUUID().toString()

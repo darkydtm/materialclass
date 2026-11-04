@@ -294,7 +294,13 @@ internal class SchoolRepository(
 		beforeRequestAdmission()
 		val lease = coordinator.admit(active, request.third) ?: return
 		try {
-			val week = try { gateway.diaryWeeks(proof, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
+			val week = try {
+				if (gateway is org.materialclass.api.DiaryWeeksGateway) gateway.diaryWeeks(proof, lease)
+				else when (val result = gateway.currentWeek(proof, lease)) {
+					is GatewayResult.Success -> GatewayResult.Success(org.materialclass.api.DiaryWeeks(result.value, emptyList()))
+					is GatewayResult.Failure -> result
+				}
+			} catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
 			if (week is GatewayResult.Failure) {
 				val state = coordinator.ifActive(active) {
 					if (lease.cancelled || request.second != refreshRevision) return@ifActive null
