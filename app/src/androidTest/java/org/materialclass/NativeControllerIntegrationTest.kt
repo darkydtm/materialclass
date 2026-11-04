@@ -157,6 +157,24 @@ class NativeControllerIntegrationTest {
 		}
 	}
 
+	@Test fun failedUiDeliveryReportsFailureAndKeepsTicketPending() {
+		val shared = SessionCoordinator { }
+		val observer: (Long, () -> Unit) -> Unit = { _, _ -> throw IllegalStateException("Synthetic delivery failure") }
+		shared.observeUiRevocations(observer)
+		val ticket = shared.cancelInFlightNow()
+		try {
+			try {
+				shared.logout(ticket)
+				fail("Failed UI delivery must report cleanup failure")
+			} catch (_: IllegalStateException) { }
+			assertSame(ticket, shared.pendingLogoutTicket())
+			assertNull(shared.admit(shared.beginLogin()))
+		} finally {
+			shared.removeUiRevocationObserver(observer)
+			shared.pendingLogoutTicket()?.let { shared.logout(it) }
+		}
+	}
+
 	@Test fun failedUiDeliveryRetriesWithoutAcknowledgingAnotherObserver() {
 		val cleaned = CountDownLatch(1)
 		val shared = SessionCoordinator { cleaned.countDown() }
