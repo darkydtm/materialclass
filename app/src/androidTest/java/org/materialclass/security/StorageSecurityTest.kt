@@ -92,6 +92,32 @@ class StorageSecurityTest {
 	}
 
 	@Test
+	fun blockedCacheWriteIsRemovedBeforeNewLogin() {
+		val coordinator = SessionCoordinator(context)
+		val cache = EncryptedCache(context, coordinator)
+		val old = coordinator.activate(AccountId("synthetic-blocked"))
+		val entered = CountDownLatch(1); val release = CountDownLatch(1); val done = CountDownLatch(1)
+		val writer = thread {
+			coordinator.ifActive(old) {
+				entered.countDown(); check(release.await(10, TimeUnit.SECONDS))
+				cache.write(old, byteArrayOf(1))
+			}
+		}
+		check(entered.await(10, TimeUnit.SECONDS))
+		val token = coordinator.cancelInFlightNow()
+		val logout = thread { try { coordinator.logout(token) } finally { done.countDown() } }
+		try {
+			assertFalse(done.await(100, TimeUnit.MILLISECONDS))
+			release.countDown(); writer.join(10000); logout.join(10000)
+			assertEquals(0L, done.count)
+			val next = coordinator.activate(AccountId("synthetic-current"))
+			assertTrue(cache.write(next, byteArrayOf(2)))
+			coordinator.logout(token)
+			assertArrayEquals(byteArrayOf(2), cache.read(next))
+		} finally { release.countDown(); writer.join(10000); logout.join(10000); coordinator.logout(); cache.clearAll() }
+	}
+
+	@Test
 	fun legacyEncryptedSessionWithoutNamespaceCannotRestore() {
 		val coordinator = SessionCoordinator(context)
 		val store = SessionStore(context, coordinator)

@@ -270,6 +270,8 @@ class SessionCoordinatorTest {
 		fail = true
 		try { coordinator.logout() } catch (_: IllegalStateException) { }
 		assertNull(coordinator.beginRestore())
+		fail = false
+		coordinator.pendingLogoutTicket()?.let { coordinator.logout(it) }
 	}
 
 	@Test
@@ -283,6 +285,8 @@ class SessionCoordinatorTest {
 			throw AssertionError("Logout must report a clear failure")
 		} catch (_: IllegalStateException) { }
 		assertNull(coordinator.ifActive(old) { "stale" })
+		fail = false
+		coordinator.pendingLogoutTicket()?.let { coordinator.logout(it) }
 	}
 
 	@Test
