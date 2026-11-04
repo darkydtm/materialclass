@@ -357,6 +357,35 @@ class NativeGatewayUiIntegrationTest {
 		assertTrue(java.io.File(context.noBackupFilesDir, "session-revoked").exists())
 	}
 
+	@Test fun changedSchoolContextCannotReuseVerifiedProofs() = exercise { exchange, controller ->
+		signIn(controller)
+		waitFor(context.getString(R.string.logout))
+		drain(controller)
+		instrumentation.runOnMainSync { controller.refreshAnnualGrades() }
+		drain(controller)
+		instrumentation.runOnMainSync {
+			assertTrue(controller.state.diary is DiaryState.Ready)
+			assertNotNull(controller.state.schedule)
+			assertNotNull(controller.state.annualGrades)
+		}
+		val before = synchronized(exchange.paths) { exchange.paths.count { it.startsWith("/api/v4/") } }
+		exchange.profileResponse = profile.replace("\"school_id\":1", "\"school_id\":9")
+		instrumentation.runOnMainSync { controller.refresh() }
+		drain(controller)
+		instrumentation.runOnMainSync { controller.refreshAnnualGrades() }
+		drain(controller)
+		instrumentation.runOnMainSync {
+			assertNull(controller.state.profile)
+			assertFalse(controller.state.diary is DiaryState.Ready)
+			assertNull(controller.state.schedule)
+			assertNull(controller.state.selectedDiaryDate)
+			assertTrue(controller.state.diaryWeeks.isEmpty())
+			assertFalse(controller.state.annualGrades is org.materialclass.api.GatewayResult.Success)
+			assertFalse(controller.state.gradesLoading)
+		}
+		assertEquals(before, synchronized(exchange.paths) { exchange.paths.count { it.startsWith("/api/v4/") } })
+	}
+
 	@Test fun refreshedWrongRoleRevokesSession() = contradictoryRefresh(profile.replace("\"student\"", "\"teacher\""))
 	@Test fun refreshedWrongIdRevokesSession() = contradictoryRefresh(profile.replace("\"userId\":123", "\"userId\":124"))
 
