@@ -157,6 +157,30 @@ class NativeControllerIntegrationTest {
 		}
 	}
 
+	@Test fun failedUiObserverKeepsExpiryPendingUntilUnsubscribed() {
+		val shared = SessionCoordinator { }
+		val session = shared.activate(AccountId("synthetic-expiry"))
+		val delivered = CountDownLatch(1)
+		val observer: (Long, () -> Unit) -> Unit = { _, _ ->
+			delivered.countDown()
+			throw IllegalStateException("Synthetic observer failure")
+		}
+		shared.observeUiRevocations(observer)
+		try {
+			assertTrue(shared.revokeIfActive(session, expired = true))
+			assertTrue(delivered.await(10, TimeUnit.SECONDS))
+			assertNotNull(shared.pendingLogoutTicket())
+			assertNull(shared.admit(shared.beginLogin()))
+		} finally {
+			shared.removeUiRevocationObserver(observer)
+		}
+		assertNull(shared.pendingLogoutTicket())
+		val newer = shared.activate(AccountId("synthetic-new"))
+		assertFalse(shared.revokeIfActive(session, expired = true))
+		assertNotNull(shared.admit(newer))
+		shared.logout()
+	}
+
 	@Test fun mainThreadRevocationAppliesAfterCurrentTurn() {
 		val gateway = object : SchoolGateway {
 			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Failure(AppError.UNAVAILABLE)
