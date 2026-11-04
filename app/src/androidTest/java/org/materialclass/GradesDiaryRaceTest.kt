@@ -61,20 +61,25 @@ class GradesDiaryRaceTest {
 		val scheduleResult = AtomicReference(Schedule(emptyList()))
 		val diaryError = AtomicReference<AppError?>(null)
 		val gradesError = AtomicReference<AppError?>(null)
+		val mismatch = java.util.concurrent.atomic.AtomicBoolean(false)
+		val schoolCalls = java.util.concurrent.atomic.AtomicInteger()
 		val gateway: SchoolGateway = object : SchoolGateway, DiaryWeeksGateway, AnnualGradesGateway {
 			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic", login, "student", SchoolContext(1, 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
-			override fun diaryWeeks(session: VerifiedDiarySession, lease: RequestLease) = GatewayResult.Success(DiaryWeeks("01.01.2026", listOf(DiaryWeekOption("First", "01.01.2026"), DiaryWeekOption("Second", "08.01.2026"))))
-			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = GatewayResult.Success("01.01.2026")
+			override fun diaryWeeks(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<DiaryWeeks> { schoolCalls.incrementAndGet(); return GatewayResult.Success(DiaryWeeks("01.01.2026", listOf(DiaryWeekOption("First", "01.01.2026"), DiaryWeekOption("Second", "08.01.2026")))) }
+			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> { schoolCalls.incrementAndGet(); return GatewayResult.Success("01.01.2026") }
 			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> {
+				schoolCalls.incrementAndGet()
 				diaryGate.getAndSet(null)?.waitHere()
 				return diaryError.get()?.let { GatewayResult.Failure(it) } ?: GatewayResult.Success(Diary(context.date, emptyList()))
 			}
 			override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> {
+				schoolCalls.incrementAndGet()
 				val result = scheduleResult.get()
 				scheduleGate.getAndSet(null)?.waitHere()
 				return GatewayResult.Success(result)
 			}
 			override fun annualGrades(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<AnnualGrades> {
+				schoolCalls.incrementAndGet()
 				val account = session.account
 				val gate = gradesGate.getAndSet(null)
 				gate?.waitHere()
@@ -87,7 +92,8 @@ class GradesDiaryRaceTest {
 			val gate = profileGate.getAndSet(null)
 			gate?.waitHere()
 			val profile = JSONObject("""{"userId":${session.identityCandidate},"role":"student","school_id":1,"group":{"id":2},"studentInfo":{"studentSchoolUuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}""")
-			val result = SessionVerification.Verified(AccountId(session.identityCandidate!!), true, VerifiedScheduleSession.compare(session, profile), VerifiedDiarySession.compare(session, profile), StudentProfile("Profile-${session.identityCandidate}", null, null, null))
+			if (mismatch.get()) profile.put("school_id", 99)
+			val result = SessionVerification.Verified(AccountId(session.identityCandidate!!), true, VerifiedScheduleSession.compare(session, profile), VerifiedDiarySession.compare(session, profile), if (mismatch.get()) null else StudentProfile("Profile-${session.identityCandidate}", null, null, null))
 			gate?.returned?.countDown()
 			result
 		}
@@ -209,6 +215,78 @@ class GradesDiaryRaceTest {
 			drain(c)
 			main { assertFalse(c.state.signedIn); assertFalse(c.state.gradesLoading); assertNull(c.state.annualGrades) }
 		} finally { gate.release.countDown() }
+	}
+
+	@Test fun contextMismatchClearsPrivateDataAndStopsSchoolCalls() {
+		val fixture = Fixture()
+		val trace = mutableListOf<NativeUiState>()
+		main { controller = NativeController(onState = { trace.add(it) }) { emit -> SchoolRepository(fixture.gateway, fixture.verifier, coordinator, fixture.cache, { 1L }, emit, SessionStore(context, coordinator)) }; controller!!.login("1", charArrayOf('x')) }
+		val first = controller!!
+		await { first.state.signedIn && first.state.profile?.surname == "Profile-1" && first.state.schedule != null }
+		main { first.refreshAnnualGrades() }
+		await { contents(first.state)?.contains("Subject-1") == true }
+		drain(first)
+		val gate = Gate()
+		fixture.profileGate.set(gate)
+		try {
+			main { first.refresh() }
+			assertTrue(gate.entered.await(15, TimeUnit.SECONDS))
+			main { assertEquals("Profile-1", first.state.profile?.surname); assertTrue(contents(first.state)?.contains("Subject-1") == true) }
+			fixture.mismatch.set(true)
+			val calls = fixture.schoolCalls.get()
+			gate.release.countDown()
+			await { first.state.profile == null && first.state.annualGrades == null && first.state.error == AppError.UNAVAILABLE }
+			drain(first)
+			var clearedAt = 0
+			main { clearedAt = trace.size; first.refreshAnnualGrades(); first.refresh() }
+			drain(first)
+			assertEquals(calls, fixture.schoolCalls.get())
+			main { assertTrue(trace.drop(clearedAt).none { it.profile?.surname == "Profile-1" || contents(it)?.contains("Subject-1") == true }) }
+		} finally { gate.release.countDown() }
+	}
+
+	@Test fun contextMismatchFinishingDuringPendingRevocationCannotRestorePrivateData() {
+		val fixture = Fixture()
+		val trace = mutableListOf<NativeUiState>()
+		main { controller = NativeController(onState = { trace.add(it) }) { emit -> SchoolRepository(fixture.gateway, fixture.verifier, coordinator, fixture.cache, { 1L }, emit, SessionStore(context, coordinator)) }; controller!!.login("1", charArrayOf('x')) }
+		val first = controller!!
+		await { first.state.signedIn && first.state.profile?.surname == "Profile-1" && first.state.schedule != null }
+		main { first.refreshAnnualGrades() }
+		await { contents(first.state)?.contains("Subject-1") == true }
+		drain(first)
+		val held = AtomicReference<(() -> Unit)?>()
+		val delivered = CountDownLatch(1)
+		main { replacement = NativeController(uiDispatch = { action -> held.set(action); delivered.countDown(); true }) { emit -> SchoolRepository(fixture.gateway, fixture.verifier, coordinator, fixture.cache, { 1L }, emit, SessionStore(context, coordinator)) } }
+		val second = replacement!!
+		val gate = Gate()
+		fixture.profileGate.set(gate)
+		val finished = CountDownLatch(1)
+		var worker: Thread? = null
+		try {
+			main { first.refresh() }
+			assertTrue(gate.entered.await(15, TimeUnit.SECONDS))
+			main { assertEquals("Profile-1", first.state.profile?.surname); assertTrue(contents(first.state)?.contains("Subject-1") == true) }
+			fixture.mismatch.set(true)
+			worker = kotlin.concurrent.thread { try { coordinator.logout() } finally { finished.countDown() } }
+			assertTrue(delivered.await(15, TimeUnit.SECONDS))
+			await { !first.state.signedIn && first.state.profile == null && first.state.annualGrades == null }
+			assertNotNull(coordinator.pendingLogoutTicket())
+			assertNull(coordinator.admit(coordinator.beginLogin()))
+			var clearedAt = 0
+			main { clearedAt = trace.size }
+			val calls = fixture.schoolCalls.get()
+			gate.release.countDown()
+			assertTrue(gate.returned.await(15, TimeUnit.SECONDS))
+			drain(first)
+			assertEquals(calls, fixture.schoolCalls.get())
+			main { assertTrue(trace.drop(clearedAt).none { it.profile?.surname == "Profile-1" || contents(it)?.contains("Subject-1") == true }); held.get()!!.invoke() }
+			assertTrue(finished.await(15, TimeUnit.SECONDS))
+			await { coordinator.pendingLogoutTicket() == null }
+		} finally {
+			gate.release.countDown()
+			main { held.get()?.invoke(); second.close(); replacement = null }
+			worker?.join(15000)
+		}
 	}
 
 	@Test fun revocationWaitsForBothControllersAndRejectsLateProfileAndGrades() {
