@@ -52,6 +52,43 @@ class AccessibilityUiTest {
 	}
 
 	@Test
+	fun studentNavigationSelectionSurvivesRecreation() {
+		val context = ApplicationProvider.getApplicationContext<Context>()
+		context.getSharedPreferences("appearance", 0).edit().clear().putBoolean("warning_seen", true).putString("language", "en").commit()
+		val instrumentation = InstrumentationRegistry.getInstrumentation()
+		val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+		try {
+			assertTrue(clickable(waitFor("Diary")).performAction(AccessibilityNodeInfo.ACTION_CLICK))
+			val beforeDeadline = SystemClock.uptimeMillis() + 10000
+			while (!selectedAncestor(waitFor("Diary")) && SystemClock.uptimeMillis() < beforeDeadline) SystemClock.sleep(100)
+			assertTrue(selectedAncestor(waitFor("Diary")))
+			instrumentation.runOnMainSync { activity.recreate() }
+			val recreateDeadline = SystemClock.uptimeMillis() + 10000
+			var recreated = false
+			while (!recreated && SystemClock.uptimeMillis() < recreateDeadline) {
+				instrumentation.runOnMainSync {
+					recreated = androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED).any { it !== activity && it is MainActivity }
+				}
+				if (!recreated) SystemClock.sleep(100)
+			}
+			assertTrue("Activity must be recreated", recreated)
+			instrumentation.waitForIdleSync()
+			val deadline = SystemClock.uptimeMillis() + 10000
+			var selected = false
+			while (!selected && SystemClock.uptimeMillis() < deadline) {
+				selected = instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, "Diary") }?.let { selectedAncestor(it) } == true
+				if (!selected) SystemClock.sleep(100)
+			}
+			assertTrue("Diary navigation must remain selected after recreation", selected)
+		} finally {
+			instrumentation.runOnMainSync {
+				androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED).forEach { it.finish() }
+			}
+			context.getSharedPreferences("appearance", 0).edit().clear().commit()
+		}
+	}
+
+	@Test
 	fun passwordRequestsPasswordKeyboardAndNavigationExposesSelection() {
 		val context = ApplicationProvider.getApplicationContext<Context>()
 		context.getSharedPreferences("appearance", 0).edit().clear().putBoolean("warning_seen", true).commit()
