@@ -32,6 +32,26 @@ class StorageSecurityTest {
 	}
 
 	@Test
+	fun logoutDeletesBothEncryptedCachesAndTheirKeys() {
+		val coordinator = SessionCoordinator(context)
+		val diary = EncryptedCache(context, coordinator)
+		val schedule = EncryptedCache(context, coordinator, "schedule")
+		val session = coordinator.activate(AccountId("synthetic-cleanup"))
+		try {
+			assertTrue(diary.write(session, byteArrayOf(1)))
+			assertTrue(schedule.write(session, byteArrayOf(2)))
+			val keys = KeystoreKeys()
+			val ids = listOf(session.cacheNamespace.value, session.cacheNamespace.value + ":schedule").map { keys.namespace(it, false) }
+			ids.forEach { assertTrue(File(context.filesDir, "backup-cache/$it").exists()); keys.key("cache-$it", false) }
+			coordinator.logout()
+			ids.forEach {
+				assertFalse(File(context.filesDir, "backup-cache/$it").exists())
+				try { keys.key("cache-$it", false); fail("Cache key must be deleted") } catch (_: StorageUnreadableException) { }
+			}
+		} finally { coordinator.logout(); diary.clearAll() }
+	}
+
+	@Test
 	fun legacyEncryptedSessionWithoutNamespaceCannotRestore() {
 		val coordinator = SessionCoordinator(context)
 		val store = SessionStore(context, coordinator)
