@@ -36,6 +36,11 @@ class ScheduleContextVerificationTest {
 			val result = NativeIdentityVerifier(Exchange { Response(200, response) }).verify(session) as SessionVerification.Verified
 			assertNull(result.scheduleSession)
 		}
+		val changedUuid = profile.replace(uuid, "bbbbbbbb-bbbb-cccc-dddd-eeeeeeeeeeee")
+		val mismatch = NativeIdentityVerifier(Exchange { Response(200, changedUuid) }).verify(session) as SessionVerification.Verified
+		assertNull(mismatch.diarySession)
+		val noUuid = UnverifiedSession("synthetic-token", "42", "student", SchoolContext(7, 2026, 2))
+		assertNotNull((NativeIdentityVerifier(Exchange { Response(200, profile) }).verify(noUuid) as SessionVerification.Verified).diarySession)
 		val bad = UnverifiedSession("synthetic-token", "42", "student", SchoolContext(7, 2026, 2, "invalid"))
 		assertNull((NativeIdentityVerifier(Exchange { Response(200, profile.replace(uuid, "invalid")) }).verify(bad) as SessionVerification.Verified).scheduleSession)
 		assertFalse(NativeIdentityVerifier(Exchange { Response(200, profile.replace("\"userId\":42", "\"userId\":43")) }).verify(session) is SessionVerification.Verified)

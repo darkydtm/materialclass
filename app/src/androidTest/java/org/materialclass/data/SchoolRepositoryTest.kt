@@ -64,6 +64,31 @@ class SchoolRepositoryTest {
 	}
 
 	@Test
+	fun invalidatedProofCannotBeAdmittedAfterProfileRefresh() {
+		val prepared = CountDownLatch(1); val release = CountDownLatch(1)
+		val calls = java.util.concurrent.atomic.AtomicInteger()
+		val gateway = object : TestSchoolGateway(), AnnualGradesGateway {
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = error("Unexpected diary request")
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", "1", "student", SchoolContext(1, 2026, 2)))
+			override fun annualGrades(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<AnnualGrades> { calls.incrementAndGet(); return GatewayResult.Success(AnnualGrades(emptyList())) }
+		}
+		var valid = true
+		val repo = SchoolRepository(gateway, IdentityVerifier { session, _ -> if (valid) proof(session) else SessionVerification.Retry }, coordinator, FakeCache(), { 1L }, {}, store)
+		assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+		repo.beforeRequestAdmission = { prepared.countDown(); check(release.await(30, TimeUnit.SECONDS)) }
+		val worker = thread { repo.annualGrades {} }
+		try {
+			assertTrue(prepared.await(10, TimeUnit.SECONDS))
+			repo.beforeRequestAdmission = {}
+			valid = false
+			assertFalse(repo.refreshProfile(repo.beginProfileRefresh()) { _, _ -> })
+			release.countDown(); worker.join(10000)
+			assertFalse(worker.isAlive)
+			assertEquals(0, calls.get())
+		} finally { release.countDown(); worker.join(10000) }
+	}
+
+	@Test
 	fun annualDeliveryCannotCrossLogoutOrReplacement() {
 		val entered = CountDownLatch(1)
 		val release = CountDownLatch(1)
