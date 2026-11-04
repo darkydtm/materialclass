@@ -54,6 +54,7 @@
 	<string name="grades">Годовые оценки</string>
 	<string name="grades_load">Загрузить годовые оценки</string>
 	<string name="grades_empty">Годовых оценок нет</string>
+	<string name="grades_score_unavailable">Недоступно</string>
 	<string name="grades_unknown">Неизвестно</string>
 	<string name="grades_quarter">Четверть %1$d: %2$s</string>
 	<string name="grades_year">Год: %1$s</string>

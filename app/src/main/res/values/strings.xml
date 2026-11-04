@@ -54,6 +54,7 @@
 	<string name="grades">Annual grades</string>
 	<string name="grades_load">Load annual grades</string>
 	<string name="grades_empty">No annual grades</string>
+	<string name="grades_score_unavailable">Unavailable</string>
 	<string name="grades_unknown">Unknown</string>
 	<string name="grades_quarter">Quarter %1$d: %2$s</string>
 	<string name="grades_year">Year: %1$s</string>

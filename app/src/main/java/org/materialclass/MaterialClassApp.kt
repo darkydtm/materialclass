@@ -106,9 +106,9 @@ internal fun MaterialClassApp(example: ExampleData? = null, nativeEnabled: Boole
 										if (grades.value.rows.isEmpty()) Text(stringResource(R.string.grades_empty))
 										grades.value.rows.forEach { row ->
 											Text(row.subjectName, style = MaterialTheme.typography.titleMedium)
-											row.quarters.forEachIndexed { index, score -> Text(stringResource(R.string.grades_quarter, index + 1, score ?: stringResource(R.string.grades_unknown))) }
-											Text(stringResource(R.string.grades_year, row.yearScore ?: stringResource(R.string.grades_unknown)))
-											Text(stringResource(R.string.grades_final, row.finalScore ?: stringResource(R.string.grades_unknown)))
+											row.quarters.forEachIndexed { index, score -> Text(stringResource(R.string.grades_quarter, index + 1, gradeDisplay(score))) }
+											Text(stringResource(R.string.grades_year, gradeDisplay(row.yearScore)))
+											Text(stringResource(R.string.grades_final, gradeDisplay(row.finalScore)))
 										}
 									}
 									null -> Text(stringResource(R.string.data_unavailable))
@@ -241,4 +241,11 @@ private fun LoginScreen(controller: NativeUiController?, state: NativeUiState?) 
 private fun formatTimestamp(value: Long, context: android.content.Context): String {
 	val locale = androidx.core.os.ConfigurationCompat.getLocales(context.resources.configuration)[0] ?: Locale.getDefault()
 	return java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT, locale).format(java.util.Date(value))
+}
+
+@androidx.compose.runtime.Composable
+private fun gradeDisplay(score: String?): String = when {
+	score == null -> stringResource(R.string.grades_unknown)
+	score.isEmpty() -> stringResource(R.string.grades_score_unavailable)
+	else -> score
 }

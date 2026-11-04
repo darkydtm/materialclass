@@ -90,7 +90,7 @@ class NativeGatewayUiIntegrationTest {
 					val number = gradesCalls.incrementAndGet()
 					if (blockGrades.get() && number == 1) { gradesEntered.countDown(); check(gradesRelease.await(60, TimeUnit.SECONDS)) }
 					val subject = if (blockGrades.get() && number == 1) "Old annual subject" else "Synthetic annual subject"
-					Response(200, """{"data":{"rows":[{"subjectName":"$subject","attestations":{"quarter1":"4","quarter2":null},"yearScores":{"yearScore":null,"finalScore":null}}]}}""")
+					Response(200, """{"data":{"rows":[{"subjectName":"$subject","attestations":{"quarter1":"4","quarter2":null},"yearScores":{"yearScore":null,"finalScore":""}}]}}""")
 				}
 				"/api/v4/os/clientoffice/diary/weeks" -> if (offlineWeeks.get()) throw java.io.IOException("offline") else if (selectableWeeks.get()) Response(200, """{"data":{"week":"01.01.2026","weeks":[{"label":"First","value":"01.01.2026"},{"label":"Second","value":"08.01.2026"}]}}""") else Response(200, """{"data":{"week":"01.01.2026"}}""")
 				"/api/v4/os/clientoffice/diary" -> {
@@ -165,6 +165,7 @@ class NativeGatewayUiIntegrationTest {
 		waitFor("Synthetic annual subject")
 		waitFor("Quarter 1: 4")
 		waitFor("Quarter 2: Unknown")
+		waitFor("Final: Unavailable")
 		assertTrue(exchange.paths.contains("/api/v4/os/clientoffice/diary/year"))
 	}
 

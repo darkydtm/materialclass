@@ -54,6 +54,7 @@
 	<string name="grades">Жылдық бағалар</string>
 	<string name="grades_load">Жылдық бағаларды жүктеу</string>
 	<string name="grades_empty">Жылдық бағалар жоқ</string>
+	<string name="grades_score_unavailable">Қолжетімсіз</string>
 	<string name="grades_unknown">Белгісіз</string>
 	<string name="grades_quarter">Тоқсан %1$d: %2$s</string>
 	<string name="grades_year">Жыл: %1$s</string>
