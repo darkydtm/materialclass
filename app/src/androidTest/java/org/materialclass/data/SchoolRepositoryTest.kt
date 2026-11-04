@@ -955,6 +955,53 @@ class SchoolRepositoryTest {
 	}
 
 	@Test
+	fun selectedWeekCacheIsRestrictedToMatchingDate() {
+		val gateway = FakeGateway(); val cache = FakeCache(); val events = mutableListOf<DiaryState>()
+		val repository = repository(gateway, cache, events)
+		assertTrue(repository.login("synthetic", charArrayOf('x')) is GatewayResult.Success)
+		gateway.result = GatewayResult.Success(Diary("08.01.2026", emptyList()))
+		repository.refreshDate("08.01.2026")
+		gateway.result = GatewayResult.Failure(AppError.OFFLINE)
+		repository.refreshDate("08.01.2026")
+		val saved = events.last() as DiaryState.Ready
+		assertEquals("08.01.2026", saved.snapshot.diary.date)
+		assertEquals(AppError.OFFLINE, saved.staleError)
+		repository.refreshDate("01.01.2026")
+		assertEquals(AppError.OFFLINE, (events.last() as DiaryState.Error).error)
+	}
+
+	@Test
+	fun delayedSelectedWeekCannotPublishAfterAccountSwitch() {
+		val entered = CountDownLatch(1); val release = CountDownLatch(1)
+		val gateway = object : TestSchoolGateway() {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", if (login == "old") "1" else "2", "student", SchoolContext(1, 2026, 2)))
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> {
+				if (session.remote.identityCandidate == "1") { entered.countDown(); check(release.await(10, TimeUnit.SECONDS)) }
+				return GatewayResult.Success(Diary(context.date, emptyList()))
+			}
+		}
+		val events = java.util.Collections.synchronizedList(mutableListOf<DiaryState>())
+		val cache = FakeCache()
+		val repository = SchoolRepository(gateway, IdentityVerifier { session, _ -> proof(session) }, coordinator, cache, { 1L }, events::add, store)
+		assertTrue(repository.login("old", charArrayOf('x')) is GatewayResult.Success)
+		val worker = thread { repository.refreshDate("08.01.2026") }
+		try {
+			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			assertTrue(repository.login("new", charArrayOf('x')) is GatewayResult.Success)
+			repository.refreshDate("01.01.2026")
+			val count = events.size
+			release.countDown(); worker.join(10000)
+			assertFalse(worker.isAlive)
+			assertEquals(count, events.size)
+			assertEquals("01.01.2026", (events.last() as DiaryState.Ready).snapshot.diary.date)
+			assertFalse(cache.values.containsKey(AccountId("1")))
+			assertTrue(cache.values.containsKey(AccountId("2")))
+		} finally {
+			release.countDown(); worker.join(10000)
+		}
+	}
+
+	@Test
 	fun olderRefreshCannotOverwriteNewerRefresh() {
 		val entered = CountDownLatch(1); val release = CountDownLatch(1)
 		val gateway = object : TestSchoolGateway() {

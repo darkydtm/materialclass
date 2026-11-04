@@ -62,6 +62,7 @@ class NativeGatewayUiIntegrationTest {
 		val blockDiary = AtomicBoolean(false)
 		val selectableWeeks = AtomicBoolean(false)
 		val requestedDates = java.util.Collections.synchronizedList(mutableListOf<String>())
+		val cacheWrites = java.util.concurrent.atomic.AtomicInteger()
 		val entered = CountDownLatch(1)
 		val release = CountDownLatch(1)
 		val returned = CountDownLatch(1)
@@ -105,7 +106,7 @@ class NativeGatewayUiIntegrationTest {
 		val exchange = SyntheticExchange()
 		val cache = object : DiaryCache {
 			override fun read(session: ActiveSession): ByteArray? = null
-			override fun write(session: ActiveSession, bytes: ByteArray) = true
+			override fun write(session: ActiveSession, bytes: ByteArray): Boolean { exchange.cacheWrites.incrementAndGet(); return true }
 		}
 		val controller = NativeController { emit -> SchoolRepository(NativeGateway(exchange), NativeIdentityVerifier(exchange), coordinator, cache, { 1L }, emit, SessionStore(context, coordinator)) }
 		activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
@@ -147,6 +148,68 @@ class NativeGatewayUiIntegrationTest {
 		waitFor("Selected week: 08.01.2026")
 		waitFor("Homework for 08.01.2026")
 		assertTrue(exchange.requestedDates.contains("08.01.2026"))
+	}
+
+	@Test fun laterWeekSelectionWinsAfterDelayedResponse() = exercise { exchange, controller ->
+		exchange.selectableWeeks.set(true)
+		signIn(controller)
+		waitFor(context.getString(R.string.logout))
+		click(context.getString(R.string.diary))
+		waitFor("Homework for 01.01.2026")
+		exchange.blockDiary.set(true)
+		click("First - 01.01.2026")
+		assertTrue(exchange.entered.await(15, TimeUnit.SECONDS))
+		click("Second - 08.01.2026")
+		waitFor("Selected week: 08.01.2026")
+		exchange.blockDiary.set(false)
+		exchange.release.countDown()
+		assertTrue(exchange.returned.await(15, TimeUnit.SECONDS))
+		waitFor("Homework for 08.01.2026")
+		instrumentation.waitForIdleSync()
+		instrumentation.runOnMainSync {
+			assertEquals("08.01.2026", controller.state.selectedDiaryDate)
+			assertEquals("08.01.2026", (controller.state.diary as DiaryState.Ready).snapshot.diary.date)
+		}
+		assertNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, "Homework for 01.01.2026") })
+	}
+
+	@Test fun invalidWeekSelectionIsIgnored() = exercise { exchange, controller ->
+		exchange.selectableWeeks.set(true)
+		signIn(controller)
+		waitFor(context.getString(R.string.logout))
+		click(context.getString(R.string.diary))
+		waitFor("Homework for 01.01.2026")
+		val before = exchange.requestedDates.size
+		instrumentation.runOnMainSync { controller.selectDiaryWeek("15.01.2026") }
+		instrumentation.waitForIdleSync()
+		instrumentation.runOnMainSync { assertEquals("01.01.2026", controller.state.selectedDiaryDate) }
+		assertEquals(before, exchange.requestedDates.size)
+	}
+
+	@Test fun logoutDuringWeekSelectionRejectsLateUiAndCacheWrite() = exercise { exchange, controller ->
+		exchange.selectableWeeks.set(true)
+		signIn(controller)
+		waitFor(context.getString(R.string.logout))
+		click(context.getString(R.string.diary))
+		waitFor("Homework for 01.01.2026")
+		val writes = exchange.cacheWrites.get()
+		exchange.blockDiary.set(true)
+		click("Second - 08.01.2026")
+		assertTrue(exchange.entered.await(15, TimeUnit.SECONDS))
+		instrumentation.runOnMainSync { controller.logout() }
+		waitFor(context.getString(R.string.sign_in))
+		exchange.release.countDown()
+		assertTrue(exchange.returned.await(15, TimeUnit.SECONDS))
+		val field = NativeController::class.java.getDeclaredField("executor").apply { isAccessible = true }
+		(field.get(controller) as java.util.concurrent.ExecutorService).submit {}.get(15, TimeUnit.SECONDS)
+		instrumentation.waitForIdleSync()
+		instrumentation.runOnMainSync {
+			assertFalse(controller.state.signedIn)
+			assertTrue(controller.state.diary is DiaryState.Cleared)
+			assertNull(controller.state.selectedDiaryDate)
+		}
+		assertEquals(writes, exchange.cacheWrites.get())
+		assertNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, "Homework for 08.01.2026") })
 	}
 
 	@Test fun realGatewayDisplaysDiaryScheduleAndLogout() = exercise { exchange, controller ->
