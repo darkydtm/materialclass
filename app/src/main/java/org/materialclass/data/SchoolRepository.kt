@@ -384,6 +384,7 @@ internal class SchoolRepository(
 	}
 
 	private fun failureState(active: ActiveSession, context: DiaryContext, error: AppError): DiaryState {
+		if (error != AppError.OFFLINE && error != AppError.TIMEOUT) return DiaryState.Error(error)
 		val saved = cache.read(active)?.let { decode(it, context) }?.takeIf { it.diary.date == context.date }
 		return if (saved == null) DiaryState.Error(error) else DiaryState.Ready(saved, error)
 	}

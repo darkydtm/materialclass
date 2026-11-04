@@ -929,6 +929,12 @@ class SchoolRepositoryTest {
 		val stale = events.last() as DiaryState.Ready
 		assertEquals(AppError.OFFLINE, stale.staleError)
 		assertEquals(1234L, stale.snapshot.lastSuccessMillis)
+		gateway.result = GatewayResult.Success(Diary("08.01.2026", emptyList()))
+		repository.refresh(context)
+		assertEquals(AppError.INCOMPATIBLE_RESPONSE, (events.last() as DiaryState.Error).error)
+		gateway.result = GatewayResult.Failure(AppError.OFFLINE)
+		repository.refresh(DiaryContext(context.schoolId, context.eduYear, context.groupId, "08.01.2026"))
+		assertEquals(AppError.OFFLINE, (events.last() as DiaryState.Error).error)
 		repository.logout()
 		val count = events.size
 		repository.refresh(context)
