@@ -175,6 +175,50 @@ class NativeControllerIntegrationTest {
 		}
 	}
 
+	@Test fun repositoryUnticketedLogoutWaitsForSelectedUiAcknowledgement() {
+		val shared = SessionCoordinator { }
+		val gateway = object : SchoolGateway {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Failure(AppError.UNAVAILABLE)
+			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = GatewayResult.Failure(AppError.UNAVAILABLE)
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = GatewayResult.Failure(AppError.UNAVAILABLE)
+			override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> = GatewayResult.Failure(AppError.UNAVAILABLE)
+		}
+		val cache = object : DiaryCache {
+			override fun read(session: ActiveSession): ByteArray? = null
+			override fun write(session: ActiveSession, bytes: ByteArray) = true
+		}
+		val repository = SchoolRepository(gateway, IdentityVerifier { _, _ -> SessionVerification.Retry }, shared, cache, { 1L }, {}, SessionStore(context, shared))
+		val delivered = CountDownLatch(1)
+		val finished = CountDownLatch(1)
+		val held = java.util.concurrent.atomic.AtomicReference<(() -> Unit)?>()
+		val failure = java.util.concurrent.atomic.AtomicReference<Throwable?>()
+		val observer: (Long, () -> Unit) -> Unit = { _, ack -> held.set(ack); delivered.countDown() }
+		shared.observeUiRevocations(observer)
+		val worker = kotlin.concurrent.thread {
+			try { repository.logout() } catch (error: Throwable) { failure.set(error) } finally { finished.countDown() }
+		}
+		try {
+			assertTrue(delivered.await(10, TimeUnit.SECONDS))
+			val ticket = shared.pendingLogoutTicket()
+			assertNotNull(ticket)
+			assertNull(shared.admit(shared.beginLogin()))
+			assertFalse("Repository returned before UI acknowledgement", finished.await(1, TimeUnit.SECONDS))
+			held.get()!!.invoke()
+			assertTrue(finished.await(10, TimeUnit.SECONDS))
+			assertNull(failure.get())
+			assertNull(shared.pendingLogoutTicket())
+			val newer = shared.activate(AccountId("synthetic-new"))
+			shared.logout(ticket)
+			assertNotNull(shared.admit(newer))
+		} finally {
+			held.get()?.invoke()
+			shared.removeUiRevocationObserver(observer)
+			worker.join(10000)
+			shared.pendingLogoutTicket()?.let { shared.logout(it) }
+			shared.logout()
+		}
+	}
+
 	@Test fun failedUiDeliveryReportsFailureAndKeepsTicketPending() {
 		val shared = SessionCoordinator { }
 		val observer: (Long, () -> Unit) -> Unit = { _, _ -> throw IllegalStateException("Synthetic delivery failure") }
