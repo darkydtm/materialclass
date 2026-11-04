@@ -80,7 +80,11 @@ class DiarySessionRaceUiTest {
 				if (failOffline) throw IOException("synthetic offline")
 				Response(200, """{"data":{"date":"$date","days":[{"day":"Thursday","date":"$date","subjects":[{"label":"Synthetic lesson","type":"lesson","scheduleUuid":"synthetic","homeworkType":"text","homeworkBody":"Homework for $date","homeworkUuid":null,"hasBooks":false,"hasFiles":false}]}]}}""")
 			}
-			"/api/v4/os/clientoffice/schedule" -> Response(200, """{"data":{"weeks":{"next":"08.01.2026","prev":"25.12.2025","next_time":2,"prev_time":1},"days":[]}}""")
+			"/api/v4/os/clientoffice/schedule" -> {
+				val dates = listOf("29.12.2025", "30.12.2025", "31.12.2025", "01.01.2026", "02.01.2026", "03.01.2026", "04.01.2026")
+				val days = dates.mapIndexed { index, date -> """{"date":$index,"dateFormat":"$date","isCurrent":true,"isHoliday":false,"schedule":[]}""" }.joinToString(",")
+				Response(200, """{"data":{"weeks":{"next":"08.01.2026","prev":"25.12.2025","next_time":2,"prev_time":1},"days":[$days]}}""")
+			}
 			else -> throw AssertionError("Unexpected request: ${request.url.path}")
 		}
 	}
