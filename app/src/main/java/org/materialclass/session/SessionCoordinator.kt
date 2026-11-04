@@ -35,9 +35,12 @@ class RequestLease internal constructor(internal val owner: ActiveSession? = nul
 internal enum class SessionChange { ACTIVATED, EXPIRED, LOGOUT }
 internal data class SessionEvent(val epoch: Long, val change: SessionChange, val session: ActiveSession?)
 
-class SessionCoordinator internal constructor(private val clearSession: () -> Unit, private val clearCache: (CacheNamespace) -> Unit) {
+class SessionCoordinator internal constructor(private val clearSession: () -> Unit, private val clearCache: (CacheNamespace) -> Unit, private val journal: CleanupJournal? = null) {
 	internal constructor(clearSession: () -> Unit) : this(clearSession, {})
-	constructor(context: Context) : this({ SessionStore.clear(context) }, { org.materialclass.cache.EncryptedCache.clearNamespace(context, it) })
+	constructor(context: Context) : this({ SessionStore.clear(context) }, { org.materialclass.cache.EncryptedCache.clearNamespace(context, it) }, FileCleanupJournal(context))
+
+	private val recovery by lazy { journal?.let { CleanupRecovery(it, clearCache, clearSession) } }
+	private fun recoverCleanup() { recovery?.recover() }
 
 	companion object {
 		private var active: ActiveSession? = null
@@ -123,6 +126,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		if (pending.isNotEmpty() || revision != expected) null else RequestLease().also { leases.add(it) }
 	}
 	internal fun beginLogin(): Long = synchronized(StorageLock) {
+		recoverCleanup()
 		cancelRequests()
 		synchronized(CancellationLock) { ++revision }
 	}
@@ -143,6 +147,8 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		}
 	}
 	private fun cleanup(namespace: CacheNamespace?) {
+		val durable = recovery
+		if (durable != null) { durable.cleanup(namespace); return }
 		var failure: Exception? = null
 		try { if (namespace != null) clearCache(namespace) } catch (error: Exception) { failure = error }
 		try { clearSession() } catch (error: Exception) {
@@ -173,6 +179,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		activateChecked(account, requestRevision()) ?: throw IllegalStateException("Session activation cancelled")
 	}
 	private fun activateChecked(account: AccountId, expected: Long): ActiveSession? {
+		recoverCleanup()
 		val activation = synchronized(CancellationLock) {
 			if (pending.isNotEmpty() || revision != expected) null else {
 				val previous = active
@@ -208,6 +215,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		return candidate
 	}
 	internal fun beginRestore(): Long? = synchronized(StorageLock) {
+		recoverCleanup()
 		val expected = synchronized(CancellationLock) {
 			if (active != null || !restorationAllowed || pending.isNotEmpty()) null else ++revision
 		}
