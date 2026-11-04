@@ -71,6 +71,60 @@ class NativeUiControllerTest {
 		}
 	}
 
+	@Test fun homeworkTracksDiaryStatesAndAccountChanges() {
+		val context = ApplicationProvider.getApplicationContext<Context>()
+		context.getSharedPreferences("appearance", 0).edit().putBoolean("warning_seen", true).putString("language", "en").commit()
+		fun subject(label: String, body: String?, books: Boolean = false, files: Boolean = false) = DiarySubject(label, "lesson", "id", "text", body, null, books, files)
+		val diary = Diary("01.01.2026", listOf(
+			DiaryDay("Thursday", "01.01.2026", listOf(subject("No body", null), subject("Empty body", ""), subject("Math", "First assignment", files = true))),
+			DiaryDay("Friday", "02.01.2026", listOf(subject("History", "Second assignment", books = true)))
+		))
+		val fake = object : NativeUiController {
+			override var state by mutableStateOf(NativeUiState(signedIn = true, diary = DiaryState.Loading))
+			override fun start() { }
+			override fun login(username: String, password: CharArray) { password.fill('\u0000') }
+			override fun refresh() { }
+			override fun logout() { state = NativeUiState() }
+			override fun close() { }
+		}
+		val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
+		try {
+			instrumentation.runOnMainSync { activity.setContent { MaterialClassApp(nativeEnabled = true, controllerFactory = { fake }) } }
+			click("Homework")
+			waitFor(context.getString(R.string.loading))
+			instrumentation.runOnMainSync { fake.state = fake.state.copy(diary = DiaryState.Ready(DiarySnapshot(diary, 1), AppError.OFFLINE)) }
+			waitFor("First assignment")
+			waitFor("Second assignment")
+			waitFor("Record date: 01.01.2026")
+			waitFor("Record date: 02.01.2026")
+			waitFor(context.getString(R.string.homework_files))
+			waitFor(context.getString(R.string.homework_books))
+			waitFor(context.getString(R.string.stale_data, context.getString(R.string.error_offline)))
+			val root = instrumentation.uiAutomation.rootInActiveWindow
+			assertNull(find(root, "No body"))
+			assertNull(find(root, "Empty body"))
+			assertTrue(waitFor("First assignment").boundsInScreenTop() < waitFor("Second assignment").boundsInScreenTop())
+			instrumentation.runOnMainSync { fake.state = fake.state.copy(diary = DiaryState.Ready(DiarySnapshot(Diary("", listOf(DiaryDay("", "", listOf(subject("No body", null), subject("Empty body", ""))))), 1))) }
+			waitFor(context.getString(R.string.homework_empty))
+			instrumentation.runOnMainSync { fake.state = fake.state.copy(diary = DiaryState.Error(AppError.OFFLINE)) }
+			waitFor(context.getString(R.string.error_offline))
+			waitFor(context.getString(R.string.data_unavailable))
+			instrumentation.runOnMainSync { fake.state = NativeUiState(signedIn = true, diary = DiaryState.Ready(DiarySnapshot(diary, 1))) }
+			waitFor("First assignment")
+			instrumentation.runOnMainSync { fake.state = NativeUiState() }
+			waitFor(context.getString(R.string.data_unavailable))
+			assertNull(find(instrumentation.uiAutomation.rootInActiveWindow, "First assignment"))
+			instrumentation.runOnMainSync { fake.state = NativeUiState(signedIn = true, diary = DiaryState.Loading) }
+			waitFor(context.getString(R.string.loading))
+			assertNull(find(instrumentation.uiAutomation.rootInActiveWindow, "First assignment"))
+		} finally {
+			activity.finish()
+			context.getSharedPreferences("appearance", 0).edit().clear().commit()
+		}
+	}
+
+	private fun AccessibilityNodeInfo.boundsInScreenTop(): Int = android.graphics.Rect().also { getBoundsInScreen(it) }.top
+
 	@Test fun emptyDiaryIsDistinctFromUnavailable() {
 		val context = ApplicationProvider.getApplicationContext<Context>()
 		context.getSharedPreferences("appearance", 0).edit().putBoolean("warning_seen", true).commit()
