@@ -45,6 +45,24 @@ class CleanupRecoveryTest {
 	}
 
 	@Test
+	fun failedJournalWriteInvalidatesOnlyAfterCheckingOwnership() {
+		var invalidated = 0
+		var saved: CacheNamespace? = null
+		val namespace = CacheNamespace("a".repeat(64))
+		val journal = object : CleanupJournal {
+			override fun read() = saved
+			override fun write(namespace: CacheNamespace) { saved = namespace; throw IllegalStateException("write") }
+			override fun clear() { throw AssertionError("Unexpected clear") }
+		}
+		try {
+			CleanupRecovery(journal, { throw AssertionError("Unexpected cache clear") }, { throw AssertionError("Unexpected session clear") }, { invalidated++ }).cleanup(namespace)
+			throw AssertionError("Expected failure")
+		} catch (_: LogoutStorageException) { }
+		assertEquals(1, invalidated)
+		assertEquals(namespace, saved)
+	}
+
+	@Test
 	fun failedCleanupIsRetriedAfterRecreation() {
 		var saved: CacheNamespace? = null
 		var fail = true

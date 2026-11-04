@@ -4,9 +4,9 @@ import android.content.Context
 import android.system.Os
 import java.io.File
 
-internal class CacheFiles(context: Context) {
+internal class CacheFiles(context: Context, temporaryName: String = "storage-tmp") {
 	val directory = File(context.filesDir, "backup-cache").apply { check(mkdirs() || isDirectory) }
-	private val temporary by lazy { File(context.noBackupFilesDir, "storage-tmp").apply { check(mkdirs() || isDirectory) } }
+	private val temporary by lazy { File(context.noBackupFilesDir, temporaryName).apply { check(mkdirs() || isDirectory) } }
 
 	fun replace(target: File, bytes: ByteArray) {
 		val temp = File.createTempFile("encrypted-", ".tmp", temporary)
