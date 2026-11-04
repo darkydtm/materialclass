@@ -31,6 +31,10 @@ internal data class NativeUiState(
 	val selectedDiaryDate: String? = null,
 	val schedule: Schedule? = null,
 	val scheduleSnapshot: ScheduleSnapshot? = null,
+	val annualGrades: GatewayResult<org.materialclass.api.AnnualGrades>? = null,
+	val gradesLoading: Boolean = false,
+	val profile: org.materialclass.api.StudentProfile? = null,
+
 	val error: AppError? = null,
 )
 
@@ -40,11 +44,16 @@ internal interface NativeUiController {
 	fun login(username: String, password: CharArray)
 	fun refresh()
 	fun selectDiaryWeek(date: String) {}
+	fun refreshAnnualGrades() {}
 	fun logout()
 	fun close()
 }
 
-internal class NativeController(private val repositoryFactory: ((DiaryState) -> Unit) -> SchoolRepository) : NativeUiController {
+internal class NativeController(
+	private val onState: (NativeUiState) -> Unit = {},
+	private val repositoryFactory: ((DiaryState) -> Unit) -> SchoolRepository,
+) : NativeUiController {
+
 	private val executor = Executors.newSingleThreadExecutor()
 	private val logoutExecutor = Executors.newSingleThreadExecutor()
 	private var logoutTicket: Any? = null
@@ -73,15 +82,24 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 		if (Looper.myLooper() == Looper.getMainLooper()) apply() else handler.post { apply() }
 	}
 	@Volatile private var generation = 0L
+	@Volatile private var diaryRevision = 0L
+	@Volatile private var scheduleRevision = 0L
+	@Volatile private var gradesRevision = 0L
+	@Volatile private var currentDiaryRevision = 0L
 	@Volatile private var closed = false
 	private var started = false
 	private var currentTaskGeneration = 0L
 	@Volatile private var currentTaskEpoch = 0L
-	override var state by mutableStateOf(NativeUiState())
-		private set
+	private var stateValue by mutableStateOf(NativeUiState())
+	override var state: NativeUiState
+		get() = stateValue
+		private set(value) { stateValue = value; onState(value) }
+
 	private val repository: SchoolRepository = repositoryFactory { diary ->
 		val task = currentTaskGeneration
+		val revision = currentDiaryRevision
 		post(task) {
+			if (diaryRevision != revision) return@post
 			if (!repository.acceptsDiary(diary)) return@post
 			state = if (diary is DiaryState.Error && diary.error == AppError.SESSION_EXPIRED) NativeUiState(error = diary.error)
 			else state.copy(diary = if (diary is DiaryState.RestoreClear) DiaryState.Cleared else diary, error = if (diary is DiaryState.Error) diary.error else state.error)
@@ -117,7 +135,7 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 			if (result is RestoreResult.Restored) repository.ownedEpoch()?.let { currentTaskEpoch = it }
 			post(task) {
 				if (result is RestoreResult.Restored) observedEpoch = currentTaskEpoch
-				state = state.copy(busy = false, signedIn = result is RestoreResult.Restored, error = if (result is RestoreResult.Retry) AppError.UNAVAILABLE else null)
+				state = state.copy(busy = false, signedIn = result is RestoreResult.Restored, profile = if (result is RestoreResult.Restored) repository.currentProfile() else null, error = if (result is RestoreResult.Retry) AppError.UNAVAILABLE else null)
 				if (result is RestoreResult.Restored) refresh()
 			}
 		}
@@ -137,7 +155,7 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 				if (result is GatewayResult.Success) repository.ownedEpoch()?.let { currentTaskEpoch = it }
 				post(task) {
 					if (result is GatewayResult.Success) observedEpoch = currentTaskEpoch
-					state = state.copy(busy = false, signedIn = result is GatewayResult.Success, error = (result as? GatewayResult.Failure)?.error)
+					state = state.copy(busy = false, signedIn = result is GatewayResult.Success, profile = if (result is GatewayResult.Success) repository.currentProfile() else null, error = (result as? GatewayResult.Failure)?.error)
 					if (result is GatewayResult.Success) refresh()
 				}
 			}
@@ -146,52 +164,90 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 
 	override fun refresh() {
 		if (closed || !state.signedIn) return
-		val task = ++generation
+		val task = generation
+		val revision = ++diaryRevision
+		val scheduleRequest = ++scheduleRevision
 		val epoch = observedEpoch
 		val selected = state.selectedDiaryDate
 		state = state.copy(error = null)
 		executor.execute {
-			if (closed || generation != task) return@execute
+			if (closed || generation != task || repository.revocationEpoch() != epoch) return@execute
 			currentTaskGeneration = task
+			currentDiaryRevision = revision
 			currentTaskEpoch = epoch
 			try {
-				if (selected != null) repository.refreshDate(selected) else repository.refreshCurrent { weeks ->
-					post(task) { state = state.copy(diaryWeeks = weeks.options, selectedDiaryDate = weeks.currentWeek) }
+				repository.refreshProfile { profile -> post(task) { state = state.copy(profile = profile) } }
+				if (diaryRevision == revision) {
+					if (selected != null) repository.refreshDate(selected) else repository.refreshCurrent { weeks ->
+						post(task) { if (diaryRevision != revision) return@post; state = state.copy(diaryWeeks = weeks.options, selectedDiaryDate = weeks.currentWeek) }
+					}
+
 				}
+			} catch (_: Exception) { post(task) { if (diaryRevision != revision) return@post; if (state.error != AppError.SESSION_EXPIRED) state = state.copy(error = AppError.UNAVAILABLE) } }
+			try {
+				if (scheduleRevision != scheduleRequest) return@execute
 				repository.currentWeekForSchedule { week, weekRevision ->
-					if (closed || generation != task || repository.revocationEpoch() != epoch) return@currentWeekForSchedule
+					if (closed || generation != task || scheduleRevision != scheduleRequest || repository.revocationEpoch() != epoch) return@currentWeekForSchedule
 					when (week) {
 						is GatewayResult.Success -> repository.scheduleSnapshot(week.value) { result ->
-							post(task) { state = when (result) {
+							post(task) { if (scheduleRevision != scheduleRequest) return@post; state = when (result) {
 								is GatewayResult.Success -> state.copy(schedule = result.value.schedule, scheduleSnapshot = result.value)
 								is GatewayResult.Failure -> state.copy(schedule = null, scheduleSnapshot = null, error = result.error)
 							} }
 						}
 						is GatewayResult.Failure -> repository.savedSchedule(week.error, weekRevision) { result ->
-							post(task) { state = when (result) {
+							post(task) { if (scheduleRevision != scheduleRequest) return@post; state = when (result) {
 								is GatewayResult.Success -> state.copy(schedule = result.value.schedule, scheduleSnapshot = result.value)
 								is GatewayResult.Failure -> state.copy(schedule = null, scheduleSnapshot = null, error = result.error)
 							} }
 						}
 					}
 				}
-			} catch (_: Exception) { post(task) { if (state.error != AppError.SESSION_EXPIRED) state = state.copy(error = AppError.UNAVAILABLE) } }
+			} catch (_: Exception) { post(task) { if (scheduleRevision != scheduleRequest) return@post; if (state.error != AppError.SESSION_EXPIRED) state = state.copy(error = AppError.UNAVAILABLE) } }
 		}
 	}
 
 	override fun selectDiaryWeek(date: String) {
 		if (closed || !state.signedIn || state.diaryWeeks.none { it.value == date }) return
-		val task = ++generation
+		val task = generation
+		val revision = ++diaryRevision
 		val epoch = observedEpoch
 		state = state.copy(selectedDiaryDate = date, diary = DiaryState.Loading, error = null)
 		executor.execute {
-			if (closed || generation != task || repository.revocationEpoch() != epoch) return@execute
+			if (closed || generation != task || diaryRevision != revision || repository.revocationEpoch() != epoch) return@execute
 			currentTaskGeneration = task
+			currentDiaryRevision = revision
 			currentTaskEpoch = epoch
 			repository.refreshDate(date)
 		}
 	}
 
+	override fun refreshAnnualGrades() {
+		if (closed || !state.signedIn) return
+		val task = generation
+		val revision = ++gradesRevision
+		val epoch = observedEpoch
+		state = state.copy(annualGrades = null, gradesLoading = true)
+		executor.execute {
+			if (closed || generation != task || gradesRevision != revision || repository.revocationEpoch() != epoch) return@execute
+			var delivered = false
+			try {
+				repository.annualGrades { delivery ->
+					delivered = true
+					handler.post {
+						if (!closed && generation == task && gradesRevision == revision && repository.revocationEpoch() == epoch && repository.acceptsAnnualGrades(delivery)) {
+							state = state.copy(annualGrades = delivery.result, gradesLoading = false)
+						}
+					}
+				}
+			} catch (_: Exception) { }
+			if (!delivered) handler.post {
+				if (!closed && generation == task && gradesRevision == revision && repository.revocationEpoch() == epoch) {
+					state = state.copy(annualGrades = GatewayResult.Failure(AppError.UNAVAILABLE), gradesLoading = false)
+				}
+			}
+		}
+	}
 	override fun logout() {
 		if (closed || logoutTicket != null) return
 		logoutTicket = Any()

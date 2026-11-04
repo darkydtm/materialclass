@@ -26,6 +26,13 @@ interface DiaryWeeksGateway {
 	fun diaryWeeks(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<DiaryWeeks>
 }
 
+interface AnnualGradesGateway {
+	fun annualGrades(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<AnnualGrades>
+}
+
+class AnnualGrades(val rows: List<AnnualGradeRow>)
+class AnnualGradeRow(val subjectName: String, val quarters: List<String?>, val yearScore: String?, val finalScore: String?)
+
 class VerifiedDiarySession private constructor(internal val remote: UnverifiedSession, internal val account: String) {
 	override fun toString(): String = "VerifiedDiarySession([redacted])"
 
@@ -61,6 +68,10 @@ class VerifiedScheduleSession private constructor(internal val remote: Unverifie
 			return VerifiedScheduleSession(remote, id)
 		}
 	}
+}
+
+class StudentProfile(val surname: String?, val firstname: String?, val school: String?, val group: String?) {
+	override fun toString(): String = "StudentProfile([redacted])"
 }
 
 class Schedule(val days: List<ScheduleDay>)
@@ -105,10 +116,41 @@ internal fun interface Exchange {
 	fun execute(request: Request): Response
 }
 
-class NativeGateway internal constructor(private val exchange: Exchange) : SchoolGateway, DiaryWeeksGateway {
+class NativeGateway internal constructor(private val exchange: Exchange) : SchoolGateway, DiaryWeeksGateway, AnnualGradesGateway {
 	constructor() : this(HttpsExchange())
 
 	private val deviceId = UUID.randomUUID().toString()
+
+	override fun annualGrades(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<AnnualGrades> {
+		return try {
+			val remote = session.remote
+			val context = remote.context ?: return GatewayResult.Failure(AppError.UNAVAILABLE)
+			if (!SessionCoordinator.permits(lease, session.account) || session.account != remote.identityCandidate || remote.role != "student" || remote.token.isEmpty() || context.schoolId <= 0 || context.groupId <= 0 || context.eduYear <= 0) return GatewayResult.Failure(AppError.UNAVAILABLE)
+			val query = "schoolId=${context.schoolId}&eduYear=${context.eduYear}"
+			val headers = mapOf("Authorization" to "Bearer ${remote.token}", "x-school-id" to context.schoolId.toString())
+			val response = exchange.execute(request("/api/v4/os/clientoffice/diary/year?$query", "GET", headers, null, lease))
+			if (lease.isCancelled()) return GatewayResult.Failure(AppError.UNAVAILABLE)
+			if (response.status == 401) return GatewayResult.Failure(AppError.SESSION_EXPIRED)
+			if (response.status == 403) return GatewayResult.Failure(AppError.FORBIDDEN)
+			if (response.status != 200) return GatewayResult.Failure(AppError.UNAVAILABLE)
+			val array = JSONObject(response.body).getJSONObject("data").getJSONArray("rows")
+			require(array.length() <= 10000)
+			val rows = array.mapObjects { row ->
+				val name = row.strictString("subjectName")
+				require(name.length <= 1024)
+				val attestations = row.optionalObject("attestations")
+				val scores = row.optionalObject("yearScores")
+				AnnualGradeRow(name, (1..4).map { attestations?.optionalScore("quarter$it") }, scores?.optionalScore("yearScore"), scores?.optionalScore("finalScore"))
+			}
+			if (lease.isCancelled()) GatewayResult.Failure(AppError.UNAVAILABLE) else GatewayResult.Success(AnnualGrades(rows))
+		} catch (_: SocketTimeoutException) {
+			GatewayResult.Failure(AppError.TIMEOUT)
+		} catch (_: java.io.IOException) {
+			GatewayResult.Failure(AppError.OFFLINE)
+		} catch (_: Exception) {
+			GatewayResult.Failure(AppError.INCOMPATIBLE_RESPONSE)
+		}
+	}
 
 	override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = loginRequest(login, password, lease)
 
@@ -334,3 +376,13 @@ private fun JSONObject.nullableString(key: String): String? = when (val value = 
 }
 private fun JSONObject.strictBoolean(key: String): Boolean = get(key) as? Boolean ?: throw IllegalArgumentException()
 private fun <T> JSONArray.mapObjects(transform: (JSONObject) -> T): List<T> = (0 until length()).map { transform(getJSONObject(it)) }
+private fun JSONObject.optionalObject(key: String): JSONObject? = when (val value = opt(key)) {
+	null, JSONObject.NULL -> null
+	is JSONObject -> value
+	else -> throw IllegalArgumentException()
+}
+private fun JSONObject.optionalScore(key: String): String? = when (val value = opt(key)) {
+	null, JSONObject.NULL -> null
+	is String -> value.also { require(it.length <= 1024) }
+	else -> throw IllegalArgumentException()
+}

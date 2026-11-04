@@ -75,6 +75,8 @@ class NativeControllerIntegrationTest {
 		try {
 			assertTrue(entered.await(10, TimeUnit.SECONDS))
 			repository.logout()
+			val observed = NativeController::class.java.getDeclaredField("observedEpoch").apply { isAccessible = true }
+			await { observed.getLong(controller) == coordinator.revocationEpoch() }
 			main { controller!!.login("2", charArrayOf('x')) }
 			await { controller!!.state.signedIn && controller!!.state.diary is DiaryState.Ready }
 			release.countDown()
@@ -242,6 +244,63 @@ class NativeControllerIntegrationTest {
 			main { second.login("2", charArrayOf('x')) }
 			await { second.state.signedIn && second.state.diary is DiaryState.Ready }
 		} finally { failing.set(false); main { second.close() }; shared.pendingLogoutTicket()?.let { shared.logout(it) }; shared.logout() }
+	}
+
+	@Test fun liveControllersRejectDelayedContradictoryProfileAfterReplacement() {
+		val entered = CountDownLatch(1)
+		val release = CountDownLatch(1)
+		val returned = CountDownLatch(1)
+		val block = java.util.concurrent.atomic.AtomicBoolean(false)
+		val gateway = object : SchoolGateway {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic", login, "student", SchoolContext(1, 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
+			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = GatewayResult.Success("01.01.2026")
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, listOf(DiaryDay("Thursday", context.date, listOf(DiarySubject("Diary ${session.account}", "lesson", "synthetic", "none", null, null, false, false))))))
+			override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> = GatewayResult.Success(Schedule(listOf(ScheduleDay(1, date, true, false, listOf(ScheduleLesson("lesson", 1, "Schedule ${session.account}"))))))
+		}
+		val verifier = IdentityVerifier { session, _ ->
+			if (session.identityCandidate == "1" && block.get()) {
+				entered.countDown()
+				check(release.await(30, TimeUnit.SECONDS))
+				returned.countDown()
+				SessionVerification.Invalid
+			} else {
+				val data = JSONObject("""{"userId":${session.identityCandidate},"role":"student","school_id":1,"group":{"id":2},"studentInfo":{"studentSchoolUuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}""")
+				SessionVerification.Verified(AccountId(session.identityCandidate!!), true, VerifiedScheduleSession.compare(session, data), VerifiedDiarySession.compare(session, data), StudentProfile("Profile ${session.identityCandidate}", null, null, null))
+			}
+		}
+		val cache = object : DiaryCache {
+			override fun read(session: ActiveSession): ByteArray? = null
+			override fun write(session: ActiveSession, bytes: ByteArray) = true
+		}
+		val firstStates = mutableListOf<NativeUiState>()
+		val secondStates = mutableListOf<NativeUiState>()
+		fun create(states: MutableList<NativeUiState>) = NativeController({ states.add(it) }) { emit -> SchoolRepository(gateway, verifier, coordinator, cache, { 1L }, emit, SessionStore(context, coordinator)) }
+		main { controller = create(firstStates) }
+		val first = controller!!
+		val second = create(secondStates)
+		try {
+			main { first.login("1", charArrayOf('x')) }
+			await { first.state.profile?.surname == "Profile 1" && first.state.diary is DiaryState.Ready && first.state.schedule != null }
+			block.set(true)
+			main { first.refresh() }
+			assertTrue(entered.await(15, TimeUnit.SECONDS))
+			main { second.login("2", charArrayOf('x')) }
+			await { second.state.profile?.surname == "Profile 2" && second.state.diary is DiaryState.Ready && second.state.schedule != null && !first.state.signedIn }
+			var firstIndex = 0
+			var secondIndex = 0
+			main { firstIndex = firstStates.size; secondIndex = secondStates.size }
+			release.countDown()
+			assertTrue(returned.await(15, TimeUnit.SECONDS))
+			val field = NativeController::class.java.getDeclaredField("executor").apply { isAccessible = true }
+			(field.get(first) as java.util.concurrent.ExecutorService).submit {}.get(30, TimeUnit.SECONDS)
+			instrumentation.waitForIdleSync()
+			main {
+				assertTrue(second.state.signedIn)
+				assertEquals("Profile 2", second.state.profile?.surname)
+				assertTrue(firstStates.drop(firstIndex).none { it.signedIn || it.profile != null || it.diary is DiaryState.Ready || it.schedule != null })
+				assertTrue(secondStates.drop(secondIndex).none { !it.signedIn || it.profile?.surname != "Profile 2" || it.diary !is DiaryState.Ready || it.schedule == null })
+			}
+		} finally { release.countDown(); main { second.close() } }
 	}
 
 	@Test fun accountSwitchClearsOtherControllerAndExpiryRemainsVisible() {

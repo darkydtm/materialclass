@@ -1,4 +1,7 @@
 <resources>
+	<string name="profile">Profile</string>
+	<string name="profile_unavailable">Profile is unavailable.</string>
+	<string name="profile_empty">No profile details are available.</string>
 	<string name="app_name">MaterialClass</string>
 	<string name="login">Login</string>
 	<string name="diary">Diary</string>
@@ -51,4 +54,12 @@
 	<string name="homework_files">Files are indicated in the diary; downloads are unavailable.</string>
 	<string name="homework_books">Books are indicated in the diary; downloads are unavailable.</string>
 	<string name="saved_period">Last saved period</string>
+	<string name="grades">Annual grades</string>
+	<string name="grades_load">Load annual grades</string>
+	<string name="grades_empty">No annual grades</string>
+	<string name="grades_score_unavailable">Unavailable</string>
+	<string name="grades_unknown">Unknown</string>
+	<string name="grades_quarter">Quarter %1$d: %2$s</string>
+	<string name="grades_year">Year: %1$s</string>
+	<string name="grades_final">Final: %1$s</string>
 </resources>

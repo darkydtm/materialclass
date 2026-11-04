@@ -26,6 +26,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import org.materialclass.api.AppError
+import org.materialclass.api.GatewayResult
 import org.materialclass.cache.EncryptedCache
 import org.materialclass.session.SessionCoordinator
 import org.materialclass.data.DiaryState
@@ -91,7 +92,43 @@ internal fun MaterialClassApp(example: ExampleData? = null, nativeEnabled: Boole
 						}
 					}
 					when (screen) {
-						"login" -> LoginScreen(controller, nativeState)
+						"login" -> {
+							LoginScreen(controller, nativeState)
+							Button(onClick = { screen = "profile" }) { Text(stringResource(R.string.profile)) }
+							TextButton(onClick = { screen = "grades" }) { Text(stringResource(R.string.grades)) }
+						}
+						"grades" -> {
+							Text(stringResource(R.string.grades), style = MaterialTheme.typography.headlineSmall)
+							if (nativeState?.signedIn != true || controller == null) Text(stringResource(R.string.data_unavailable)) else {
+								Button(onClick = { controller.refreshAnnualGrades() }) { Text(stringResource(R.string.grades_load)) }
+								if (nativeState.gradesLoading) Text(stringResource(R.string.loading)) else when (val grades = nativeState.annualGrades) {
+									is GatewayResult.Failure -> Text(stringResource(errorMessage(grades.error)))
+									is GatewayResult.Success -> {
+										if (grades.value.rows.isEmpty()) Text(stringResource(R.string.grades_empty))
+										grades.value.rows.forEach { row ->
+											Text(row.subjectName, style = MaterialTheme.typography.titleMedium)
+											row.quarters.forEachIndexed { index, score -> Text(stringResource(R.string.grades_quarter, index + 1, gradeDisplay(score))) }
+											Text(stringResource(R.string.grades_year, gradeDisplay(row.yearScore)))
+											Text(stringResource(R.string.grades_final, gradeDisplay(row.finalScore)))
+										}
+									}
+									null -> Text(stringResource(R.string.data_unavailable))
+								}
+							}
+						}
+						"profile" -> {
+							Text(stringResource(R.string.profile), style = MaterialTheme.typography.headlineSmall)
+							val profile = nativeState?.profile
+							if (nativeState?.signedIn != true || profile == null) Text(stringResource(R.string.profile_unavailable))
+							else if (listOf(profile.surname, profile.firstname, profile.school, profile.group).all { it == null }) Text(stringResource(R.string.profile_empty))
+							else {
+								profile.surname?.let { Text(it) }
+								profile.firstname?.let { Text(it) }
+								profile.school?.let { Text(it) }
+								profile.group?.let { Text(it) }
+
+							}
+						}
 						"diary", "homework", "schedule" -> {
 							Text(stringResource(when (screen) { "diary" -> R.string.diary; "homework" -> R.string.homework; else -> R.string.schedule }), style = MaterialTheme.typography.headlineSmall)
 							if (nativeState != null) {
@@ -218,4 +255,11 @@ private fun LoginScreen(controller: NativeUiController?, state: NativeUiState?) 
 private fun formatTimestamp(value: Long, context: android.content.Context): String {
 	val locale = androidx.core.os.ConfigurationCompat.getLocales(context.resources.configuration)[0] ?: Locale.getDefault()
 	return java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT, locale).format(java.util.Date(value))
+}
+
+@androidx.compose.runtime.Composable
+private fun gradeDisplay(score: String?): String = when {
+	score == null -> stringResource(R.string.grades_unknown)
+	score.isEmpty() -> stringResource(R.string.grades_score_unavailable)
+	else -> score
 }

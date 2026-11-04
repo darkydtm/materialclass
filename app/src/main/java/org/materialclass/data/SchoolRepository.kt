@@ -63,6 +63,8 @@ internal sealed class DiaryState {
 
 internal data class DiaryGuard(val epoch: Long, val revision: Long, val requestRevision: Long, val active: ActiveSession, val expired: Boolean)
 
+internal data class AnnualGradesDelivery(val result: GatewayResult<org.materialclass.api.AnnualGrades>, val active: ActiveSession, val epoch: Long, val revision: Long, val requestRevision: Long)
+
 internal class SchoolRepository(
 	private val gateway: SchoolGateway,
 	private val verifier: IdentityVerifier,
@@ -78,9 +80,11 @@ internal class SchoolRepository(
 	private var remote: UnverifiedSession? = null
 	private var scheduleSession: VerifiedScheduleSession? = null
 	private var diarySession: VerifiedDiarySession? = null
+	private var profile: org.materialclass.api.StudentProfile? = null
 	private var refreshRevision = 0L
 	private var scheduleRevision = 0L
 	private var weekRevision = 0L
+	private var gradesRevision = 0L
 	private var verifiedWeek: Triple<ActiveSession, Long, String>? = null
 	@Volatile private var loginRevision: Long? = null
 	@Volatile private var diaryPublished = false
@@ -115,12 +119,13 @@ internal class SchoolRepository(
 						session = null
 						remote = null
 						scheduleSession = null
-						diarySession = null
+						diarySession = null; profile = null
 					} ?: return@synchronized null
 					session = activated
 					remote = candidate
 					scheduleSession = verification.scheduleSession
 					diarySession = verification.diarySession
+					profile = verification.profile
 					activated
 				} ?: return GatewayResult.Failure(AppError.UNAVAILABLE)
 				try {
@@ -133,7 +138,7 @@ internal class SchoolRepository(
 					}
 				} catch (error: Exception) {
 					synchronized(StorageLock) {
-						if (session === active) { session = null; remote = null; scheduleSession = null; diarySession = null }
+						if (session === active) { session = null; remote = null; scheduleSession = null; diarySession = null; profile = null }
 						try { coordinator.revokeIfActive(active) } catch (cleanup: Exception) { error.addSuppressed(cleanup) }
 					}
 					throw error
@@ -157,10 +162,11 @@ internal class SchoolRepository(
 		var candidate: UnverifiedSession? = null
 		var scheduleCandidate: VerifiedScheduleSession? = null
 		var diaryCandidate: VerifiedDiarySession? = null
+		var profileCandidate: org.materialclass.api.StudentProfile? = null
 		return store.restoreLeased({ beforeIdentityAdmission() }, { material, lease ->
 			val remote = decodeSession(material) ?: return@restoreLeased SessionVerification.Invalid
 			val verification = verifier.verify(remote, lease)
-			if (verification is SessionVerification.Verified && verification.pupil) { candidate = remote; scheduleCandidate = verification.scheduleSession; diaryCandidate = verification.diarySession }
+			if (verification is SessionVerification.Verified && verification.pupil) { candidate = remote; scheduleCandidate = verification.scheduleSession; diaryCandidate = verification.diarySession; profileCandidate = verification.profile }
 			verification
 		}) { active ->
 			try {
@@ -169,6 +175,7 @@ internal class SchoolRepository(
 					remote = candidate
 					scheduleSession = scheduleCandidate
 					diarySession = diaryCandidate
+					profile = profileCandidate
 					true
 				} == true
 				if (installed) {
@@ -180,14 +187,75 @@ internal class SchoolRepository(
 				}
 			} catch (error: Exception) {
 				synchronized(StorageLock) {
-					if (session === active) { session = null; remote = null; scheduleSession = null; diarySession = null }
+					if (session === active) { session = null; remote = null; scheduleSession = null; diarySession = null; profile = null }
 				}
 				throw error
 			}
 		}
 	}
 
+	internal fun currentProfile(): org.materialclass.api.StudentProfile? {
+		val active = session ?: return null
+		return coordinator.ifActive(active) { if (session === active) profile else null }
+	}
+
+	internal fun refreshProfile(deliver: (org.materialclass.api.StudentProfile?) -> Unit) {
+		val active = session ?: return
+		val request = coordinator.ifActive(active) {
+			val candidate = remote ?: return@ifActive null
+			Pair(candidate, coordinator.requestRevision())
+		} ?: return
+		beforeRequestAdmission()
+		val lease = coordinator.admit(active, request.second) ?: return
+		try {
+			val verification = try { verifier.verify(request.first, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { SessionVerification.Retry }
+			val updated = coordinator.ifActive(active) {
+				if (lease.cancelled || session !== active || remote !== request.first || request.second != coordinator.requestRevision()) false
+				else if (verification == SessionVerification.Invalid || verification == SessionVerification.Expired ||
+					(verification is SessionVerification.Verified && (!verification.pupil || verification.account != active.account))) {
+					remote = null; scheduleSession = null; diarySession = null; profile = null; session = null
+					coordinator.revokeIfActive(active, expired = true)
+					false
+				} else if (verification is SessionVerification.Verified) {
+					profile = verification.profile
+					true
+				} else false
+			} == true
+			if (updated) deliver(currentProfile())
+		} finally { coordinator.finish(lease) }
+	}
+
 	fun currentWeek(deliver: (GatewayResult<String>) -> Unit) = currentWeekForSchedule { result, _ -> deliver(result) }
+
+	fun annualGrades(deliver: (AnnualGradesDelivery) -> Unit) {
+		val active = session ?: return
+		val request = coordinator.ifActive(active) {
+			val candidate = remote
+			val proof = diarySession?.takeIf { candidate != null && it.remote === candidate && it.account == active.account.value && candidate.identityCandidate == active.account.value }
+			Triple(proof, ++gradesRevision, coordinator.requestRevision())
+		} ?: return
+		beforeRequestAdmission()
+		val lease = coordinator.admit(active, request.third) ?: return
+		try {
+			val result = try {
+				val source = gateway as? org.materialclass.api.AnnualGradesGateway
+				if (request.first == null || source == null) GatewayResult.Failure(AppError.UNAVAILABLE) else source.annualGrades(request.first!!, lease)
+			} catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
+			val delivery = coordinator.ifActive(active) {
+				if (lease.cancelled || request.second != gradesRevision || request.third != coordinator.requestRevision()) null
+				else if (result is GatewayResult.Failure && result.error == AppError.SESSION_EXPIRED) {
+					remote = null; scheduleSession = null; diarySession = null; session = null
+					coordinator.revokeIfActive(active, expired = true)
+					null
+				} else AnnualGradesDelivery(result, active, coordinator.revocationEpoch(), request.second, request.third)
+			}
+			if (delivery != null) deliver(delivery)
+		} finally { coordinator.finish(lease) }
+	}
+
+	internal fun acceptsAnnualGrades(delivery: AnnualGradesDelivery): Boolean = synchronized(StorageLock) {
+		delivery.epoch == coordinator.revocationEpoch() && delivery.revision == gradesRevision && delivery.requestRevision == coordinator.requestRevision() && coordinator.ifActive(delivery.active) { session === delivery.active } == true
+	}
 
 	fun currentWeekForSchedule(deliver: (GatewayResult<String>, Long) -> Unit) {
 		val active = session ?: return
@@ -206,7 +274,7 @@ internal class SchoolRepository(
 			val outcome = coordinator.ifActive(active) {
 				if (lease.cancelled || request.second != weekRevision) null
 				else if (result is GatewayResult.Failure && result.error == AppError.SESSION_EXPIRED) {
-					remote = null; scheduleSession = null; diarySession = null; session = null
+					remote = null; scheduleSession = null; diarySession = null; profile = null; session = null
 					Pair(true, runCatching { coordinator.revokeIfActive(active, expired = true) })
 				} else {
 					if (result is GatewayResult.Success && request.first != null && request.third == coordinator.requestRevision()) verifiedWeek = Triple(active, request.second, result.value)
@@ -244,7 +312,7 @@ internal class SchoolRepository(
 			val outcome = coordinator.ifActive(active) {
 				if (lease.cancelled || request.second != scheduleRevision) null
 				else if (result is GatewayResult.Failure && result.error == AppError.SESSION_EXPIRED) {
-					remote = null; scheduleSession = null; diarySession = null; session = null
+					remote = null; scheduleSession = null; diarySession = null; profile = null; session = null
 					Pair(true, runCatching { coordinator.revokeIfActive(active, expired = true) })
 				} else Pair(false, null)
 			}
@@ -363,7 +431,7 @@ internal class SchoolRepository(
 					if (lease.cancelled || request.second != refreshRevision) return@ifActive null
 					val expired = week.error == AppError.SESSION_EXPIRED
 					val value = if (expired) {
-						remote = null; scheduleSession = null; diarySession = null; session = null
+						remote = null; scheduleSession = null; diarySession = null; profile = null; session = null
 						coordinator.revokeIfActive(active, expired = true)
 						DiaryState.Error(week.error)
 					} else DiaryState.Error(week.error)
@@ -424,7 +492,7 @@ internal class SchoolRepository(
 	private fun diaryResult(active: ActiveSession, context: DiaryContext, result: GatewayResult<Diary>, lease: RequestLease, revision: Long, requestRevision: Long): DiaryState? = coordinator.ifActive(active) {
 		if (lease.cancelled || revision != refreshRevision) return@ifActive null
 		if (result is GatewayResult.Failure && result.error == AppError.SESSION_EXPIRED) {
-			remote = null; scheduleSession = null; diarySession = null; session = null
+			remote = null; scheduleSession = null; diarySession = null; profile = null; session = null
 			coordinator.revokeIfActive(active, expired = true)
 			return@ifActive guarded(DiaryState.Error(AppError.SESSION_EXPIRED), active, revision, requestRevision, true)
 		}
@@ -465,7 +533,7 @@ internal class SchoolRepository(
 					session = null
 					remote = null
 					scheduleSession = null
-					diarySession = null
+					diarySession = null; profile = null
 					coordinator.logout(token)
 				} else {
 					val pending = loginRevision
@@ -476,7 +544,7 @@ internal class SchoolRepository(
 					} else {
 						remote = null
 						scheduleSession = null
-						diarySession = null
+						diarySession = null; profile = null
 						session = null
 						val revoked = coordinator.revokeIfActive(active)
 						if (!revoked) coordinator.logoutIfNoActive()

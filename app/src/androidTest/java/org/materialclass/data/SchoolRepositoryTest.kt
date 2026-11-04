@@ -63,6 +63,68 @@ class SchoolRepositoryTest {
 		return SessionVerification.Verified(AccountId(id), true, VerifiedScheduleSession.compare(session, profile), VerifiedDiarySession.compare(session, profile))
 	}
 
+	@Test
+	fun annualDeliveryCannotCrossLogoutOrReplacement() {
+		val entered = CountDownLatch(1)
+		val release = CountDownLatch(1)
+		val gateway = object : TestSchoolGateway(), AnnualGradesGateway {
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = error("Unexpected diary request")
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", login, "student", SchoolContext(1, 2026, 2)))
+			override fun annualGrades(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<AnnualGrades> {
+				if (session.account == "1") { entered.countDown(); check(release.await(30, TimeUnit.SECONDS)) }
+				return GatewayResult.Success(AnnualGrades(listOf(AnnualGradeRow(session.account, emptyList(), null, null))))
+			}
+		}
+		val repo = SchoolRepository(gateway, IdentityVerifier { session, _ -> proof(session) }, coordinator, FakeCache(), { 1L }, {}, store)
+		assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+		val deliveries = java.util.Collections.synchronizedList(mutableListOf<AnnualGradesDelivery>())
+		val worker = thread { repo.annualGrades { deliveries.add(it) } }
+		try {
+			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			repo.logout()
+			assertTrue(repo.login("2", charArrayOf('x')) is GatewayResult.Success)
+			repo.annualGrades { deliveries.add(it) }
+			release.countDown()
+			worker.join(10000)
+			assertFalse(worker.isAlive)
+			assertEquals(1, deliveries.size)
+			val delivery = deliveries.single()
+			assertTrue(repo.acceptsAnnualGrades(delivery))
+			assertEquals("2", (delivery.result as GatewayResult.Success).value.rows.single().subjectName)
+		} finally { release.countDown(); worker.join(10000) }
+	}
+
+	@Test
+	fun preparedAnnualRequestIsRejectedDuringPendingLogin() {
+		val prepared = CountDownLatch(1); val release = CountDownLatch(1)
+		val loginEntered = CountDownLatch(1); val releaseLogin = CountDownLatch(1)
+		val calls = java.util.concurrent.atomic.AtomicInteger()
+		val gateway = object : TestSchoolGateway(), AnnualGradesGateway {
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = error("Unexpected diary request")
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> {
+				if (login == "2") { loginEntered.countDown(); check(releaseLogin.await(30, TimeUnit.SECONDS)) }
+				return GatewayResult.Success(UnverifiedSession("synthetic-token", login, "student", SchoolContext(1, 2026, 2)))
+			}
+			override fun annualGrades(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<AnnualGrades> {
+				calls.incrementAndGet(); return GatewayResult.Success(AnnualGrades(emptyList()))
+			}
+		}
+		val repo = SchoolRepository(gateway, IdentityVerifier { session, _ -> proof(session) }, coordinator, FakeCache(), { 1L }, {}, store)
+		assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+		repo.beforeRequestAdmission = { prepared.countDown(); check(release.await(30, TimeUnit.SECONDS)) }
+		val delivered = java.util.concurrent.atomic.AtomicBoolean(false)
+		val worker = thread { repo.annualGrades { delivered.set(true) } }
+		var login: Thread? = null
+		try {
+			assertTrue(prepared.await(10, TimeUnit.SECONDS))
+			login = thread { repo.login("2", charArrayOf('x')) }
+			assertTrue(loginEntered.await(10, TimeUnit.SECONDS))
+			release.countDown(); worker.join(10000)
+			assertFalse(worker.isAlive)
+			assertEquals(0, calls.get()); assertFalse(delivered.get())
+		} finally { release.countDown(); releaseLogin.countDown(); worker.join(10000); login?.join(10000) }
+	}
+
 	private fun pendingLoginRejectsPreparedRequest(kind: Int) {
 		val prepared = CountDownLatch(1); val releaseRequest = CountDownLatch(1)
 		val loginEntered = CountDownLatch(1); val releaseLogin = CountDownLatch(1)
