@@ -135,9 +135,9 @@ class DiarySessionRaceUiTest {
 		val stale = context.getString(R.string.stale_data, context.getString(R.string.error_offline))
 		waitFor(stale)
 		waitFor("Selected week: 08.01.2026")
-		waitFor("Homework for 08.01.2026")
 		instrumentation.runOnMainSync {
 			val ready = controller.state.diary as DiaryState.Ready
+			assertEquals("Homework for 08.01.2026", ready.snapshot.diary.days[0].subjects[0].homeworkBody)
 			assertEquals(org.materialclass.api.AppError.OFFLINE, ready.staleError)
 			assertEquals("08.01.2026", ready.snapshot.diary.date)
 		}
@@ -179,6 +179,7 @@ class DiarySessionRaceUiTest {
 		assertTrue(exchange.entered.await(15, TimeUnit.SECONDS))
 		instrumentation.runOnMainSync { controller.logout() }
 		assertTrue(exchange.blockedRequest!!.lease.isCancelled())
+		waitFor(context.getString(R.string.data_unavailable))
 		exchange.release.countDown()
 		drain(controller)
 		instrumentation.runOnMainSync {
