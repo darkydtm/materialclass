@@ -32,7 +32,7 @@ class NativeGatewayUiIntegrationTest {
 	private val instrumentation = InstrumentationRegistry.getInstrumentation()
 	private lateinit var activity: MainActivity
 	private val context = ApplicationProvider.getApplicationContext<Context>()
-	private val profile = """{"userId":123,"role":"student","school_id":1,"group":{"id":2},"studentInfo":{"studentSchoolUuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}"""
+	private val profile = """{"userId":123,"role":"student","surname":"Synthetic Surname","firstname":"Synthetic Firstname","school_id":1,"group":{"id":2,"name":"Synthetic Group"},"studentInfo":{"studentSchoolUuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},"school":{"name":"Synthetic School","eduYears":[{"isCurrent":true,"eduYear":2026}]}}"""
 	private val dates = listOf("29.12.2025", "30.12.2025", "31.12.2025", "01.01.2026", "02.01.2026", "03.01.2026", "04.01.2026")
 	private val diary = """{"data":{"date":"01.01.2026","days":[{"day":"Thursday","date":"01.01.2026","subjects":[{"label":"Synthetic diary lesson","type":"lesson","scheduleUuid":"synthetic","homeworkType":"none","homeworkBody":null,"homeworkUuid":null,"hasBooks":false,"hasFiles":false}]}]}}"""
 	private val schedule = """{"data":{"weeks":{"next":"08.01.2026","prev":"25.12.2025","next_time":2,"prev_time":1},"days":[""" + dates.mapIndexed { index, date -> """{"date":$index,"dateFormat":"$date","isCurrent":true,"isHoliday":false,"schedule":[{"type":"lesson","cabinet":{"id":1},"theme":{"label":"Synthetic schedule lesson"}}]}""" }.joinToString(",") + "]}}"
@@ -137,6 +137,16 @@ class NativeGatewayUiIntegrationTest {
 		instrumentation.runOnMainSync { controller.login("synthetic-user", "synthetic-password".toCharArray()) }
 	}
 
+
+	@Test fun verifiedProfileDisplaysObservedFields() = exercise { _, controller ->
+		signIn(controller)
+		waitFor(context.getString(R.string.logout))
+		click("Profile")
+		waitFor("Synthetic Surname")
+		waitFor("Synthetic Firstname")
+		waitFor("Synthetic School")
+		waitFor("Synthetic Group")
+	}
 
 	@Test fun offlineWeekShowsSavedPeriodInActualUi() = exercise { exchange, controller ->
 		signIn(controller)
