@@ -27,9 +27,11 @@ internal class NativeIdentityVerifier(private val exchange: Exchange = HttpsExch
 			if (response.status != 200) return SessionVerification.Retry
 			val data = JSONObject(response.body).getJSONObject("data")
 			val role = (data.opt("role") as? String)?.takeIf { it.isNotBlank() } ?: return SessionVerification.Retry
-			if (role != "student") return SessionVerification.Invalid
+			if (role == "teacher") return SessionVerification.Invalid
+			if (role != "student") return SessionVerification.Retry
 			val raw = data.get("userId")
 			if (raw !is Int && raw !is Long) return SessionVerification.Retry
+			if ((raw as Number).toLong() <= 0) return SessionVerification.Retry
 			val id = raw.toString()
 			if (candidate != id) return SessionVerification.Invalid
 			val diary = VerifiedDiarySession.compare(session, data)

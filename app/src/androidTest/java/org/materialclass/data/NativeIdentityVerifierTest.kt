@@ -80,7 +80,7 @@ class NativeIdentityVerifierTest {
 		fun verify(body: String) = NativeIdentityVerifier(Exchange { Response(200, body) }).verify(session)
 		assertEquals(SessionVerification.Invalid, verify(success.replace("\"student\"", "\"teacher\"")))
 		assertEquals(SessionVerification.Invalid, verify(success.replace("\"userId\":42", "\"userId\":43")))
-		listOf("null", "42", "\"\"", "{}", "[]").forEach { role ->
+		listOf("null", "42", "\"\"", "\"unknown-role\"", "{}", "[]").forEach { role ->
 			assertEquals(SessionVerification.Retry, verify(success.replace("\"student\"", role)))
 		}
 		assertEquals(SessionVerification.Retry, verify(success.replace("\"userId\":42", "\"userId\":\"43\"")))
