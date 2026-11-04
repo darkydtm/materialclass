@@ -149,6 +149,7 @@ class FileCleanupJournalTest {
 		val bytes = path.readBytes()
 		bytes[bytes.lastIndex] = (bytes.last().toInt() xor 1).toByte()
 		path.writeBytes(bytes)
+		check(!primaryTemporary.exists() || primaryTemporary.delete())
 		check(primaryTemporary.createNewFile())
 		var cleared = false
 		try {
