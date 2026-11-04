@@ -37,7 +37,8 @@ class NativeControllerIntegrationTest {
 		coordinator.logout()
 	}
 	@Test fun logoutCompletionWaitsForUiRevocation() {
-		val shared = SessionCoordinator { }
+		val cleaned = CountDownLatch(1)
+		val shared = SessionCoordinator { cleaned.countDown() }
 		val gateway = object : SchoolGateway {
 			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Failure(AppError.UNAVAILABLE)
 			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = GatewayResult.Failure(AppError.UNAVAILABLE)
@@ -64,6 +65,9 @@ class NativeControllerIntegrationTest {
 				completed.countDown()
 			}
 			assertTrue(cancelled.await(10, TimeUnit.SECONDS))
+			assertTrue("Durable cleanup did not complete", cleaned.await(10, TimeUnit.SECONDS))
+			synchronized(org.materialclass.security.StorageLock) { }
+			assertNotNull("Admission must remain closed until UI revocation", shared.pendingLogoutTicket())
 			assertFalse("Logout completed before the UI processed revocation", completed.await(2, TimeUnit.SECONDS))
 		} finally {
 			release.countDown()
