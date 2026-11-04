@@ -2,7 +2,6 @@ package org.materialclass
 
 import android.content.Context
 import android.content.Intent
-import android.os.Bundle
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.activity.compose.setContent
@@ -54,11 +53,6 @@ class NativeGatewayUiIntegrationTest {
 		var node = waitFor(text)
 		while (!node.isClickable && node.parent != null) node = node.parent
 		assertTrue(node.performAction(AccessibilityNodeInfo.ACTION_CLICK))
-	}
-	private fun editables(node: AccessibilityNodeInfo): List<AccessibilityNodeInfo> = (if (node.isEditable) listOf(node) else emptyList()) + (0 until node.childCount).flatMap { node.getChild(it)?.let(::editables) ?: emptyList() }
-	private fun edit(node: AccessibilityNodeInfo, text: String) {
-		val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
-		assertTrue(node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args))
 	}
 
 	private inner class SyntheticExchange : Exchange {
@@ -132,18 +126,12 @@ class NativeGatewayUiIntegrationTest {
 		}
 	}
 
-	private fun signIn() {
-		edit(editables(instrumentation.uiAutomation.rootInActiveWindow).first { !it.isPassword }, "synthetic-user")
-		waitFor("synthetic-user")
-		edit(editables(instrumentation.uiAutomation.rootInActiveWindow).first { it.isPassword }, "synthetic-password")
-		instrumentation.waitForIdleSync()
-		instrumentation.runOnMainSync { (context.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).hideSoftInputFromWindow(activity.window.decorView.windowToken, 0) }
-		instrumentation.waitForIdleSync()
-		click(context.getString(R.string.sign_in))
+	private fun signIn(controller: NativeController) {
+		instrumentation.runOnMainSync { controller.login("synthetic-user", "synthetic-password".toCharArray()) }
 	}
 
-	@Test fun realGatewayDisplaysDiaryScheduleAndLogout() = exercise { exchange, _ ->
-		signIn()
+	@Test fun realGatewayDisplaysDiaryScheduleAndLogout() = exercise { exchange, controller ->
+		signIn(controller)
 		waitFor(context.getString(R.string.logout))
 		click(context.getString(R.string.diary))
 		waitFor("Synthetic diary lesson")
@@ -155,12 +143,12 @@ class NativeGatewayUiIntegrationTest {
 		waitFor(context.getString(R.string.sign_in))
 	}
 
-	@Test fun httpFailuresAreVisibleAndLoginCanRetry() = exercise { exchange, _ ->
+	@Test fun httpFailuresAreVisibleAndLoginCanRetry() = exercise { exchange, controller ->
 		exchange.failLogin.set(true)
-		signIn()
+		signIn(controller)
 		waitFor("The service is unavailable. Try again later.")
 		exchange.failLogin.set(false)
-		click(context.getString(R.string.sign_in))
+		signIn(controller)
 		waitFor(context.getString(R.string.logout))
 		click(context.getString(R.string.diary))
 		waitFor("Synthetic diary lesson")
@@ -171,7 +159,7 @@ class NativeGatewayUiIntegrationTest {
 
 	@Test fun logoutCancelsBlockedDiaryAndRejectsLateResult() = exercise { exchange, controller ->
 		exchange.blockDiary.set(true)
-		signIn()
+		signIn(controller)
 		waitFor(context.getString(R.string.logout))
 		assertTrue(exchange.entered.await(15, TimeUnit.SECONDS))
 		click(context.getString(R.string.logout))
