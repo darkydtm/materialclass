@@ -36,6 +36,24 @@ class NativeControllerIntegrationTest {
 		main { controller?.close() }
 		coordinator.logout()
 	}
+	@Test fun mainThreadRevocationAppliesAfterCurrentTurn() {
+		val gateway = object : SchoolGateway {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Failure(AppError.UNAVAILABLE)
+			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = GatewayResult.Failure(AppError.UNAVAILABLE)
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = GatewayResult.Failure(AppError.UNAVAILABLE)
+			override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> = GatewayResult.Failure(AppError.UNAVAILABLE)
+		}
+		val cache = object : DiaryCache {
+			override fun read(session: ActiveSession): ByteArray? = null
+			override fun write(session: ActiveSession, bytes: ByteArray) = true
+		}
+		main {
+			controller = NativeController { emit -> SchoolRepository(gateway, IdentityVerifier { _, _ -> SessionVerification.Retry }, coordinator, cache, { 1L }, emit, SessionStore(context, coordinator)) }
+			coordinator.cancelInFlightNow()
+			assertFalse(controller!!.state.logoutPending)
+		}
+		await { controller!!.state.logoutPending }
+	}
 	@Test fun delayedRestoreClearCannotEraseNewLoginDiary() {
 		val entered = CountDownLatch(1)
 		val release = CountDownLatch(1)
