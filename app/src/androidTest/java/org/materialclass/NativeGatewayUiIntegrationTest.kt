@@ -204,10 +204,17 @@ class NativeGatewayUiIntegrationTest {
 	}
 
 	@Test fun delayedAccountAProfileCannotAppearInAccountB() = exercise { exchange, first ->
-		exchange.blockProfile.set(true)
 		signIn(first)
-		assertTrue(exchange.profileEntered.await(15, TimeUnit.SECONDS))
-		instrumentation.runOnMainSync { first.logout() }
+		waitFor(context.getString(R.string.logout))
+		click("Profile")
+		waitFor("Synthetic Surname")
+		drain(first)
+		exchange.profileResponse = profile.replace("Synthetic", "Stale")
+		exchange.blockProfile.set(true)
+		instrumentation.runOnMainSync { first.refresh() }
+		assertTrue("Refresh must request the verified profile", exchange.profileEntered.await(15, TimeUnit.SECONDS))
+		instrumentation.runOnMainSync { first.logout(); assertNull(first.state.profile) }
+		assertNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, "Stale Surname") })
 		drain(first, "logoutExecutor")
 		val second = secondController(exchange)
 		val snapshots = mutableListOf<NativeUiState>()

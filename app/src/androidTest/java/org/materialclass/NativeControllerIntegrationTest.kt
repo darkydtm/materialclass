@@ -75,7 +75,8 @@ class NativeControllerIntegrationTest {
 		try {
 			assertTrue(entered.await(10, TimeUnit.SECONDS))
 			repository.logout()
-			main { assertFalse(controller!!.state.signedIn) }
+			val observed = NativeController::class.java.getDeclaredField("observedEpoch").apply { isAccessible = true }
+			await { observed.getLong(controller) == coordinator.revocationEpoch() }
 			main { controller!!.login("2", charArrayOf('x')) }
 			await { controller!!.state.signedIn && controller!!.state.diary is DiaryState.Ready }
 			release.countDown()
