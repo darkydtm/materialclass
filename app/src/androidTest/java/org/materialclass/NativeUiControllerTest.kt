@@ -47,6 +47,37 @@ class NativeUiControllerTest {
 	}
 	private fun editables(node: AccessibilityNodeInfo): List<AccessibilityNodeInfo> = (if (node.isEditable) listOf(node) else emptyList()) + (0 until node.childCount).flatMap { node.getChild(it)?.let(::editables) ?: emptyList() }
 
+	@Test fun emptyDiaryIsDistinctFromUnavailable() {
+		val context = ApplicationProvider.getApplicationContext<Context>()
+		context.getSharedPreferences("appearance", 0).edit().putBoolean("warning_seen", true).commit()
+		val fake = object : NativeUiController {
+			override var state by mutableStateOf(NativeUiState(signedIn = true))
+			override fun start() { }
+			override fun login(username: String, password: CharArray) { password.fill('\u0000') }
+			override fun refresh() { }
+			override fun logout() { }
+			override fun close() { }
+		}
+		val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
+		try {
+			instrumentation.runOnMainSync { activity.setContent { MaterialClassApp(nativeEnabled = true, controllerFactory = { fake }) } }
+			waitFor(context.getString(R.string.logout))
+			click(context.getString(R.string.diary))
+			waitFor(context.getString(R.string.data_unavailable))
+			instrumentation.runOnMainSync {
+				fake.state = fake.state.copy(diary = DiaryState.Ready(DiarySnapshot(Diary("01.01.2026", emptyList()), 1)))
+			}
+			waitFor(context.getString(R.string.diary_empty))
+			assertNull(find(instrumentation.uiAutomation.rootInActiveWindow, context.getString(R.string.data_unavailable)))
+			instrumentation.runOnMainSync { fake.state = fake.state.copy(diary = DiaryState.Error(AppError.OFFLINE)) }
+			waitFor(context.getString(R.string.data_unavailable))
+			assertNull(find(instrumentation.uiAutomation.rootInActiveWindow, context.getString(R.string.diary_empty)))
+		} finally {
+			activity.finish()
+			context.getSharedPreferences("appearance", 0).edit().clear().commit()
+		}
+	}
+
 	@Test fun emptyScheduleIsDistinctFromUnavailable() {
 		val context = ApplicationProvider.getApplicationContext<Context>()
 		context.getSharedPreferences("appearance", 0).edit().putBoolean("warning_seen", true).commit()

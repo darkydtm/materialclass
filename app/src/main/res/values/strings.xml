@@ -7,6 +7,7 @@
 	<string name="backend_unavailable">The real backend is unavailable. Sign-in and school data are not connected.</string>
 	<string name="data_unavailable">School data is unavailable.</string>
 	<string name="schedule_empty">No lessons this week.</string>
+	<string name="diary_empty">No diary entries for this week.</string>
 	<string name="example_only">Example data only - not real school data.</string>
 	<string name="username">Username</string>
 	<string name="password">Password</string>

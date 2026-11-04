@@ -99,6 +99,7 @@ internal fun MaterialClassApp(example: ExampleData? = null, nativeEnabled: Boole
 									when (val diary = nativeState.diary) {
 										is DiaryState.Ready -> {
 											diary.staleError?.let { Text(stringResource(R.string.stale_data, it.name)) }
+											if (diary.snapshot.diary.days.all { it.subjects.isEmpty() }) Text(stringResource(R.string.diary_empty))
 											diary.snapshot.diary.days.forEach { day -> Text(day.date); day.subjects.forEach { subject -> Text(subject.label); subject.homeworkBody?.let { Text(it) } } }
 										}
 										DiaryState.Loading -> Text(stringResource(R.string.loading))

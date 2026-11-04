@@ -13,6 +13,7 @@
 	<string name="backend_unavailable">Нақты сервер қолжетімсіз. Кіру және мектеп деректері қосылмаған.</string>
 	<string name="data_unavailable">Мектеп деректері қолжетімсіз.</string>
 	<string name="schedule_empty">Осы аптада сабақ жоқ.</string>
+	<string name="diary_empty">Осы аптада күнделікте жазбалар жоқ.</string>
 	<string name="example_only">Тек үлгі - бұл нақты мектеп деректері емес.</string>
 	<string name="username">Логин</string>
 	<string name="password">Құпия сөз</string>
