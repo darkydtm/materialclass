@@ -419,4 +419,33 @@ class NativeControllerIntegrationTest {
 		await { !c.state.busy }
 		main { assertFalse(c.state.signedIn); assertNull(c.state.schedule); assertTrue(c.state.diary is DiaryState.Cleared) }
 	}
+
+	@Test fun currentWeekOfflineShowsEncryptedSavedSchedule() {
+		val offline = java.util.concurrent.atomic.AtomicBoolean(false)
+		val gateway = object : SchoolGateway {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic", "1", "student", SchoolContext(1, 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
+			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = if (offline.get()) GatewayResult.Failure(AppError.OFFLINE) else GatewayResult.Success("01.01.2026")
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
+			override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> = GatewayResult.Success(Schedule((1..7).map { ScheduleDay(0, "%02d.01.2026".format(it), true, false, listOf(ScheduleLesson("lesson", 1, "Saved lesson"))) }))
+		}
+		val verifier = IdentityVerifier { session, _ ->
+			val profile = JSONObject("""{"userId":1,"role":"student","school_id":1,"group":{"id":2},"studentInfo":{"studentSchoolUuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}""")
+			SessionVerification.Verified(AccountId("1"), true, VerifiedScheduleSession.compare(session, profile), VerifiedDiarySession.compare(session, profile))
+		}
+		val diary = EncryptedDiaryCache(org.materialclass.cache.EncryptedCache(context, coordinator))
+		val schedule = EncryptedDiaryCache(org.materialclass.cache.EncryptedCache(context, coordinator, "schedule"))
+		main { controller = NativeController { emit -> SchoolRepository(gateway, verifier, coordinator, diary, { 1234L }, emit, SessionStore(context, coordinator), schedule) }; controller!!.login("synthetic", charArrayOf('x')) }
+		await { controller!!.state.scheduleSnapshot != null }
+		offline.set(true)
+		main { controller!!.refresh() }
+		await { controller!!.state.scheduleSnapshot?.staleError == AppError.OFFLINE }
+		main {
+			val snapshot = controller!!.state.scheduleSnapshot!!
+			assertEquals("01.01.2026", snapshot.date)
+			assertEquals(1234L, snapshot.lastSuccessMillis)
+			assertEquals(7, snapshot.schedule.days.size)
+			assertTrue(snapshot.schedule.days.none { it.isCurrent })
+		}
+	}
+
 }
