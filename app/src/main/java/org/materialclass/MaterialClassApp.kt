@@ -91,9 +91,11 @@ internal fun MaterialClassApp(example: ExampleData? = null, nativeEnabled: Boole
 							Box(Modifier.selectable(selected = screen == value, role = Role.Tab, onClick = { screen = value }).padding(12.dp)) { Text(stringResource(label)) }
 						}
 					}
-					TextButton(onClick = { screen = "grades" }) { Text(stringResource(R.string.grades)) }
 					when (screen) {
-						"login" -> LoginScreen(controller, nativeState)
+						"login" -> {
+							LoginScreen(controller, nativeState)
+							TextButton(onClick = { screen = "grades" }) { Text(stringResource(R.string.grades)) }
+						}
 						"grades" -> {
 							Text(stringResource(R.string.grades), style = MaterialTheme.typography.headlineSmall)
 							if (nativeState?.signedIn != true || controller == null) Text(stringResource(R.string.data_unavailable)) else {
