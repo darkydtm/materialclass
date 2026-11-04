@@ -124,9 +124,9 @@ class NativeGatewayUiIntegrationTest {
 	}
 
 	private fun signIn() {
-		val fields = editables(instrumentation.uiAutomation.rootInActiveWindow)
-		edit(fields.first { !it.isPassword }, "synthetic-user")
-		edit(fields.first { it.isPassword }, "synthetic-password")
+		edit(editables(instrumentation.uiAutomation.rootInActiveWindow).first { !it.isPassword }, "synthetic-user")
+		waitFor("synthetic-user")
+		edit(editables(instrumentation.uiAutomation.rootInActiveWindow).first { it.isPassword }, "synthetic-password")
 		instrumentation.waitForIdleSync()
 		instrumentation.runOnMainSync { (context.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).hideSoftInputFromWindow(activity.window.decorView.windowToken, 0) }
 		instrumentation.waitForIdleSync()
