@@ -97,10 +97,13 @@ class StorageSecurityTest {
 		val cache = EncryptedCache(context, coordinator)
 		val old = coordinator.activate(AccountId("synthetic-blocked"))
 		val entered = CountDownLatch(1); val release = CountDownLatch(1); val done = CountDownLatch(1)
+		val keys = KeystoreKeys()
+		var oldId = ""
 		val writer = thread {
 			coordinator.ifActive(old) {
+				check(cache.write(old, byteArrayOf(1)))
+				oldId = keys.namespace(old.cacheNamespace.value, false)
 				entered.countDown(); check(release.await(10, TimeUnit.SECONDS))
-				cache.write(old, byteArrayOf(1))
 			}
 		}
 		check(entered.await(10, TimeUnit.SECONDS))
@@ -110,6 +113,8 @@ class StorageSecurityTest {
 			assertFalse(done.await(100, TimeUnit.MILLISECONDS))
 			release.countDown(); writer.join(10000); logout.join(10000)
 			assertEquals(0L, done.count)
+			assertFalse(File(context.filesDir, "backup-cache/$oldId").exists())
+			assertFalse(keys.contains("cache-$oldId"))
 			val next = coordinator.activate(AccountId("synthetic-current"))
 			assertTrue(cache.write(next, byteArrayOf(2)))
 			coordinator.logout(token)
