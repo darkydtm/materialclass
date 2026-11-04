@@ -236,10 +236,12 @@ class NativeControllerIntegrationTest {
 		val cleaned = CountDownLatch(1)
 		val shared = SessionCoordinator { cleaned.countDown() }
 		val attempts = java.util.concurrent.atomic.AtomicInteger()
+		val retried = CountDownLatch(1)
 		val held = java.util.concurrent.atomic.AtomicReference<(() -> Unit)?>()
 		val delivered = CountDownLatch(1)
 		val failing: (Long, () -> Unit) -> Unit = { _, acknowledge ->
 			if (attempts.incrementAndGet() == 1) throw IllegalStateException("Synthetic delivery failure")
+			retried.countDown()
 			acknowledge()
 		}
 		val delayed: (Long, () -> Unit) -> Unit = { _, acknowledge ->
@@ -256,6 +258,7 @@ class NativeControllerIntegrationTest {
 		try {
 			assertTrue(delivered.await(10, TimeUnit.SECONDS))
 			assertTrue(cleaned.await(10, TimeUnit.SECONDS))
+			assertTrue(retried.await(10, TimeUnit.SECONDS))
 			assertEquals(2, attempts.get())
 			assertSame(ticket, shared.pendingLogoutTicket())
 			assertNull(shared.admit(shared.beginLogin()))
