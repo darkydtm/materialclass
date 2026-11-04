@@ -83,6 +83,7 @@ internal class SchoolRepository(
 	internal var afterRestoreActivation: () -> Unit = {}
 	internal var beforeRequestAdmission: () -> Unit = {}
 	internal var beforeIdentityAdmission: () -> Unit = {}
+	internal var beforeSavedScheduleDelivery: () -> Unit = {}
 
 	fun login(username: String, password: CharArray): GatewayResult<Unit> {
 		val revision = synchronized(StorageLock) {
@@ -279,7 +280,10 @@ internal class SchoolRepository(
 		} ?: return
 		val saved = request.first
 		val result = if (saved == null) GatewayResult.Failure(error) else GatewayResult.Success(saved.withoutCurrentDay(error).copy(savedPeriod = true))
-		if (coordinator.ifActive(active) { request.second == scheduleRevision && request.third.first == weekRevision && request.third.second == coordinator.requestRevision() } == true) deliver(result)
+		if (coordinator.ifActive(active) { request.second == scheduleRevision && request.third.first == weekRevision && request.third.second == coordinator.requestRevision() } == true) {
+			beforeSavedScheduleDelivery()
+			deliver(result)
+		}
 	}
 
 	private fun guarded(state: DiaryState, active: ActiveSession, revision: Long, requestRevision: Long, expired: Boolean = false): DiaryState {
