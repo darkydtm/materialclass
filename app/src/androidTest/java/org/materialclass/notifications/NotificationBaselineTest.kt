@@ -35,6 +35,19 @@ class NotificationBaselineTest {
 		assertTrue(reopened.observe(session, diaryContext, diary("three")) is BaselineResult.Change)
 	}
 
+	@Test fun oldAcknowledgementCannotConsumeRepeatedTransition() {
+		val session = coordinator.activate(AccountId("aba"))
+		val baseline = NotificationBaseline(app, coordinator)
+		assertEquals(BaselineResult.Initialized, baseline.observe(session, diaryContext, diary("A")))
+		val old = baseline.observe(session, diaryContext, diary("B")) as BaselineResult.Change
+		assertTrue(baseline.acknowledge(session, old))
+		val back = baseline.observe(session, diaryContext, diary("A")) as BaselineResult.Change
+		assertTrue(baseline.acknowledge(session, back))
+		val repeated = baseline.observe(session, diaryContext, diary("B")) as BaselineResult.Change
+		assertFalse(baseline.acknowledge(session, old))
+		assertTrue(baseline.acknowledge(session, repeated))
+	}
+
 	@Test fun contextAccountAndLogoutAreIsolated() {
 		val first = coordinator.activate(AccountId("one"))
 		val baseline = NotificationBaseline(app, coordinator)
