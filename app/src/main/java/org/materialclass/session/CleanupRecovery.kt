@@ -16,6 +16,8 @@ internal interface CleanupJournal {
 	fun clear()
 }
 
+private class CleanupBackupException(cause: Throwable) : IOException("Could not preserve cleanup recovery", cause)
+
 internal class CleanupRecovery(private val journal: CleanupJournal, private val clearCache: (CacheNamespace) -> Unit, private val clearSession: () -> Unit, private val invalidateSession: () -> Unit = {}) {
 	fun recover() {
 		val namespace = journal.read() ?: return
@@ -38,6 +40,9 @@ internal class CleanupRecovery(private val journal: CleanupJournal, private val 
 		try {
 			journal.write(namespace)
 		} catch (error: Exception) {
+			if (error is CleanupBackupException) {
+				try { clearCache(namespace) } catch (failure: Exception) { error.addSuppressed(failure) }
+			}
 			try { invalidateSession() } catch (failure: Exception) { error.addSuppressed(failure) }
 			throw LogoutStorageException(error)
 		}
@@ -59,26 +64,43 @@ internal class FileCleanupJournal(context: Context) : CleanupJournal {
 	private val directory = context.noBackupFilesDir
 	private val path = File(directory, "cleanup-journal")
 	private val file by lazy { EncryptedFile(path, "cleanup-journal", KeystoreKeys(), CacheFiles(context, "cleanup-tmp")) }
+	private val backupPath = File(directory, "cleanup-recovery")
+	private val backup by lazy { EncryptedFile(backupPath, "cleanup-recovery", KeystoreKeys(), CacheFiles(context, "recovery-tmp")) }
 
 	private fun syncDirectory() {
 		val descriptor = Os.open(directory.absolutePath, OsConstants.O_RDONLY, 0)
 		try { Os.fsync(descriptor) } finally { Os.close(descriptor) }
 	}
 
-	override fun read(): CacheNamespace? {
-		val bytes = file.read() ?: return null
+	private fun readFile(source: EncryptedFile): CacheNamespace? {
+		val bytes = source.read() ?: return null
 		try {
-			return try { CacheNamespace(bytes.toString(Charsets.UTF_8)) } catch (error: IllegalArgumentException) { throw StorageUnreadableException(error) }
+			return try { CacheNamespace(bytes.toString(Charsets.UTF_8)) } catch (_: IllegalArgumentException) { throw StorageUnreadableException() }
 		} finally { bytes.fill(0) }
 	}
 
+	override fun read(): CacheNamespace? {
+		val recorded = readFile(file)
+		val saved = readFile(backup)
+		if (recorded != null && saved != null && recorded.value != saved.value) throw StorageUnreadableException()
+		return recorded ?: saved
+	}
+
 	override fun write(namespace: CacheNamespace) {
+		val existing = read()
+		if (existing != null && existing.value != namespace.value) throw IOException("Another cleanup is pending")
 		val bytes = namespace.value.toByteArray(Charsets.UTF_8)
-		try { file.write(bytes); syncDirectory() } finally { bytes.fill(0) }
+		try {
+			try { backup.write(bytes); syncDirectory() } catch (error: Exception) { throw CleanupBackupException(error) }
+			file.write(bytes)
+			syncDirectory()
+		} finally { bytes.fill(0) }
 	}
 
 	override fun clear() {
 		if (path.exists() && !path.delete()) throw IOException("Could not delete cleanup journal")
+		syncDirectory()
+		if (backupPath.exists() && !backupPath.delete()) throw IOException("Could not delete cleanup recovery")
 		syncDirectory()
 	}
 }
