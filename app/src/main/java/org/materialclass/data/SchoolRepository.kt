@@ -63,6 +63,8 @@ internal sealed class DiaryState {
 
 internal data class DiaryGuard(val epoch: Long, val revision: Long, val requestRevision: Long, val active: ActiveSession, val expired: Boolean)
 
+internal data class AnnualGradesDelivery(val result: GatewayResult<org.materialclass.api.AnnualGrades>, val active: ActiveSession, val epoch: Long, val revision: Long, val requestRevision: Long)
+
 internal class SchoolRepository(
 	private val gateway: SchoolGateway,
 	private val verifier: IdentityVerifier,
@@ -81,6 +83,7 @@ internal class SchoolRepository(
 	private var refreshRevision = 0L
 	private var scheduleRevision = 0L
 	private var weekRevision = 0L
+	private var gradesRevision = 0L
 	private var verifiedWeek: Triple<ActiveSession, Long, String>? = null
 	@Volatile private var loginRevision: Long? = null
 	@Volatile private var diaryPublished = false
@@ -188,6 +191,36 @@ internal class SchoolRepository(
 	}
 
 	fun currentWeek(deliver: (GatewayResult<String>) -> Unit) = currentWeekForSchedule { result, _ -> deliver(result) }
+
+	fun annualGrades(deliver: (AnnualGradesDelivery) -> Unit) {
+		val active = session ?: return
+		val request = coordinator.ifActive(active) {
+			val candidate = remote
+			val proof = diarySession?.takeIf { candidate != null && it.remote === candidate && it.account == active.account.value && candidate.identityCandidate == active.account.value }
+			Triple(proof, ++gradesRevision, coordinator.requestRevision())
+		} ?: return
+		beforeRequestAdmission()
+		val lease = coordinator.admit(active, request.third) ?: return
+		try {
+			val result = try {
+				val source = gateway as? org.materialclass.api.AnnualGradesGateway
+				if (request.first == null || source == null) GatewayResult.Failure(AppError.UNAVAILABLE) else source.annualGrades(request.first!!, lease)
+			} catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
+			val delivery = coordinator.ifActive(active) {
+				if (lease.cancelled || request.second != gradesRevision || request.third != coordinator.requestRevision()) null
+				else if (result is GatewayResult.Failure && result.error == AppError.SESSION_EXPIRED) {
+					remote = null; scheduleSession = null; diarySession = null; session = null
+					coordinator.revokeIfActive(active, expired = true)
+					null
+				} else AnnualGradesDelivery(result, active, coordinator.revocationEpoch(), request.second, request.third)
+			}
+			if (delivery != null) deliver(delivery)
+		} finally { coordinator.finish(lease) }
+	}
+
+	internal fun acceptsAnnualGrades(delivery: AnnualGradesDelivery): Boolean = synchronized(StorageLock) {
+		delivery.epoch == coordinator.revocationEpoch() && delivery.revision == gradesRevision && delivery.requestRevision == coordinator.requestRevision() && coordinator.ifActive(delivery.active) { session === delivery.active } == true
+	}
 
 	fun currentWeekForSchedule(deliver: (GatewayResult<String>, Long) -> Unit) {
 		val active = session ?: return

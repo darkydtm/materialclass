@@ -51,4 +51,11 @@
 	<string name="homework_files">В дневнике указаны файлы; скачивание недоступно.</string>
 	<string name="homework_books">В дневнике указаны книги; скачивание недоступно.</string>
 	<string name="saved_period">Последний сохраненный период</string>
+	<string name="grades">Годовые оценки</string>
+	<string name="grades_load">Загрузить годовые оценки</string>
+	<string name="grades_empty">Годовых оценок нет</string>
+	<string name="grades_unknown">Неизвестно</string>
+	<string name="grades_quarter">Четверть %1$d: %2$s</string>
+	<string name="grades_year">Год: %1$s</string>
+	<string name="grades_final">Итог: %1$s</string>
 </resources>

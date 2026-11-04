@@ -11,6 +11,31 @@ import org.materialclass.session.SessionCoordinator
 @RunWith(AndroidJUnit4::class)
 class AnnualGradesTest {
 	@Test
+	fun rejectsMalformedRowsAndRevokedLease() {
+		val coordinator = SessionCoordinator { }
+		val active = coordinator.activate(AccountId("123"))
+		val lease = coordinator.admit(active)!!
+		try {
+			val remote = UnverifiedSession("synthetic-token", "123", "student", SchoolContext(1, 2026, 2))
+			val profile = JSONObject("""{"userId":123,"role":"student","school_id":1,"group":{"id":2},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}""")
+			val verified = VerifiedDiarySession.compare(remote, profile)!!
+			var response = Response(200, "{}")
+			var calls = 0
+			val gateway = NativeGateway(Exchange { calls++; response })
+			for (body in listOf("{}", """{"data":{"rows":{}}}""", """{"data":{"rows":[{}]}}""", """{"data":{"rows":[{"subjectName":"X","yearScores":{"yearScore":0}}]}}""")) {
+				response = Response(200, body)
+				assertEquals(AppError.INCOMPATIBLE_RESPONSE, (gateway.annualGrades(verified, lease) as GatewayResult.Failure).error)
+			}
+			response = Response(401, "")
+			assertEquals(AppError.SESSION_EXPIRED, (gateway.annualGrades(verified, lease) as GatewayResult.Failure).error)
+			val count = calls
+			coordinator.logout()
+			assertTrue(gateway.annualGrades(verified, lease) is GatewayResult.Failure)
+			assertEquals(count, calls)
+		} finally { coordinator.finish(lease); coordinator.logout() }
+	}
+
+	@Test
 	fun annualReportUsesVerifiedSessionAndPreservesUnknownScores() {
 		val coordinator = SessionCoordinator { }
 		val active = coordinator.activate(AccountId("123"))

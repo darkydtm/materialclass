@@ -26,6 +26,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import org.materialclass.api.AppError
+import org.materialclass.api.GatewayResult
 import org.materialclass.cache.EncryptedCache
 import org.materialclass.session.SessionCoordinator
 import org.materialclass.data.DiaryState
@@ -86,12 +87,31 @@ internal fun MaterialClassApp(example: ExampleData? = null, nativeEnabled: Boole
 						TextButton(onClick = { warning = false; preferences.edit().putBoolean("warning_seen", true).apply() }) { Text(stringResource(R.string.ok)) }
 					}
 					Row(modifier = Modifier.horizontalScroll(rememberScrollState()).selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-						listOf("login" to R.string.login, "homework" to R.string.homework, "diary" to R.string.diary, "schedule" to R.string.schedule, "settings" to R.string.settings).forEach { (value, label) ->
+						listOf("login" to R.string.login, "homework" to R.string.homework, "diary" to R.string.diary, "schedule" to R.string.schedule, "grades" to R.string.grades, "settings" to R.string.settings).forEach { (value, label) ->
 							Box(Modifier.selectable(selected = screen == value, role = Role.Tab, onClick = { screen = value }).padding(12.dp)) { Text(stringResource(label)) }
 						}
 					}
 					when (screen) {
 						"login" -> LoginScreen(controller, nativeState)
+						"grades" -> {
+							Text(stringResource(R.string.grades), style = MaterialTheme.typography.headlineSmall)
+							if (nativeState?.signedIn != true || controller == null) Text(stringResource(R.string.data_unavailable)) else {
+								Button(onClick = { controller.refreshAnnualGrades() }) { Text(stringResource(R.string.grades_load)) }
+								if (nativeState.gradesLoading) Text(stringResource(R.string.loading)) else when (val grades = nativeState.annualGrades) {
+									is GatewayResult.Failure -> Text(stringResource(errorMessage(grades.error)))
+									is GatewayResult.Success -> {
+										if (grades.value.rows.isEmpty()) Text(stringResource(R.string.grades_empty))
+										grades.value.rows.forEach { row ->
+											Text(row.subjectName, style = MaterialTheme.typography.titleMedium)
+											row.quarters.forEachIndexed { index, score -> Text(stringResource(R.string.grades_quarter, index + 1, score ?: stringResource(R.string.grades_unknown))) }
+											Text(stringResource(R.string.grades_year, row.yearScore ?: stringResource(R.string.grades_unknown)))
+											Text(stringResource(R.string.grades_final, row.finalScore ?: stringResource(R.string.grades_unknown)))
+										}
+									}
+									null -> Text(stringResource(R.string.data_unavailable))
+								}
+							}
+						}
 						"diary", "homework", "schedule" -> {
 							Text(stringResource(when (screen) { "diary" -> R.string.diary; "homework" -> R.string.homework; else -> R.string.schedule }), style = MaterialTheme.typography.headlineSmall)
 							if (nativeState != null) {

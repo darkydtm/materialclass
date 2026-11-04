@@ -31,6 +31,8 @@ internal data class NativeUiState(
 	val selectedDiaryDate: String? = null,
 	val schedule: Schedule? = null,
 	val scheduleSnapshot: ScheduleSnapshot? = null,
+	val annualGrades: GatewayResult<org.materialclass.api.AnnualGrades>? = null,
+	val gradesLoading: Boolean = false,
 	val error: AppError? = null,
 )
 
@@ -40,6 +42,7 @@ internal interface NativeUiController {
 	fun login(username: String, password: CharArray)
 	fun refresh()
 	fun selectDiaryWeek(date: String) {}
+	fun refreshAnnualGrades() {}
 	fun logout()
 	fun close()
 }
@@ -189,6 +192,23 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 			currentTaskGeneration = task
 			currentTaskEpoch = epoch
 			repository.refreshDate(date)
+		}
+	}
+
+	override fun refreshAnnualGrades() {
+		if (closed || !state.signedIn) return
+		val task = ++generation
+		val epoch = observedEpoch
+		state = state.copy(annualGrades = null, gradesLoading = true)
+		executor.execute {
+			if (closed || generation != task || repository.revocationEpoch() != epoch) return@execute
+			currentTaskGeneration = task
+			currentTaskEpoch = epoch
+			repository.annualGrades { delivery ->
+				post(task) {
+					if (repository.acceptsAnnualGrades(delivery)) state = state.copy(annualGrades = delivery.result, gradesLoading = false)
+				}
+			}
 		}
 	}
 
