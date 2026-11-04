@@ -250,7 +250,7 @@ class NativeGatewayUiIntegrationTest {
 				assertEquals("Second Surname", second.state.profile?.surname)
 				assertEquals("Second School", second.state.profile?.school)
 				assertTrue(snapshots.isNotEmpty())
-				assertTrue(snapshots.none { it.profile?.surname == "Synthetic Surname" || it.profile?.school == "Synthetic School" })
+				assertTrue(snapshots.none { it.profile?.surname == "Synthetic Surname" || it.profile?.school == "Synthetic School" || it.profile?.surname == "Stale Surname" || it.profile?.school == "Stale School" })
 			}
 			assertNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, "Synthetic Surname") })
 			assertNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, "Synthetic School") })

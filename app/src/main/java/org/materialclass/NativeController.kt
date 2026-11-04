@@ -156,6 +156,7 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 			currentTaskGeneration = task
 			currentTaskEpoch = epoch
 			try {
+				repository.refreshProfile { profile -> post(task) { state = state.copy(profile = profile) } }
 				if (selected != null) repository.refreshDate(selected) else repository.refreshCurrent { weeks ->
 					post(task) { state = state.copy(diaryWeeks = weeks.options, selectedDiaryDate = weeks.currentWeek) }
 				}
