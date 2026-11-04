@@ -75,6 +75,7 @@ internal class SchoolRepository(
 	private var weekRevision = 0L
 	private var verifiedWeek: Triple<ActiveSession, Long, String>? = null
 	@Volatile private var loginRevision: Long? = null
+	@Volatile private var diaryPublished = false
 	internal var afterRestoreActivation: () -> Unit = {}
 	internal var beforeRequestAdmission: () -> Unit = {}
 	internal var beforeIdentityAdmission: () -> Unit = {}
@@ -131,7 +132,7 @@ internal class SchoolRepository(
 				}
 			} catch (error: CancellationException) { throw error } catch (_: Exception) {
 				val event = coordinator.event()
-				if (prior != null && event.change == org.materialclass.session.SessionChange.LOGOUT && event.session === prior && coordinator.revocationEpoch() == event.epoch) {
+				if (diaryPublished && prior != null && event.change == org.materialclass.session.SessionChange.LOGOUT && event.session === prior && coordinator.revocationEpoch() == event.epoch) {
 					emit(DiaryState.Cleared)
 				}
 				GatewayResult.Failure(AppError.UNAVAILABLE)
@@ -364,6 +365,7 @@ internal class SchoolRepository(
 			onWeeks(weeks)
 			val result = try { gateway.diary(proof, context, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
 			val state = diaryResult(active, context, result, lease, request.second, request.third)
+			if (state is DiaryState.Ready) diaryPublished = true
 			if (state != null) emit(state)
 		} finally { coordinator.finish(lease) }
 	}
@@ -400,6 +402,7 @@ internal class SchoolRepository(
 		try {
 			val result = try { gateway.diary(proof, context, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
 			val state = diaryResult(active, context, result, lease, request.second, request.third)
+			if (state is DiaryState.Ready) diaryPublished = true
 			if (state != null) emit(state)
 		} finally { coordinator.finish(lease) }
 	}
