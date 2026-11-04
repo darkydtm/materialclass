@@ -56,6 +56,7 @@ class GradesDiaryRaceTest {
 	private inner class Fixture {
 		val diaryGate = AtomicReference<Gate?>(null)
 		val gradesGate = AtomicReference<Gate?>(null)
+		val profileGate = AtomicReference<Gate?>(null)
 		val scheduleGate = AtomicReference<Gate?>(null)
 		val scheduleResult = AtomicReference(Schedule(emptyList()))
 		val diaryError = AtomicReference<AppError?>(null)
@@ -83,8 +84,12 @@ class GradesDiaryRaceTest {
 			}
 		}
 		val verifier = IdentityVerifier { session, _ ->
+			val gate = profileGate.getAndSet(null)
+			gate?.waitHere()
 			val profile = JSONObject("""{"userId":${session.identityCandidate},"role":"student","school_id":1,"group":{"id":2},"studentInfo":{"studentSchoolUuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}""")
-			SessionVerification.Verified(AccountId(session.identityCandidate!!), true, VerifiedScheduleSession.compare(session, profile), VerifiedDiarySession.compare(session, profile))
+			val result = SessionVerification.Verified(AccountId(session.identityCandidate!!), true, VerifiedScheduleSession.compare(session, profile), VerifiedDiarySession.compare(session, profile), StudentProfile("Profile-${session.identityCandidate}", null, null, null))
+			gate?.returned?.countDown()
+			result
 		}
 		val cache = object : DiaryCache {
 			override fun read(session: ActiveSession): ByteArray? = null
@@ -204,5 +209,64 @@ class GradesDiaryRaceTest {
 			drain(c)
 			main { assertFalse(c.state.signedIn); assertFalse(c.state.gradesLoading); assertNull(c.state.annualGrades) }
 		} finally { gate.release.countDown() }
+	}
+
+	@Test fun revocationWaitsForBothControllersAndRejectsLateProfileAndGrades() {
+		for (expiry in listOf(false, true)) for (profileRequest in listOf(false, true)) {
+			val fixture = Fixture()
+			val trace = mutableListOf<NativeUiState>()
+			main { controller = NativeController(onState = { trace.add(it) }) { emit -> SchoolRepository(fixture.gateway, fixture.verifier, coordinator, fixture.cache, { 1L }, emit, SessionStore(context, coordinator)) }; controller!!.login("1", charArrayOf('x')) }
+			val first = controller!!
+			await { first.state.signedIn && first.state.profile?.surname == "Profile-1" && first.state.diary is DiaryState.Ready }
+			main { first.refreshAnnualGrades() }
+			await { contents(first.state)?.contains("Subject-1") == true }
+			val held = AtomicReference<(() -> Unit)?>()
+			val delivered = CountDownLatch(1)
+			main {
+				replacement = NativeController(uiDispatch = { action -> held.set(action); delivered.countDown(); true }) { emit -> SchoolRepository(fixture.gateway, fixture.verifier, coordinator, fixture.cache, { 1L }, emit, SessionStore(context, coordinator)) }
+			}
+			val second = replacement!!
+			val gate = Gate()
+			if (profileRequest) fixture.profileGate.set(gate) else fixture.gradesGate.set(gate)
+			val finished = CountDownLatch(1)
+			var worker: Thread? = null
+			try {
+				main { if (profileRequest) first.refresh() else first.refreshAnnualGrades() }
+				assertTrue(gate.entered.await(15, TimeUnit.SECONDS))
+				val active = coordinator.event().session!!
+				worker = kotlin.concurrent.thread {
+					try { if (expiry) coordinator.revokeIfActive(active, expired = true) else coordinator.logout() } finally { finished.countDown() }
+				}
+				assertTrue(delivered.await(15, TimeUnit.SECONDS))
+				await { !first.state.signedIn && first.state.profile == null && first.state.annualGrades == null }
+				assertNotNull(coordinator.pendingLogoutTicket())
+				val rejected = charArrayOf('x')
+				main { second.login("2", rejected) }
+				assertEquals('\u0000', rejected[0])
+				assertNull(coordinator.admit(coordinator.beginLogin()))
+				var clearedAt = 0
+				main { clearedAt = trace.size }
+				gate.release.countDown()
+				assertTrue(gate.returned.await(15, TimeUnit.SECONDS))
+				drain(first)
+				main { assertTrue(trace.drop(clearedAt).none { it.profile?.surname == "Profile-1" || contents(it)?.contains("Subject-1") == true }) }
+				assertNotNull(coordinator.pendingLogoutTicket())
+				main { held.get()!!.invoke() }
+				await { coordinator.pendingLogoutTicket() == null }
+				assertTrue(finished.await(15, TimeUnit.SECONDS))
+				main { second.login("2", charArrayOf('x')) }
+				await { second.state.signedIn && second.state.profile?.surname == "Profile-2" }
+				main { second.refreshAnnualGrades() }
+				await { contents(second.state)?.contains("Subject-2") == true }
+				drain(first)
+				main { assertTrue(trace.drop(clearedAt).none { it.profile?.surname == "Profile-1" || contents(it)?.contains("Subject-1") == true }) }
+			} finally {
+				gate.release.countDown()
+				main { held.get()?.invoke(); first.close(); second.close(); controller = null; replacement = null }
+				worker?.join(15000)
+				coordinator.pendingLogoutTicket()?.let { coordinator.logout(it) }
+				coordinator.logout()
+			}
+		}
 	}
 }
