@@ -25,7 +25,9 @@ class FileCleanupJournalTest {
 	@After
 	fun cleanup() {
 		path.delete()
+		File(context.noBackupFilesDir, "cleanup-recovery").delete()
 		KeystoreKeys().delete("cleanup-journal")
+		KeystoreKeys().delete("cleanup-recovery")
 	}
 
 	@Test
@@ -68,6 +70,18 @@ class FileCleanupJournalTest {
 			CleanupRecovery(FileCleanupJournal(context), {}, {}).recover()
 			assertNull(FileCleanupJournal(context).read())
 		}
+	}
+
+	@Test
+	fun encryptedRecoveryRejectsCorruptionAndHidesNamespace() {
+		FileCleanupJournal(context).write(namespace)
+		val backup = File(context.noBackupFilesDir, "cleanup-recovery")
+		val bytes = backup.readBytes()
+		assertFalse(bytes.toString(Charsets.UTF_8).contains(namespace.value))
+		bytes[bytes.lastIndex] = (bytes.last().toInt() xor 1).toByte()
+		backup.writeBytes(bytes)
+		try { FileCleanupJournal(context).read(); fail("Corruption must fail closed") } catch (_: StorageUnreadableException) { }
+		assertTrue(backup.exists())
 	}
 
 	@Test
