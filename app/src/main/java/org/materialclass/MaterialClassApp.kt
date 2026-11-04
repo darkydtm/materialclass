@@ -124,7 +124,15 @@ internal fun MaterialClassApp(example: ExampleData? = null, nativeEnabled: Boole
 												}
 											} else {
 												if (diary.snapshot.diary.days.all { it.subjects.isEmpty() }) Text(stringResource(R.string.diary_empty))
-												diary.snapshot.diary.days.forEach { day -> Text(day.date); day.subjects.forEach { subject -> Text(subject.label); subject.homeworkBody?.let { Text(it) } } }
+												diary.snapshot.diary.days.forEach { day ->
+													Text(day.date)
+													day.subjects.forEach { subject ->
+														Text(subject.label)
+														subject.homeworkBody?.takeUnless { it.isBlank() }?.let { Text(it) }
+														if (subject.hasFiles) Text(stringResource(R.string.homework_files))
+														if (subject.hasBooks) Text(stringResource(R.string.homework_books))
+													}
+												}
 											}
 										}
 										DiaryState.Loading -> Text(stringResource(R.string.loading))
