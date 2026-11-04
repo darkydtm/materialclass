@@ -58,14 +58,14 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 				observedEpoch = epoch
 				if (event.change == SessionChange.ACTIVATED && repository.ownedEpoch() == epoch) {
 					currentTaskEpoch = epoch
-				} else if (event.change == SessionChange.EXPIRED && state.busy && !state.signedIn && repository.pendingLogoutTicket() == null) {
+				} else if (event.change == SessionChange.EXPIRED && state.busy && !state.signedIn) {
 					currentTaskEpoch = epoch
 				} else {
 					generation++
 					state = NativeUiState(busy = logoutTicket != null, logoutPending = logoutTicket != null || repository.pendingLogoutTicket() != null, error = if (event.change == SessionChange.EXPIRED) AppError.SESSION_EXPIRED else null)
 				}
 			} else if (state.logoutPending && logoutTicket == null && repository.pendingLogoutTicket() == null) {
-				state = NativeUiState()
+				state = state.copy(logoutPending = false)
 			}
 		}
 	}
