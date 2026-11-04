@@ -70,7 +70,7 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 				}
 			}
 		}
-		if (Looper.myLooper() == Looper.getMainLooper()) apply() else handler.post { apply() }
+		handler.post { apply() }
 	}
 	@Volatile private var generation = 0L
 	@Volatile private var closed = false
