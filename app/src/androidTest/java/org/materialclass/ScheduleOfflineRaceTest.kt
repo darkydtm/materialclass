@@ -42,6 +42,10 @@ class ScheduleOfflineRaceTest {
 		val error = AtomicReference<AppError?>(null)
 		val entered = CountDownLatch(1)
 		val release = CountDownLatch(1)
+		val refreshEntered = CountDownLatch(1)
+		val refreshRelease = CountDownLatch(1)
+		@Volatile var blockRefresh = false
+		@Volatile var lesson: String? = null
 		@Volatile var block = false
 		@Volatile var corrupt = false
 		@Volatile var bytes: ByteArray? = null
@@ -50,7 +54,10 @@ class ScheduleOfflineRaceTest {
 			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic", login, "student", SchoolContext(login.toLong(), 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
 			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = error.get()?.let { GatewayResult.Failure(it) } ?: GatewayResult.Success("01.01.2026")
 			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
-			override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> = GatewayResult.Success(Schedule((1..7).map { ScheduleDay(0, "%02d.01.2026".format(it), true, false, listOf(ScheduleLesson("lesson", 1, "Account ${session.account}"))) }))
+			override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> {
+				if (blockRefresh) { refreshEntered.countDown(); check(refreshRelease.await(10, TimeUnit.SECONDS)) }
+				return GatewayResult.Success(Schedule((1..7).map { ScheduleDay(0, "%02d.01.2026".format(it), true, false, listOf(ScheduleLesson("lesson", 1, lesson ?: "Account ${session.account}"))) }))
+			}
 		}
 		val verifier = IdentityVerifier { session, _ ->
 			val id = session.identityCandidate!!
@@ -67,9 +74,8 @@ class ScheduleOfflineRaceTest {
 		}
 		fun create(): NativeController {
 			val c = NativeController { emit ->
-				SchoolRepository(gateway, verifier, coordinator, diary, { 1234L }, emit, SessionStore(context, coordinator), schedule).also { repo ->
+				SchoolRepository(gateway, verifier, coordinator, diary, { 1234L }, emit, SessionStore(context, coordinator), schedule, { if (block) { entered.countDown(); check(release.await(10, TimeUnit.SECONDS)) } }).also { repo ->
 					repository = repo
-					repo.beforeSavedScheduleDelivery = { if (block) { entered.countDown(); check(release.await(10, TimeUnit.SECONDS)) } }
 				}
 			}
 			controllers.add(c)
@@ -110,17 +116,27 @@ class ScheduleOfflineRaceTest {
 	@Test fun newerRefreshSuppressesOlderFallback() {
 		val f = Fixture()
 		val c = f.start()
+		var original: ScheduleSnapshot? = null
+		main { original = c.state.scheduleSnapshot }
 		f.block = true
 		f.offline(c)
 		assertTrue(f.entered.await(10, TimeUnit.SECONDS))
 		try {
 			f.block = false
 			f.error.set(null)
+			f.lesson = "New schedule"
+			f.blockRefresh = true
 			main { c.refresh() }
-		} finally { f.release.countDown() }
+			f.release.countDown()
+			assertTrue(f.refreshEntered.await(10, TimeUnit.SECONDS))
+			main { assertEquals(original, c.state.scheduleSnapshot) }
+		} finally {
+			f.release.countDown()
+			f.refreshRelease.countDown()
+		}
 		f.drain(c)
-		await { c.state.scheduleSnapshot?.staleError == null && c.state.scheduleSnapshot != null }
-		main { assertFalse(c.state.scheduleSnapshot!!.savedPeriod) }
+		await { c.state.schedule?.days?.firstOrNull()?.lessons?.firstOrNull()?.themeLabel == "New schedule" }
+		main { assertNull(c.state.scheduleSnapshot!!.staleError); assertFalse(c.state.scheduleSnapshot!!.savedPeriod) }
 	}
 
 	@Test fun accountAndSchoolSwitchSuppressesOldFallback() {
