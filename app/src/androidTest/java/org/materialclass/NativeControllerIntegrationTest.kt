@@ -75,6 +75,7 @@ class NativeControllerIntegrationTest {
 		try {
 			assertTrue(entered.await(10, TimeUnit.SECONDS))
 			repository.logout()
+			main { assertFalse(controller!!.state.signedIn) }
 			main { controller!!.login("2", charArrayOf('x')) }
 			await { controller!!.state.signedIn && controller!!.state.diary is DiaryState.Ready }
 			release.countDown()
