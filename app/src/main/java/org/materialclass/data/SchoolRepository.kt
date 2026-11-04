@@ -96,11 +96,9 @@ internal class SchoolRepository(
 			val profileLease = coordinator.admit(revision) ?: return GatewayResult.Failure(AppError.UNAVAILABLE)
 			val verification = try { verifier.verify(candidate, profileLease) } catch (error: CancellationException) { throw error } catch (_: Exception) { SessionVerification.Retry } finally { coordinator.finish(profileLease) }
 			if (candidate.role != "student" || verification !is SessionVerification.Verified || !verification.pupil) return GatewayResult.Failure(AppError.UNAVAILABLE)
-			var activationStarted = false
 			return try {
 				val active = synchronized(StorageLock) {
 					val activated = coordinator.activateIfUnchanged(revision, verification.account) {
-						activationStarted = true
 						session = null
 						remote = null
 						scheduleSession = null
@@ -127,10 +125,7 @@ internal class SchoolRepository(
 					}
 					throw error
 				}
-			} catch (error: CancellationException) { throw error } catch (_: Exception) {
-				if (activationStarted) emit(DiaryState.Cleared)
-				GatewayResult.Failure(AppError.UNAVAILABLE)
-			}
+			} catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
 		} finally {
 			password.fill('\u0000')
 			synchronized(StorageLock) {
