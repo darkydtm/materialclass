@@ -208,7 +208,12 @@ internal class SchoolRepository(
 			val verification = try { verifier.verify(request.first, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { SessionVerification.Retry }
 			val updated = coordinator.ifActive(active) {
 				if (lease.cancelled || session !== active || remote !== request.first || request.second != coordinator.requestRevision()) false
-				else if (verification is SessionVerification.Verified && verification.pupil && verification.account == active.account) {
+				else if (verification == SessionVerification.Invalid || verification == SessionVerification.Expired ||
+					(verification is SessionVerification.Verified && (!verification.pupil || verification.account != active.account))) {
+					remote = null; scheduleSession = null; diarySession = null; profile = null; session = null
+					coordinator.revokeIfActive(active, expired = true)
+					false
+				} else if (verification is SessionVerification.Verified) {
 					profile = verification.profile
 					true
 				} else false

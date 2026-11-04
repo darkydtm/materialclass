@@ -26,7 +26,8 @@ internal class NativeIdentityVerifier(private val exchange: Exchange = HttpsExch
 			val response = exchange.execute(Request(URL("https://api.bilimclass.kz/api/v2/os/user-info"), "GET", headers, null, lease))
 			if (response.status != 200) return SessionVerification.Retry
 			val data = JSONObject(response.body).getJSONObject("data")
-			if (data.get("role") != "student") return SessionVerification.Retry
+			val role = (data.opt("role") as? String)?.takeIf { it.isNotBlank() } ?: return SessionVerification.Retry
+			if (role != "student") return SessionVerification.Invalid
 			val raw = data.get("userId")
 			if (raw !is Int && raw !is Long) return SessionVerification.Retry
 			val id = raw.toString()
