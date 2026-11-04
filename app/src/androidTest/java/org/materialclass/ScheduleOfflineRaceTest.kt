@@ -47,7 +47,7 @@ class ScheduleOfflineRaceTest {
 		@Volatile var bytes: ByteArray? = null
 		lateinit var repository: SchoolRepository
 		val gateway = object : SchoolGateway {
-			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic", login, "student", SchoolContext(login.toInt(), 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic", login, "student", SchoolContext(login.toLong(), 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
 			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = error.get()?.let { GatewayResult.Failure(it) } ?: GatewayResult.Success("01.01.2026")
 			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
 			override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> = GatewayResult.Success(Schedule((1..7).map { ScheduleDay(0, "%02d.01.2026".format(it), true, false, listOf(ScheduleLesson("lesson", 1, "Account ${session.account}"))) }))
