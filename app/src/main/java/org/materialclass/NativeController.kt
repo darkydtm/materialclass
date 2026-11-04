@@ -74,7 +74,7 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 	}
 	private val observeUiLogout: (Long, () -> Unit) -> Unit = { epoch, acknowledge ->
 		observeLogout(epoch)
-		if (!handler.post { acknowledge() }) acknowledge()
+		check(handler.post { acknowledge() })
 	}
 	@Volatile private var generation = 0L
 	@Volatile private var closed = false
