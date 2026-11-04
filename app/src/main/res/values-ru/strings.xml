@@ -35,4 +35,10 @@
 	<string name="ok">Понятно</string>
 	<string name="logout_cleanup_failed">Очистка сессии не выполнена или не подтверждена. Повторите попытку перед входом.</string>
 	<string name="retry_logout">Повторить выход</string>
+	<string name="error_offline">Нет подключения к сети. Проверьте соединение и повторите попытку.</string>
+	<string name="error_timeout">Время ожидания запроса истекло. Повторите попытку.</string>
+	<string name="error_unavailable">Сервис недоступен. Повторите попытку позже.</string>
+	<string name="error_incompatible_response">Не удалось обработать ответ. Повторите попытку позже.</string>
+	<string name="error_unknown">Что-то пошло не так. Повторите попытку позже.</string>
+	<string name="error_cache_unreadable">Не удалось прочитать сохранённые данные.</string>
 </resources>

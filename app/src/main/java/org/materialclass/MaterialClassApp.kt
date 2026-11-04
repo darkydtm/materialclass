@@ -78,7 +78,7 @@ internal fun MaterialClassApp(example: ExampleData? = null, nativeEnabled: Boole
 				Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 					Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium)
 					if (controller == null) Text(stringResource(R.string.backend_unavailable), color = MaterialTheme.colorScheme.error)
-					nativeState?.error?.let { Text(if (it == AppError.SESSION_EXPIRED) stringResource(R.string.session_expired) else stringResource(R.string.operation_error, it.name), color = MaterialTheme.colorScheme.error) }
+					nativeState?.error?.let { Text(stringResource(errorMessage(it)), color = MaterialTheme.colorScheme.error) }
 					if (warning) {
 						Text(stringResource(R.string.warning_title), style = MaterialTheme.typography.titleMedium)
 						Text(stringResource(R.string.warning_text))
@@ -98,7 +98,7 @@ internal fun MaterialClassApp(example: ExampleData? = null, nativeEnabled: Boole
 								else if (screen == "diary") {
 									when (val diary = nativeState.diary) {
 										is DiaryState.Ready -> {
-											diary.staleError?.let { Text(stringResource(R.string.stale_data, it.name)) }
+											diary.staleError?.let { Text(stringResource(R.string.stale_data, stringResource(errorMessage(it)))) }
 											if (diary.snapshot.diary.days.all { it.subjects.isEmpty() }) Text(stringResource(R.string.diary_empty))
 											diary.snapshot.diary.days.forEach { day -> Text(day.date); day.subjects.forEach { subject -> Text(subject.label); subject.homeworkBody?.let { Text(it) } } }
 										}
@@ -142,6 +142,16 @@ internal fun MaterialClassApp(example: ExampleData? = null, nativeEnabled: Boole
 			}
 		}
 	}
+}
+
+private fun errorMessage(error: AppError): Int = when (error) {
+	AppError.OFFLINE -> R.string.error_offline
+	AppError.TIMEOUT -> R.string.error_timeout
+	AppError.UNAVAILABLE -> R.string.error_unavailable
+	AppError.INCOMPATIBLE_RESPONSE -> R.string.error_incompatible_response
+	AppError.SESSION_EXPIRED -> R.string.session_expired
+	AppError.CACHE_UNREADABLE -> R.string.error_cache_unreadable
+	AppError.INVALID_CREDENTIALS, AppError.FORBIDDEN, AppError.SERVER -> R.string.error_unknown
 }
 
 @Composable

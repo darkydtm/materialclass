@@ -35,4 +35,10 @@
 	<string name="ok">Түсінікті</string>
 	<string name="logout_cleanup_failed">Сессияны тазалау орындалмады немесе расталмады. Кіруден бұрын қайталаңыз.</string>
 	<string name="retry_logout">Шығуды қайталау</string>
+	<string name="error_offline">Желіге қосылым жоқ. Қосылымды тексеріп, қайталап көріңіз.</string>
+	<string name="error_timeout">Сұраудың күту уақыты аяқталды. Қайталап көріңіз.</string>
+	<string name="error_unavailable">Қызмет қолжетімсіз. Кейінірек қайталап көріңіз.</string>
+	<string name="error_incompatible_response">Жауапты өңдеу мүмкін болмады. Кейінірек қайталап көріңіз.</string>
+	<string name="error_unknown">Бір қате орын алды. Кейінірек қайталап көріңіз.</string>
+	<string name="error_cache_unreadable">Сақталған деректерді оқу мүмкін болмады.</string>
 </resources>
