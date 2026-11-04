@@ -35,11 +35,11 @@ class RequestLease internal constructor(internal val owner: ActiveSession? = nul
 internal enum class SessionChange { ACTIVATED, EXPIRED, LOGOUT }
 internal data class SessionEvent(val epoch: Long, val change: SessionChange, val session: ActiveSession?)
 
-class SessionCoordinator internal constructor(private val clearSession: () -> Unit, private val clearCache: (CacheNamespace) -> Unit, private val journal: CleanupJournal? = null) {
+class SessionCoordinator internal constructor(private val clearSession: () -> Unit, private val clearCache: (CacheNamespace) -> Unit, private val journal: CleanupJournal? = null, private val invalidateSession: () -> Unit = {}) {
 	internal constructor(clearSession: () -> Unit) : this(clearSession, {})
-	constructor(context: Context) : this({ SessionStore.clear(context) }, { org.materialclass.cache.EncryptedCache.clearNamespace(context, it) }, FileCleanupJournal(context))
+	constructor(context: Context) : this({ SessionStore.clear(context) }, { org.materialclass.cache.EncryptedCache.clearNamespace(context, it) }, FileCleanupJournal(context), { org.materialclass.security.KeystoreKeys().delete("session") })
 
-	private val recovery by lazy { journal?.let { CleanupRecovery(it, clearCache, clearSession) } }
+	private val recovery by lazy { journal?.let { CleanupRecovery(it, clearCache, clearSession, invalidateSession) } }
 	private fun recoverCleanup() { recovery?.recover() }
 
 	companion object {

@@ -16,7 +16,7 @@ internal interface CleanupJournal {
 	fun clear()
 }
 
-internal class CleanupRecovery(private val journal: CleanupJournal, private val clearCache: (CacheNamespace) -> Unit, private val clearSession: () -> Unit) {
+internal class CleanupRecovery(private val journal: CleanupJournal, private val clearCache: (CacheNamespace) -> Unit, private val clearSession: () -> Unit, private val invalidateSession: () -> Unit = {}) {
 	fun recover() {
 		val namespace = journal.read() ?: return
 		journal.write(namespace)
@@ -32,8 +32,13 @@ internal class CleanupRecovery(private val journal: CleanupJournal, private val 
 		try {
 			val recorded = journal.read()
 			if (recorded != null && recorded.value != namespace.value) throw IOException("Another cleanup is pending")
+		} catch (error: Exception) {
+			throw LogoutStorageException(error)
+		}
+		try {
 			journal.write(namespace)
 		} catch (error: Exception) {
+			try { invalidateSession() } catch (failure: Exception) { error.addSuppressed(failure) }
 			throw LogoutStorageException(error)
 		}
 		perform(namespace)
@@ -53,7 +58,7 @@ internal class CleanupRecovery(private val journal: CleanupJournal, private val 
 internal class FileCleanupJournal(context: Context) : CleanupJournal {
 	private val directory = context.noBackupFilesDir
 	private val path = File(directory, "cleanup-journal")
-	private val file by lazy { EncryptedFile(path, "cleanup-journal", KeystoreKeys(), CacheFiles(context)) }
+	private val file by lazy { EncryptedFile(path, "cleanup-journal", KeystoreKeys(), CacheFiles(context, "cleanup-tmp")) }
 
 	private fun syncDirectory() {
 		val descriptor = Os.open(directory.absolutePath, OsConstants.O_RDONLY, 0)

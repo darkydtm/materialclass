@@ -378,6 +378,39 @@ class StorageSecurityTest {
 	}
 
 	@Test
+	fun blockedJournalWriteDeletesKeyRetainsSessionAndRetries() {
+		val coordinator = SessionCoordinator(context)
+		val store = SessionStore(context, coordinator)
+		val cache = EncryptedCache(context, coordinator)
+		val session = coordinator.activate(AccountId("synthetic-journal-blocked"))
+		store.write(session, byteArrayOf(1))
+		cache.write(session, byteArrayOf(2))
+		val keys = KeystoreKeys()
+		val id = keys.namespace(session.cacheNamespace.value, false)
+		val temporary = File(context.noBackupFilesDir, "cleanup-tmp")
+		check(!temporary.exists() || temporary.delete())
+		check(temporary.createNewFile())
+		try {
+			try { coordinator.logout(); fail("Cleanup must fail") } catch (_: org.materialclass.session.LogoutStorageException) { }
+			assertFalse(keys.contains("session"))
+			assertTrue(File(context.noBackupFilesDir, "session").exists())
+			assertTrue(File(context.filesDir, "backup-cache/$id").exists())
+			val ticket = coordinator.pendingLogoutTicket()
+			assertNotNull(ticket)
+			check(temporary.delete())
+			coordinator.logout(ticket)
+			assertFalse(File(context.noBackupFilesDir, "session").exists())
+			assertFalse(File(context.filesDir, "backup-cache/$id").exists())
+			assertNull(coordinator.pendingLogoutTicket())
+		} finally {
+			temporary.delete()
+			coordinator.pendingLogoutTicket()?.let { coordinator.logout(it) }
+			coordinator.logout()
+			cache.clearAll()
+		}
+	}
+
+	@Test
 	fun clearAllDestroysCacheKeysAfterFileDeletionFailure() {
 		val cache = EncryptedCache(context, SessionCoordinator(context))
 		cache.clearAll()
