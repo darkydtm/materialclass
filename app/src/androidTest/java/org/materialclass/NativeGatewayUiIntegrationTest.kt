@@ -161,6 +161,7 @@ class NativeGatewayUiIntegrationTest {
 		exchange.blockDiary.set(true)
 		click("First - 01.01.2026")
 		assertTrue(exchange.entered.await(15, TimeUnit.SECONDS))
+		waitFor("Selected week: 01.01.2026")
 		click("Second - 08.01.2026")
 		waitFor("Selected week: 08.01.2026")
 		exchange.blockDiary.set(false)
