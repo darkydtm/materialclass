@@ -279,6 +279,7 @@ class NativeGatewayUiIntegrationTest {
 			assertTrue(controller.state.diary is DiaryState.Cleared)
 			assertTrue(controller.state.diaryWeeks.isEmpty())
 		}
+		click(context.getString(R.string.login))
 		waitFor(context.getString(R.string.sign_in))
 		assertNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, "Synthetic Surname") })
 		assertNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, "Synthetic School") })
