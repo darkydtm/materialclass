@@ -72,6 +72,10 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 		}
 		handler.post { apply() }
 	}
+	private val observeUiLogout: (Long, () -> Unit) -> Unit = { epoch, acknowledge ->
+		observeLogout(epoch)
+		if (!handler.post { acknowledge() }) acknowledge()
+	}
 	@Volatile private var generation = 0L
 	@Volatile private var closed = false
 	private var started = false
@@ -90,6 +94,7 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 
 	init {
 		val snapshot = repository.observeRevocations(observeLogout)
+		repository.observeUiRevocations(observeUiLogout)
 		observedEpoch = snapshot.first
 		if (snapshot.second) state = NativeUiState(logoutPending = true)
 	}
@@ -219,6 +224,7 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 	override fun close() {
 		closed = true
 		repository.removeRevocationObserver(observeLogout)
+		repository.removeUiRevocationObserver(observeUiLogout)
 		generation++
 		executor.shutdown()
 		logoutExecutor.shutdown()
