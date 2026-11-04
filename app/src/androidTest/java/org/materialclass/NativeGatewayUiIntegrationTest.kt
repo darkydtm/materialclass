@@ -216,6 +216,7 @@ class NativeGatewayUiIntegrationTest {
 			exchange.loginProfile = profile.replace("123", "456").replace("Synthetic", "Second")
 			exchange.profileResponse = exchange.loginProfile
 			instrumentation.runOnMainSync {
+				second.start()
 				activity.setContent {
 					val snapshot = second.state
 					androidx.compose.runtime.SideEffect { snapshots.add(snapshot) }
@@ -229,9 +230,14 @@ class NativeGatewayUiIntegrationTest {
 			click("Profile")
 			waitFor("Second Surname")
 			waitFor("Second School")
+			instrumentation.runOnMainSync {
+				assertTrue(snapshots.any { it.profile?.surname == "Second Surname" && it.profile?.school == "Second School" })
+				assertTrue(exchange.blockedProfile!!.lease.isCancelled())
+			}
 			exchange.profileRelease.countDown()
 			assertTrue(exchange.profileReturned.await(15, TimeUnit.SECONDS))
-			drain(first)
+			val firstExecutor = NativeController::class.java.getDeclaredField("executor").apply { isAccessible = true }.get(first) as java.util.concurrent.ExecutorService
+			assertTrue(firstExecutor.awaitTermination(30, TimeUnit.SECONDS))
 			drain(second)
 			instrumentation.runOnMainSync {
 				assertEquals("Second Surname", second.state.profile?.surname)
