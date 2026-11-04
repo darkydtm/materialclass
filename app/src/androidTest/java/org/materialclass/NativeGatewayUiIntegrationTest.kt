@@ -257,6 +257,19 @@ class NativeGatewayUiIntegrationTest {
 		} finally { exchange.profileRelease.countDown(); instrumentation.runOnMainSync { second.close() } }
 	}
 
+	@Test fun refreshDisplaysNewVerifiedProfile() = exercise { exchange, controller ->
+		signIn(controller)
+		waitFor(context.getString(R.string.logout))
+		click("Profile")
+		waitFor("Synthetic Surname")
+		drain(controller)
+		exchange.profileResponse = profile.replace("Synthetic", "Updated")
+		instrumentation.runOnMainSync { controller.refresh() }
+		waitFor("Updated Surname")
+		waitFor("Updated School")
+		instrumentation.runOnMainSync { assertEquals("Updated Surname", controller.state.profile?.surname) }
+	}
+
 	@Test fun verifiedProfileDisplaysObservedFields() = exercise { _, controller ->
 		signIn(controller)
 		waitFor(context.getString(R.string.logout))
