@@ -36,6 +36,43 @@ class NativeControllerIntegrationTest {
 		main { controller?.close() }
 		coordinator.logout()
 	}
+	@Test fun logoutCompletionWaitsForUiRevocation() {
+		val shared = SessionCoordinator { }
+		val gateway = object : SchoolGateway {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Failure(AppError.UNAVAILABLE)
+			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = GatewayResult.Failure(AppError.UNAVAILABLE)
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = GatewayResult.Failure(AppError.UNAVAILABLE)
+			override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> = GatewayResult.Failure(AppError.UNAVAILABLE)
+		}
+		val cache = object : DiaryCache {
+			override fun read(session: ActiveSession): ByteArray? = null
+			override fun write(session: ActiveSession, bytes: ByteArray) = true
+		}
+		main { controller = NativeController { emit -> SchoolRepository(gateway, IdentityVerifier { _, _ -> SessionVerification.Retry }, shared, cache, { 1L }, emit, SessionStore(context, shared)) } }
+		val entered = CountDownLatch(1)
+		val release = CountDownLatch(1)
+		val completed = CountDownLatch(1)
+		val cancelled = CountDownLatch(1)
+		android.os.Handler(android.os.Looper.getMainLooper()).post { entered.countDown(); release.await(30, TimeUnit.SECONDS) }
+		var worker: Thread? = null
+		try {
+			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			worker = kotlin.concurrent.thread {
+				val token = shared.cancelInFlightNow()
+				cancelled.countDown()
+				shared.logout(token)
+				completed.countDown()
+			}
+			assertTrue(cancelled.await(10, TimeUnit.SECONDS))
+			assertFalse("Logout completed before the UI processed revocation", completed.await(2, TimeUnit.SECONDS))
+		} finally {
+			release.countDown()
+			worker?.join(10000)
+		}
+		assertFalse(worker!!.isAlive)
+		assertTrue(completed.await(1, TimeUnit.SECONDS))
+	}
+
 	@Test fun mainThreadRevocationAppliesAfterCurrentTurn() {
 		val gateway = object : SchoolGateway {
 			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Failure(AppError.UNAVAILABLE)
