@@ -67,6 +67,13 @@ class NativeGatewayUiIntegrationTest {
 		val entered = CountDownLatch(1)
 		val release = CountDownLatch(1)
 		val returned = CountDownLatch(1)
+		val blockProfile = AtomicBoolean(false)
+		val profileEntered = CountDownLatch(1)
+		val profileRelease = CountDownLatch(1)
+		val profileReturned = CountDownLatch(1)
+		@Volatile var profileResponse = profile
+		@Volatile var loginProfile = profile
+		@Volatile var blockedProfile: Request? = null
 		@Volatile var blockedRequest: Request? = null
 		override fun execute(request: Request): Response {
 			paths.add(request.url.path)
@@ -79,9 +86,18 @@ class NativeGatewayUiIntegrationTest {
 				"/api/v2/os/login" -> {
 					assertEquals("POST", request.method)
 					assertEquals("synthetic-user", JSONObject(String(request.body!!)).getString("login"))
-					if (failLogin.get()) Response(503, "") else Response(200, """{"success":true,"access_token":"synthetic-token","user_info":$profile}""")
+					if (failLogin.get()) Response(503, "") else Response(200, """{"success":true,"access_token":"synthetic-token","user_info":$loginProfile}""")
 				}
-				"/api/v2/os/user-info" -> Response(200, """{"data":$profile}""")
+				"/api/v2/os/user-info" -> {
+					val response = profileResponse
+					if (blockProfile.get()) {
+						blockedProfile = request
+						profileEntered.countDown()
+						check(profileRelease.await(30, TimeUnit.SECONDS))
+						profileReturned.countDown()
+					}
+					Response(200, """{"data":$response}""")
+				}
 				"/api/v4/os/clientoffice/diary/weeks" -> if (offlineWeeks.get()) throw java.io.IOException("offline") else if (selectableWeeks.get()) Response(200, """{"data":{"week":"01.01.2026","weeks":[{"label":"First","value":"01.01.2026"},{"label":"Second","value":"08.01.2026"}]}}""") else Response(200, """{"data":{"week":"01.01.2026"}}""")
 				"/api/v4/os/clientoffice/diary" -> {
 					val date = request.url.query.split('&').single { it.startsWith("date=") }.substringAfter('=')
@@ -127,6 +143,7 @@ class NativeGatewayUiIntegrationTest {
 			action(exchange, controller)
 		} finally {
 			exchange.release.countDown()
+			exchange.profileRelease.countDown()
 			instrumentation.runOnMainSync { activity.finish(); controller.close() }
 			coordinator.logout()
 			context.getSharedPreferences("appearance", 0).edit().clear().commit()
@@ -137,6 +154,93 @@ class NativeGatewayUiIntegrationTest {
 		instrumentation.runOnMainSync { controller.login("synthetic-user", "synthetic-password".toCharArray()) }
 	}
 
+
+	private fun drain(controller: NativeController, name: String = "executor") {
+		val field = NativeController::class.java.getDeclaredField(name).apply { isAccessible = true }
+		(field.get(controller) as java.util.concurrent.ExecutorService).submit {}.get(30, TimeUnit.SECONDS)
+		instrumentation.waitForIdleSync()
+	}
+
+	@Test fun delayedProfileAfterLogoutCannotRestoreIdentity() = exercise { exchange, controller ->
+		exchange.blockProfile.set(true)
+		signIn(controller)
+		assertTrue(exchange.profileEntered.await(15, TimeUnit.SECONDS))
+		instrumentation.runOnMainSync { controller.logout(); assertFalse(controller.state.signedIn); assertNull(controller.state.profile) }
+		drain(controller, "logoutExecutor")
+		assertTrue(exchange.blockedProfile!!.lease.isCancelled())
+		exchange.profileRelease.countDown()
+		assertTrue(exchange.profileReturned.await(15, TimeUnit.SECONDS))
+		drain(controller)
+		instrumentation.runOnMainSync { assertFalse(controller.state.signedIn); assertNull(controller.state.profile) }
+		assertNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, "Synthetic Surname") })
+		assertNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, "Synthetic School") })
+	}
+
+	@Test fun mismatchedProfileCannotExposeUnverifiedFields() = exercise { exchange, controller ->
+		exchange.profileResponse = profile.replace("\"userId\":123", "\"userId\":124")
+		signIn(controller)
+		drain(controller)
+		instrumentation.runOnMainSync { assertFalse(controller.state.signedIn); assertNull(controller.state.profile) }
+		assertNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, "Synthetic Surname") })
+		assertNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, "Synthetic School") })
+	}
+
+	@Test fun mismatchedContextCannotExposeProfile() = exercise { exchange, controller ->
+		exchange.profileResponse = profile.replace("\"school_id\":1", "\"school_id\":2")
+		signIn(controller)
+		drain(controller)
+		instrumentation.runOnMainSync { assertTrue(controller.state.signedIn); assertNull(controller.state.profile) }
+		assertNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, "Synthetic Surname") })
+		assertNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, "Synthetic School") })
+	}
+
+	private fun secondController(exchange: SyntheticExchange): NativeController {
+		val coordinator = SessionCoordinator(context)
+		val cache = object : DiaryCache {
+			override fun read(session: ActiveSession): ByteArray? = null
+			override fun write(session: ActiveSession, bytes: ByteArray) = true
+		}
+		return NativeController { emit -> SchoolRepository(NativeGateway(exchange), NativeIdentityVerifier(exchange), coordinator, cache, { 1L }, emit, SessionStore(context, coordinator)) }
+	}
+
+	@Test fun delayedAccountAProfileCannotAppearInAccountB() = exercise { exchange, first ->
+		exchange.blockProfile.set(true)
+		signIn(first)
+		assertTrue(exchange.profileEntered.await(15, TimeUnit.SECONDS))
+		instrumentation.runOnMainSync { first.logout() }
+		drain(first, "logoutExecutor")
+		val second = secondController(exchange)
+		val snapshots = mutableListOf<NativeUiState>()
+		try {
+			exchange.blockProfile.set(false)
+			exchange.loginProfile = profile.replace("123", "456").replace("Synthetic", "Second")
+			exchange.profileResponse = exchange.loginProfile
+			instrumentation.runOnMainSync {
+				activity.setContent {
+					val snapshot = second.state
+					androidx.compose.runtime.SideEffect { snapshots.add(snapshot) }
+					MaterialClassApp(nativeEnabled = true, controllerFactory = { second })
+				}
+				second.login("synthetic-user", "synthetic-password".toCharArray())
+			}
+			waitFor(context.getString(R.string.logout))
+			click("Profile")
+			waitFor("Second Surname")
+			waitFor("Second School")
+			exchange.profileRelease.countDown()
+			assertTrue(exchange.profileReturned.await(15, TimeUnit.SECONDS))
+			drain(first)
+			drain(second)
+			instrumentation.runOnMainSync {
+				assertEquals("Second Surname", second.state.profile?.surname)
+				assertEquals("Second School", second.state.profile?.school)
+				assertTrue(snapshots.isNotEmpty())
+				assertTrue(snapshots.none { it.profile?.surname == "Synthetic Surname" || it.profile?.school == "Synthetic School" })
+			}
+			assertNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, "Synthetic Surname") })
+			assertNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, "Synthetic School") })
+		} finally { exchange.profileRelease.countDown(); instrumentation.runOnMainSync { second.close() } }
+	}
 
 	@Test fun verifiedProfileDisplaysObservedFields() = exercise { _, controller ->
 		signIn(controller)
