@@ -219,10 +219,12 @@ class NativeGatewayUiIntegrationTest {
 				activity.setContent {
 					val snapshot = second.state
 					androidx.compose.runtime.SideEffect { snapshots.add(snapshot) }
-					MaterialClassApp(nativeEnabled = true, controllerFactory = { second })
+					androidx.compose.runtime.key(second) { MaterialClassApp(nativeEnabled = true, controllerFactory = { second }) }
 				}
-				second.login("synthetic-user", "synthetic-password".toCharArray())
 			}
+			instrumentation.waitForIdleSync()
+			drain(second)
+			instrumentation.runOnMainSync { second.login("synthetic-user", "synthetic-password".toCharArray()) }
 			waitFor(context.getString(R.string.logout))
 			click("Profile")
 			waitFor("Second Surname")
