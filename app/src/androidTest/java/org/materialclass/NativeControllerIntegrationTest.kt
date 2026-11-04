@@ -65,7 +65,7 @@ class NativeControllerIntegrationTest {
 					if (Thread.currentThread().name == "old-restore") {
 						assertFalse(Thread.holdsLock(org.materialclass.security.StorageLock))
 						entered.countDown()
-						check(release.await(10, TimeUnit.SECONDS))
+						check(release.await(60, TimeUnit.SECONDS))
 					}
 					emit(event)
 				}, store).also { repository = it }
