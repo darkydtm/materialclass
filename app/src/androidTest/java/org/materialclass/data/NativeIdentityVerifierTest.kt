@@ -227,6 +227,7 @@ class NativeIdentityVerifierTest {
 		val verifier = NativeIdentityVerifier(Exchange { Response(200, response) })
 		fun repo() = SchoolRepository(gateway, verifier, coordinator, cache, { 1L }, events::add, store)
 		fun exercise(repo: SchoolRepository) {
+			events.clear()
 			repo.refresh(DiaryContext(7, 2026, 2, "01.01.2026"))
 			repo.refreshCurrent()
 			repo.currentWeek {}

@@ -7,6 +7,26 @@ import org.materialclass.session.SessionVerification
 
 class ScheduleContextVerificationTest {
 	@Test
+	fun missingLoginUuidRejectsMalformedProfileUuidButAcceptsAbsence() {
+		val session = UnverifiedSession("synthetic-token", "42", "student", SchoolContext(7, 2026, 2))
+		val profile = """{"data":{"role":"student","userId":42,"school_id":7,"group":{"id":2},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}}"""
+		fun verify(info: String) = NativeIdentityVerifier(Exchange { Response(200, profile.replace("\"school_id\":7", "\"school_id\":7$info")) }).verify(session) as SessionVerification.Verified
+		listOf(",\"studentInfo\":{\"studentSchoolUuid\":42}", ",\"studentInfo\":{\"studentSchoolUuid\":\"not-a-uuid\"}", ",\"studentInfo\":{\"studentSchoolUuid\":\"\"}").forEach { info ->
+			val result = verify(info)
+			assertNull(result.diarySession)
+			assertNull(result.scheduleSession)
+			assertNull(result.profile)
+		}
+		listOf("", ",\"studentInfo\":{}", ",\"studentInfo\":{\"studentSchoolUuid\":null}", ",\"studentInfo\":{\"studentSchoolUuid\":\"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee\"}").forEach { info ->
+			val result = verify(info)
+			assertNotNull(result.diarySession)
+			assertNull(result.scheduleSession)
+		}
+		val conflict = profile.replace("\"userId\":42", "\"userId\":43")
+		assertEquals(SessionVerification.Invalid, NativeIdentityVerifier(Exchange { Response(200, conflict) }).verify(session))
+	}
+
+	@Test
 	fun profileVerificationExposesScheduleProofOnlyAfterComparison() {
 		val uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 		val session = UnverifiedSession("synthetic-token", "42", "student", SchoolContext(7, 2026, 2, uuid))
