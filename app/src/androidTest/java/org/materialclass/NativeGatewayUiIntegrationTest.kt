@@ -146,7 +146,7 @@ class NativeGatewayUiIntegrationTest {
 		instrumentation.runOnMainSync { controller.refresh() }
 		waitFor(context.getString(R.string.saved_period))
 		waitFor("29.12.2025")
-		waitFor("04.01.2026")
+		waitFor("29.12.2025 - 04.01.2026")
 		var snapshot: org.materialclass.data.ScheduleSnapshot? = null
 		instrumentation.runOnMainSync { snapshot = controller.state.scheduleSnapshot }
 		assertTrue(snapshot!!.savedPeriod)

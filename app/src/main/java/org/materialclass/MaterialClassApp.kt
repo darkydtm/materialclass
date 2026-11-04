@@ -135,7 +135,10 @@ internal fun MaterialClassApp(example: ExampleData? = null, nativeEnabled: Boole
 									if (schedule == null) Text(stringResource(R.string.data_unavailable)) else {
 										nativeState.scheduleSnapshot?.let { snapshot ->
 												snapshot.staleError?.let { Text(stringResource(R.string.stale_data, stringResource(errorMessage(it)))) }
-												if (snapshot.savedPeriod) Text(stringResource(R.string.saved_period))
+												if (snapshot.savedPeriod) {
+													Text(stringResource(R.string.saved_period))
+													Text("${snapshot.schedule.days.first().dateFormat} - ${snapshot.schedule.days.last().dateFormat}")
+												}
 												Text(stringResource(R.string.last_updated, formatTimestamp(snapshot.lastSuccessMillis, localized)))
 											}
 											if (schedule.days.all { it.lessons.isEmpty() }) Text(stringResource(R.string.schedule_empty))
