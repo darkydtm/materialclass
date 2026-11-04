@@ -109,6 +109,8 @@ class NativeControllerIntegrationTest {
 		main { controller = create(); second = create(true); controller!!.login("1", charArrayOf('x')) }
 		await { controller!!.state.signedIn && controller!!.state.diary is DiaryState.Ready }
 		main {
+			val generation = NativeController::class.java.getDeclaredField("generation").apply { isAccessible = true }.getLong(second)
+			NativeController::class.java.getDeclaredField("currentTaskGeneration").apply { isAccessible = true }.setLong(second, generation)
 			NativeController::class.java.getDeclaredField("currentTaskEpoch").apply { isAccessible = true }.setLong(second, shared.revocationEpoch())
 			secondEmit(DiaryState.Ready(DiarySnapshot(Diary("01.01.2026", emptyList()), 1L)))
 		}
