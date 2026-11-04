@@ -238,6 +238,7 @@ class NativeControllerIntegrationTest {
 		try {
 			assertTrue(entered.await(10, TimeUnit.SECONDS))
 			repository.logout()
+			await { coordinator.pendingLogoutTicket() == null && !controller!!.state.logoutPending }
 			main { controller!!.login("2", charArrayOf('x')) }
 			await { controller!!.state.signedIn && controller!!.state.diary is DiaryState.Ready }
 			release.countDown()
@@ -323,6 +324,7 @@ class NativeControllerIntegrationTest {
 			assertTrue(shared.revokeIfActive(old, expired = true))
 			await { !first.state.signedIn && first.state.error == AppError.SESSION_EXPIRED }
 			main { assertTrue(first.state.diary is DiaryState.Cleared); assertNull(first.state.schedule); assertTrue(second.state.busy); assertFalse(second.state.signedIn) }
+			await { shared.pendingLogoutTicket() == null }
 			release.countDown()
 			await { second.state.signedIn && second.state.diary is DiaryState.Ready }
 		} finally { release.countDown(); main { second.close() }; shared.logout() }
