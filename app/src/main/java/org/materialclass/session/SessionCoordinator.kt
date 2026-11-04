@@ -147,6 +147,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		}
 	}
 	private fun cleanup(namespace: CacheNamespace?) {
+		if (namespace == null && synchronized(CancellationLock) { revoked.values.any { it != null } }) throw LogoutStorageException(java.io.IOException("Another cleanup is pending"))
 		val durable = recovery
 		if (durable != null) { durable.cleanup(namespace); return }
 		var failure: Exception? = null

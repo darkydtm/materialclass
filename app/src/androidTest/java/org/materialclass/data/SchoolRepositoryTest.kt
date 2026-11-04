@@ -17,6 +17,20 @@ class SchoolRepositoryTest {
 	private val store = SessionStore(androidContext, coordinator)
 	@After fun cleanup() { coordinator.logout() }
 
+	@Test
+	fun loginClearsPasswordWhenRecoveryFails() {
+		val journal = object : CleanupJournal {
+			override fun read(): CacheNamespace? { throw IllegalStateException("recovery failure") }
+			override fun write(namespace: CacheNamespace) { }
+			override fun clear() { }
+		}
+		val failing = SessionCoordinator({}, {}, journal)
+		val repository = SchoolRepository(FakeGateway(), IdentityVerifier { _, _ -> SessionVerification.Retry }, failing, FakeCache(), { 1L }, {}, SessionStore(androidContext, failing))
+		val password = charArrayOf('s', 'e', 'c', 'r', 'e', 't')
+		try { repository.login("user", password); fail("Recovery must fail") } catch (_: IllegalStateException) { }
+		assertTrue(password.all { it == '\u0000' })
+	}
+
 	private val context = DiaryContext(1, 2026, 2, "01.01.2026")
 	private class FakeGateway : TestSchoolGateway() {
 		var identity: String? = "1"

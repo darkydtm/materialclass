@@ -6,6 +6,45 @@ import org.junit.Test
 
 class CleanupRecoveryTest {
 	@Test
+	fun failedJournalReadOrConflictPreservesCredential() {
+		for (conflict in listOf(false, true)) {
+			var cleared = false
+			val journal = object : CleanupJournal {
+				override fun read(): CacheNamespace? {
+					if (!conflict) throw IllegalStateException()
+					return CacheNamespace("b".repeat(64))
+				}
+				override fun write(namespace: CacheNamespace) { throw AssertionError("Unexpected write") }
+				override fun clear() { throw AssertionError("Unexpected clear") }
+			}
+			try { CleanupRecovery(journal, { cleared = true }, { cleared = true }).cleanup(CacheNamespace("a".repeat(64))); throw AssertionError("Expected failure") } catch (_: LogoutStorageException) { }
+			assertEquals(false, cleared)
+		}
+	}
+
+	@Test
+	fun retryResyncsExistingJournalBeforeDeletingCredential() {
+		val namespace = CacheNamespace("a".repeat(64))
+		var saved: CacheNamespace? = null
+		var fail = true
+		var cleared = false
+		val journal = object : CleanupJournal {
+			override fun read() = saved
+			override fun write(namespace: CacheNamespace) { saved = namespace; if (fail) throw IllegalStateException() }
+			override fun clear() { saved = null }
+		}
+		val recovery = CleanupRecovery(journal, {}, { cleared = true })
+		try { recovery.cleanup(namespace); throw AssertionError("Expected failure") } catch (_: LogoutStorageException) { }
+		assertEquals(false, cleared)
+		try { recovery.recover(); throw AssertionError("Expected failure") } catch (_: IllegalStateException) { }
+		assertEquals(false, cleared)
+		fail = false
+		recovery.recover()
+		assertEquals(true, cleared)
+		assertNull(saved)
+	}
+
+	@Test
 	fun failedCleanupIsRetriedAfterRecreation() {
 		var saved: CacheNamespace? = null
 		var fail = true
@@ -69,7 +108,7 @@ class CleanupRecoveryTest {
 			CleanupRecovery(journal, { cacheCleared = true }, { sessionCleared = true }).cleanup(CacheNamespace("a".repeat(64)))
 			throw AssertionError("Expected failure")
 		} catch (_: LogoutStorageException) { }
-		assertEquals(true, sessionCleared)
+		assertEquals(false, sessionCleared)
 		assertEquals(false, cacheCleared)
 	}
 
