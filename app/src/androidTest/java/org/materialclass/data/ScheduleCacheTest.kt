@@ -30,11 +30,12 @@ class ScheduleCacheTest {
 		val gateway = object : TestSchoolGateway() {
 			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = error("unexpected")
 			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic", login, "student", SchoolContext(school, 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
+			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = GatewayResult.Success("01.01.2026")
 			override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> = response
 		}
 		val verifier = IdentityVerifier { session, _ ->
 			val profile = JSONObject("""{"userId":${session.identityCandidate},"role":"student","school_id":$school,"group":{"id":2},"studentInfo":{"studentSchoolUuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}""")
-			SessionVerification.Verified(AccountId(session.identityCandidate!!), true, VerifiedScheduleSession.compare(session, profile), null)
+			SessionVerification.Verified(AccountId(session.identityCandidate!!), true, VerifiedScheduleSession.compare(session, profile), VerifiedDiarySession.compare(session, profile))
 		}
 		val diaryCache = EncryptedDiaryCache(EncryptedCache(context, coordinator))
 		val scheduleCache = EncryptedDiaryCache(EncryptedCache(context, coordinator, "schedule"))
@@ -45,11 +46,18 @@ class ScheduleCacheTest {
 			return value!!
 		}
 		assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+		var week: GatewayResult<String>? = null
+		repo.currentWeek { week = it }
+		assertEquals("01.01.2026", (week as GatewayResult.Success).value)
 		val fresh = (load() as GatewayResult.Success).value
+		assertTrue(fresh.schedule.days.single().isCurrent)
 		assertEquals(1234L, fresh.lastSuccessMillis); assertNull(fresh.staleError)
 		response = GatewayResult.Failure(AppError.OFFLINE)
 		val stale = (load() as GatewayResult.Success).value
 		assertEquals(AppError.OFFLINE, stale.staleError); assertEquals(1234L, stale.lastSuccessMillis)
+		assertFalse(stale.schedule.days.single().isCurrent)
+		assertEquals("01.01.2026", stale.date)
+		assertFalse(stale.savedPeriod)
 		assertEquals("Synthetic mathematics", stale.schedule.days.single().lessons.single().themeLabel)
 		assertEquals(AppError.OFFLINE, (load("08.01.2026") as GatewayResult.Failure).error)
 		response = GatewayResult.Failure(AppError.TIMEOUT)
