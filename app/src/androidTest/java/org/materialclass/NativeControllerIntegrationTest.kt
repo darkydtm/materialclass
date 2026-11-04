@@ -124,6 +124,39 @@ class NativeControllerIntegrationTest {
 		main { second.close() }
 	}
 
+	@Test fun expiryAndUnticketedLogoutKeepAdmissionClosedUntilUiAcknowledges() {
+		for (expiry in listOf(true, false)) {
+			val shared = SessionCoordinator { }
+			val session = shared.activate(AccountId("synthetic-old"))
+			val delivered = CountDownLatch(1)
+			val finished = CountDownLatch(1)
+			var acknowledge: (() -> Unit)? = null
+			val observer: (Long, () -> Unit) -> Unit = { _, ack ->
+				assertFalse(Thread.holdsLock(org.materialclass.security.StorageLock))
+				acknowledge = ack
+				delivered.countDown()
+			}
+			shared.observeUiRevocations(observer)
+			val worker = kotlin.concurrent.thread {
+				try {
+					if (expiry) shared.revokeIfActive(session, expired = true) else shared.logout()
+				} finally { finished.countDown() }
+			}
+			try {
+				assertTrue("UI revocation was not delivered", delivered.await(10, TimeUnit.SECONDS))
+				assertNotNull("Cleanup must not release admission before UI clear", shared.pendingLogoutTicket())
+				assertNull(shared.admit(shared.beginLogin()))
+			} finally {
+				acknowledge?.invoke()
+				shared.removeUiRevocationObserver(observer)
+				worker.join(10000)
+				shared.pendingLogoutTicket()?.let { shared.logout(it) }
+			}
+			assertTrue(finished.await(10, TimeUnit.SECONDS))
+			assertNull(shared.pendingLogoutTicket())
+		}
+	}
+
 	@Test fun mainThreadRevocationAppliesAfterCurrentTurn() {
 		val gateway = object : SchoolGateway {
 			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Failure(AppError.UNAVAILABLE)
