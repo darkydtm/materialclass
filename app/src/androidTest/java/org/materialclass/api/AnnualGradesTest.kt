@@ -36,6 +36,25 @@ class AnnualGradesTest {
 	}
 
 	@Test
+	fun emptyRowsAndInvalidResponseShapesAreDistinct() {
+		val coordinator = SessionCoordinator { }
+		val active = coordinator.activate(AccountId("123"))
+		val lease = coordinator.admit(active)!!
+		try {
+			val remote = UnverifiedSession("synthetic-token", "123", "student", SchoolContext(1, 2026, 2))
+			val profile = JSONObject("""{"userId":123,"role":"student","school_id":1,"group":{"id":2},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}""")
+			val verified = VerifiedDiarySession.compare(remote, profile)!!
+			var body = """{"data":{"rows":[]}}"""
+			val gateway = NativeGateway(Exchange { Response(200, body) })
+			assertTrue((gateway.annualGrades(verified, lease) as GatewayResult.Success).value.rows.isEmpty())
+			for (invalid in listOf("", "null", "{", """{"data":null}""", """{"data":{"rows":null}}""", """{"data":{"rows":[null]}}""")) {
+				body = invalid
+				assertEquals(AppError.INCOMPATIBLE_RESPONSE, (gateway.annualGrades(verified, lease) as GatewayResult.Failure).error)
+			}
+		} finally { coordinator.finish(lease); coordinator.logout() }
+	}
+
+	@Test
 	fun annualReportUsesVerifiedSessionAndPreservesUnknownScores() {
 		val coordinator = SessionCoordinator { }
 		val active = coordinator.activate(AccountId("123"))

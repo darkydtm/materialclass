@@ -61,6 +61,10 @@ class NativeGatewayUiIntegrationTest {
 		val failDiary = AtomicBoolean(false)
 		val offlineWeeks = AtomicBoolean(false)
 		val blockDiary = AtomicBoolean(false)
+		val blockGrades = AtomicBoolean(false)
+		val gradesEntered = CountDownLatch(1)
+		val gradesRelease = CountDownLatch(1)
+		val gradesCalls = java.util.concurrent.atomic.AtomicInteger()
 		val selectableWeeks = AtomicBoolean(false)
 		val requestedDates = java.util.Collections.synchronizedList(mutableListOf<String>())
 		val cacheWrites = java.util.concurrent.atomic.AtomicInteger()
@@ -82,7 +86,12 @@ class NativeGatewayUiIntegrationTest {
 					if (failLogin.get()) Response(503, "") else Response(200, """{"success":true,"access_token":"synthetic-token","user_info":$profile}""")
 				}
 				"/api/v2/os/user-info" -> Response(200, """{"data":$profile}""")
-				"/api/v4/os/clientoffice/diary/year" -> Response(200, """{"data":{"rows":[{"subjectName":"Synthetic annual subject","attestations":{"quarter1":"4","quarter2":null},"yearScores":{"yearScore":null,"finalScore":null}}]}}""")
+				"/api/v4/os/clientoffice/diary/year" -> {
+					val number = gradesCalls.incrementAndGet()
+					if (blockGrades.get() && number == 1) { gradesEntered.countDown(); check(gradesRelease.await(60, TimeUnit.SECONDS)) }
+					val subject = if (blockGrades.get() && number == 1) "Old annual subject" else "Synthetic annual subject"
+					Response(200, """{"data":{"rows":[{"subjectName":"$subject","attestations":{"quarter1":"4","quarter2":null},"yearScores":{"yearScore":null,"finalScore":null}}]}}""")
+				}
 				"/api/v4/os/clientoffice/diary/weeks" -> if (offlineWeeks.get()) throw java.io.IOException("offline") else if (selectableWeeks.get()) Response(200, """{"data":{"week":"01.01.2026","weeks":[{"label":"First","value":"01.01.2026"},{"label":"Second","value":"08.01.2026"}]}}""") else Response(200, """{"data":{"week":"01.01.2026"}}""")
 				"/api/v4/os/clientoffice/diary" -> {
 					val date = request.url.query.split('&').single { it.startsWith("date=") }.substringAfter('=')
@@ -128,6 +137,7 @@ class NativeGatewayUiIntegrationTest {
 			action(exchange, controller)
 		} finally {
 			exchange.release.countDown()
+			exchange.gradesRelease.countDown()
 			instrumentation.runOnMainSync { activity.finish(); controller.close() }
 			coordinator.logout()
 			context.getSharedPreferences("appearance", 0).edit().clear().commit()
@@ -156,6 +166,22 @@ class NativeGatewayUiIntegrationTest {
 		waitFor("Quarter 1: 4")
 		waitFor("Quarter 2: Unknown")
 		assertTrue(exchange.paths.contains("/api/v4/os/clientoffice/diary/year"))
+	}
+
+	@Test fun latestPendingAnnualRequestWinsInVisibleUi() = exercise { exchange, controller ->
+		exchange.blockGrades.set(true)
+		signIn(controller)
+		waitFor(context.getString(R.string.logout))
+		instrumentation.runOnMainSync { controller.refreshAnnualGrades() }
+		assertTrue(exchange.gradesEntered.await(15, TimeUnit.SECONDS))
+		instrumentation.runOnMainSync { controller.refreshAnnualGrades(); assertTrue(controller.state.gradesLoading) }
+		exchange.gradesRelease.countDown()
+		click(context.getString(R.string.grades))
+		waitFor("Synthetic annual subject")
+		instrumentation.waitForIdleSync()
+		assertEquals(2, exchange.gradesCalls.get())
+		assertNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, "Old annual subject") })
+		instrumentation.runOnMainSync { assertFalse(controller.state.gradesLoading) }
 	}
 
 	@Test fun offlineWeekShowsSavedPeriodInActualUi() = exercise { exchange, controller ->
