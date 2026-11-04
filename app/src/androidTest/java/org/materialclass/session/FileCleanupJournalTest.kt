@@ -55,26 +55,30 @@ class FileCleanupJournalTest {
 		check(!primaryTemporary.exists() || primaryTemporary.delete())
 		check(backupTemporary.createNewFile())
 		check(primaryTemporary.createNewFile())
-		var invalidated = false
+		val keys = KeystoreKeys()
+		keys.key("session", true)
 		try {
 			try {
-				CleanupRecovery(FileCleanupJournal(context), { throw IllegalStateException("cache") }, {}, { invalidated = true }).cleanup(namespace)
+				CleanupRecovery(FileCleanupJournal(context), { throw IllegalStateException("cache") }, {}, { keys.delete("session") }).cleanup(namespace)
 				fail("Expected write failure")
 			} catch (_: LogoutStorageException) { }
-			assertFalse(invalidated)
-		} finally { backupTemporary.delete(); primaryTemporary.delete() }
+			assertTrue(KeystoreKeys().contains("session"))
+		} finally { backupTemporary.delete(); primaryTemporary.delete(); keys.delete("session") }
 	}
 
 	@Test
-	fun encryptedJournalSurvivesRecreationAndRejectsCorruption() {
+	fun encryptedJournalSurvivesRecreationAndRepairsCorruption() {
 		FileCleanupJournal(context).write(namespace)
 		val bytes = path.readBytes()
 		assertFalse(bytes.toString(Charsets.UTF_8).contains(namespace.value))
 		assertEquals(namespace.value, FileCleanupJournal(context).read()?.value)
 		bytes[bytes.lastIndex] = (bytes.last().toInt() xor 1).toByte()
 		path.writeBytes(bytes)
-		try { FileCleanupJournal(context).read(); fail("Corruption must fail closed") } catch (_: StorageUnreadableException) { }
-		assertTrue(path.exists())
+		val recreated = FileCleanupJournal(context)
+		assertEquals(namespace.value, recreated.read()?.value)
+		recreated.write(namespace)
+		File(context.noBackupFilesDir, "cleanup-recovery").delete()
+		assertEquals(namespace.value, FileCleanupJournal(context).read()?.value)
 	}
 
 	@Test
@@ -108,15 +112,37 @@ class FileCleanupJournalTest {
 	}
 
 	@Test
-	fun encryptedRecoveryRejectsCorruptionAndHidesNamespace() {
+	fun encryptedRecoveryRepairsCorruptionAndHidesNamespace() {
 		FileCleanupJournal(context).write(namespace)
 		val backup = File(context.noBackupFilesDir, "cleanup-recovery")
 		val bytes = backup.readBytes()
 		assertFalse(bytes.toString(Charsets.UTF_8).contains(namespace.value))
 		bytes[bytes.lastIndex] = (bytes.last().toInt() xor 1).toByte()
 		backup.writeBytes(bytes)
-		try { FileCleanupJournal(context).read(); fail("Corruption must fail closed") } catch (_: StorageUnreadableException) { }
-		assertTrue(backup.exists())
+		val recreated = FileCleanupJournal(context)
+		assertEquals(namespace.value, recreated.read()?.value)
+		recreated.write(namespace)
+		path.delete()
+		assertEquals(namespace.value, FileCleanupJournal(context).read()?.value)
+	}
+
+	@Test
+	fun bothCorruptCopiesFailClosed() {
+		FileCleanupJournal(context).write(namespace)
+		for (copy in listOf(path, File(context.noBackupFilesDir, "cleanup-recovery"))) {
+			val bytes = copy.readBytes()
+			bytes[bytes.lastIndex] = (bytes.last().toInt() xor 1).toByte()
+			copy.writeBytes(bytes)
+		}
+		try { FileCleanupJournal(context).read(); fail("Both corrupt copies must fail closed") } catch (_: StorageUnreadableException) { }
+	}
+
+	@Test
+	fun conflictingAuthenticatedCopiesFailClosed() {
+		FileCleanupJournal(context).write(namespace)
+		val backup = File(context.noBackupFilesDir, "cleanup-recovery")
+		org.materialclass.security.EncryptedFile(backup, "cleanup-recovery", KeystoreKeys(), org.materialclass.cache.CacheFiles(context, "recovery-tmp")).write("b".repeat(64).toByteArray())
+		try { FileCleanupJournal(context).read(); fail("Conflicting copies must fail closed") } catch (_: StorageUnreadableException) { }
 	}
 
 	@Test
