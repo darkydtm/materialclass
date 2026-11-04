@@ -38,7 +38,18 @@ class ScheduleCacheTest {
 			SessionVerification.Verified(AccountId(session.identityCandidate!!), true, VerifiedScheduleSession.compare(session, profile), VerifiedDiarySession.compare(session, profile))
 		}
 		val diaryCache = EncryptedDiaryCache(EncryptedCache(context, coordinator))
-		val scheduleCache = EncryptedDiaryCache(EncryptedCache(context, coordinator, "schedule"))
+		val encryptedScheduleCache = EncryptedDiaryCache(EncryptedCache(context, coordinator, "schedule"))
+		var corrupt = false
+		var mismatch = false
+		val scheduleCache = object : DiaryCache {
+			override fun read(session: ActiveSession): ByteArray? {
+				if (corrupt) return byteArrayOf(1, 2, 3)
+				val bytes = encryptedScheduleCache.read(session) ?: return null
+				if (mismatch) bytes[12] = (bytes[12].toInt() xor 1).toByte()
+				return bytes
+			}
+			override fun write(session: ActiveSession, bytes: ByteArray): Boolean = encryptedScheduleCache.write(session, bytes)
+		}
 		val repo = SchoolRepository(gateway, verifier, coordinator, diaryCache, { 1234L }, {}, store, scheduleCache)
 		fun load(date: String = "01.01.2026"): GatewayResult<ScheduleSnapshot> {
 			var value: GatewayResult<ScheduleSnapshot>? = null
@@ -61,7 +72,17 @@ class ScheduleCacheTest {
 		assertEquals("Synthetic mathematics", stale.schedule.days.single().lessons.single().themeLabel)
 		assertEquals(AppError.OFFLINE, (load("08.01.2026") as GatewayResult.Failure).error)
 		response = GatewayResult.Failure(AppError.TIMEOUT)
-		assertEquals(AppError.TIMEOUT, (load() as GatewayResult.Success).value.staleError)
+		val timedOut = (load() as GatewayResult.Success).value
+		assertEquals(AppError.TIMEOUT, timedOut.staleError)
+		assertFalse(timedOut.schedule.days.single().isCurrent)
+		assertEquals(1234L, timedOut.lastSuccessMillis)
+		assertEquals("Synthetic mathematics", timedOut.schedule.days.single().lessons.single().themeLabel)
+		corrupt = true
+		assertEquals(AppError.TIMEOUT, (load() as GatewayResult.Failure).error)
+		corrupt = false
+		mismatch = true
+		assertEquals(AppError.TIMEOUT, (load() as GatewayResult.Failure).error)
+		mismatch = false
 		for (error in listOf(AppError.FORBIDDEN, AppError.UNAVAILABLE, AppError.INCOMPATIBLE_RESPONSE, AppError.SERVER)) {
 			response = GatewayResult.Failure(error)
 			assertEquals(error, (load() as GatewayResult.Failure).error)

@@ -45,6 +45,11 @@ internal class EncryptedDiaryCache(private val cache: EncryptedCache) : DiaryCac
 
 internal data class ScheduleSnapshot(val schedule: Schedule, val date: String, val lastSuccessMillis: Long, val staleError: AppError? = null, val savedPeriod: Boolean = false)
 
+private fun ScheduleSnapshot.withoutCurrentDay(error: AppError): ScheduleSnapshot {
+	val days = schedule.days.map { ScheduleDay(it.date, it.dateFormat, false, it.isHoliday, it.lessons) }
+	return copy(schedule = Schedule(days), staleError = error)
+}
+
 internal data class DiarySnapshot(val diary: Diary, val lastSuccessMillis: Long)
 
 internal sealed class DiaryState {
@@ -247,7 +252,7 @@ internal class SchoolRepository(
 								}
 								is GatewayResult.Failure -> {
 									val saved = if (context != null && (result.error == AppError.OFFLINE || result.error == AppError.TIMEOUT)) scheduleCache?.read(active)?.let { decodeSchedule(it, context, date, false) } else null
-									if (saved == null) result else GatewayResult.Success(saved.copy(staleError = result.error))
+									if (saved == null) result else GatewayResult.Success(saved.withoutCurrentDay(result.error))
 								}
 							}
 						} catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.CACHE_UNREADABLE) }
@@ -273,10 +278,7 @@ internal class SchoolRepository(
 			Triple(saved, revision, Pair(weekRevision, coordinator.requestRevision()))
 		} ?: return
 		val saved = request.first
-		val result = if (saved == null) GatewayResult.Failure(error) else {
-			val days = saved.schedule.days.map { ScheduleDay(it.date, it.dateFormat, false, it.isHoliday, it.lessons) }
-			GatewayResult.Success(saved.copy(schedule = Schedule(days), staleError = error, savedPeriod = true))
-		}
+		val result = if (saved == null) GatewayResult.Failure(error) else GatewayResult.Success(saved.withoutCurrentDay(error).copy(savedPeriod = true))
 		if (coordinator.ifActive(active) { request.second == scheduleRevision && request.third.first == weekRevision && request.third.second == coordinator.requestRevision() } == true) deliver(result)
 	}
 
