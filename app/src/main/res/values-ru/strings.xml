@@ -50,4 +50,5 @@
 	<string name="homework_record_date">Дата записи: %1$s</string>
 	<string name="homework_files">В дневнике указаны файлы; скачивание недоступно.</string>
 	<string name="homework_books">В дневнике указаны книги; скачивание недоступно.</string>
+	<string name="saved_period">Последний сохраненный период</string>
 </resources>

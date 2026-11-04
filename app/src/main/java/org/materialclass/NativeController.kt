@@ -158,8 +158,8 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 				if (selected != null) repository.refreshDate(selected) else repository.refreshCurrent { weeks ->
 					post(task) { state = state.copy(diaryWeeks = weeks.options, selectedDiaryDate = weeks.currentWeek) }
 				}
-				repository.currentWeek { week ->
-					if (closed || generation != task || repository.revocationEpoch() != epoch) return@currentWeek
+				repository.currentWeekForSchedule { week, weekRevision ->
+					if (closed || generation != task || repository.revocationEpoch() != epoch) return@currentWeekForSchedule
 					when (week) {
 						is GatewayResult.Success -> repository.scheduleSnapshot(week.value) { result ->
 							post(task) { state = when (result) {
@@ -167,7 +167,12 @@ internal class NativeController(private val repositoryFactory: ((DiaryState) -> 
 								is GatewayResult.Failure -> state.copy(schedule = null, scheduleSnapshot = null, error = result.error)
 							} }
 						}
-						is GatewayResult.Failure -> post(task) { state = state.copy(schedule = null, scheduleSnapshot = null, error = week.error) }
+						is GatewayResult.Failure -> repository.savedSchedule(week.error, weekRevision) { result ->
+							post(task) { state = when (result) {
+								is GatewayResult.Success -> state.copy(schedule = result.value.schedule, scheduleSnapshot = result.value)
+								is GatewayResult.Failure -> state.copy(schedule = null, scheduleSnapshot = null, error = result.error)
+							} }
+						}
 					}
 				}
 			} catch (_: Exception) { post(task) { if (state.error != AppError.SESSION_EXPIRED) state = state.copy(error = AppError.UNAVAILABLE) } }

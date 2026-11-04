@@ -50,4 +50,5 @@
 	<string name="homework_record_date">Жазба күні: %1$s</string>
 	<string name="homework_files">Күнделікте файлдар көрсетілген; жүктеп алу қолжетімсіз.</string>
 	<string name="homework_books">Күнделікте кітаптар көрсетілген; жүктеп алу қолжетімсіз.</string>
+	<string name="saved_period">Соңғы сақталған кезең</string>
 </resources>

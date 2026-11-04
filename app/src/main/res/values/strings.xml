@@ -50,4 +50,5 @@
 	<string name="homework_record_date">Record date: %1$s</string>
 	<string name="homework_files">Files are indicated in the diary; downloads are unavailable.</string>
 	<string name="homework_books">Books are indicated in the diary; downloads are unavailable.</string>
+	<string name="saved_period">Last saved period</string>
 </resources>

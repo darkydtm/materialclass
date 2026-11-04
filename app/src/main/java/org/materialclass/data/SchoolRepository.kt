@@ -43,7 +43,7 @@ internal class EncryptedDiaryCache(private val cache: EncryptedCache) : DiaryCac
 	override fun write(session: ActiveSession, bytes: ByteArray): Boolean = cache.write(session, bytes)
 }
 
-internal data class ScheduleSnapshot(val schedule: Schedule, val date: String, val lastSuccessMillis: Long, val staleError: AppError? = null)
+internal data class ScheduleSnapshot(val schedule: Schedule, val date: String, val lastSuccessMillis: Long, val staleError: AppError? = null, val savedPeriod: Boolean = false)
 
 internal data class DiarySnapshot(val diary: Diary, val lastSuccessMillis: Long)
 
@@ -73,6 +73,7 @@ internal class SchoolRepository(
 	private var refreshRevision = 0L
 	private var scheduleRevision = 0L
 	private var weekRevision = 0L
+	private var verifiedWeek: Triple<ActiveSession, Long, String>? = null
 	@Volatile private var loginRevision: Long? = null
 	internal var afterRestoreActivation: () -> Unit = {}
 	internal var beforeRequestAdmission: () -> Unit = {}
@@ -165,11 +166,14 @@ internal class SchoolRepository(
 		}
 	}
 
-	fun currentWeek(deliver: (GatewayResult<String>) -> Unit) {
+	fun currentWeek(deliver: (GatewayResult<String>) -> Unit) = currentWeekForSchedule { result, _ -> deliver(result) }
+
+	fun currentWeekForSchedule(deliver: (GatewayResult<String>, Long) -> Unit) {
 		val active = session ?: return
 		val request = coordinator.ifActive(active) {
 			val requestRevision = coordinator.requestRevision()
 			val revision = ++weekRevision
+			verifiedWeek = null
 			val candidate = remote
 			val verified = diarySession?.takeIf { candidate != null && candidate.identityCandidate == active.account.value && it.remote === candidate && it.account == active.account.value }
 			Triple(verified, revision, requestRevision)
@@ -183,12 +187,15 @@ internal class SchoolRepository(
 				else if (result is GatewayResult.Failure && result.error == AppError.SESSION_EXPIRED) {
 					remote = null; scheduleSession = null; diarySession = null; session = null
 					Pair(true, runCatching { coordinator.revokeIfActive(active, expired = true) })
-				} else Pair(false, null)
+				} else {
+					if (result is GatewayResult.Success && request.first != null && request.third == coordinator.requestRevision()) verifiedWeek = Triple(active, request.second, result.value)
+					Pair(false, null)
+			}
 			}
 			if (outcome != null) {
 				if (outcome.first) {
 					try { outcome.second!!.getOrThrow() } finally { emit(DiaryState.Error(AppError.SESSION_EXPIRED)) }
-				} else deliver(result)
+				} else if (coordinator.ifActive(active) { !lease.cancelled && request.second == weekRevision && request.third == coordinator.requestRevision() } == true) deliver(result, request.second)
 			}
 		} finally { coordinator.finish(lease) }
 	}
@@ -231,11 +238,15 @@ internal class SchoolRepository(
 							when (result) {
 								is GatewayResult.Success -> {
 									val snapshot = ScheduleSnapshot(result.value, date, clock())
-									if (context != null && scheduleCache != null) check(scheduleCache.write(active, encodeSchedule(context, snapshot)))
+									if (context != null && scheduleCache != null) {
+										val proof = verifiedWeek
+										val proven = proof != null && proof.first === active && proof.second == weekRevision && proof.third == date && validSchedule(snapshot)
+										check(scheduleCache.write(active, encodeSchedule(context, snapshot, proven)))
+									}
 									GatewayResult.Success(snapshot)
 								}
 								is GatewayResult.Failure -> {
-									val saved = if (context != null && (result.error == AppError.OFFLINE || result.error == AppError.TIMEOUT)) scheduleCache?.read(active)?.let { decodeSchedule(it, context, date) } else null
+									val saved = if (context != null && (result.error == AppError.OFFLINE || result.error == AppError.TIMEOUT)) scheduleCache?.read(active)?.let { decodeSchedule(it, context, date, false) } else null
 									if (saved == null) result else GatewayResult.Success(saved.copy(staleError = result.error))
 								}
 							}
@@ -245,6 +256,28 @@ internal class SchoolRepository(
 				}
 			}
 		} finally { coordinator.finish(lease) }
+	}
+
+
+	fun savedSchedule(error: AppError, expectedWeek: Long, deliver: (GatewayResult<ScheduleSnapshot>) -> Unit) {
+		if (error != AppError.OFFLINE && error != AppError.TIMEOUT) { deliver(GatewayResult.Failure(error)); return }
+		val active = session ?: return
+		val request = coordinator.ifActive(active) {
+			if (weekRevision != expectedWeek) return@ifActive null
+			val candidate = remote
+			val scheduleProof = scheduleSession?.takeIf { candidate != null && it.remote === candidate && it.account == active.account.value && candidate.identityCandidate == active.account.value }
+			val diaryProof = diarySession?.takeIf { candidate != null && it.remote === candidate && it.account == active.account.value }
+			val context = if (scheduleProof != null && diaryProof != null) candidate?.context else null
+			val revision = ++scheduleRevision
+			val saved = if (context == null) null else try { scheduleCache?.read(active)?.let { decodeSchedule(it, context, null, true) } } catch (_: Exception) { null }
+			Triple(saved, revision, Pair(weekRevision, coordinator.requestRevision()))
+		} ?: return
+		val saved = request.first
+		val result = if (saved == null) GatewayResult.Failure(error) else {
+			val days = saved.schedule.days.map { ScheduleDay(it.date, it.dateFormat, false, it.isHoliday, it.lessons) }
+			GatewayResult.Success(saved.copy(schedule = Schedule(days), staleError = error, savedPeriod = true))
+		}
+		if (coordinator.ifActive(active) { request.second == scheduleRevision && request.third.first == weekRevision && request.third.second == coordinator.requestRevision() } == true) deliver(result)
 	}
 
 	private fun guarded(state: DiaryState, active: ActiveSession, revision: Long, requestRevision: Long, expired: Boolean = false): DiaryState {
@@ -511,10 +544,10 @@ private fun decode(bytes: ByteArray, context: DiaryContext): DiarySnapshot? {
 }
 
 
-private fun encodeSchedule(context: SchoolContext, snapshot: ScheduleSnapshot): ByteArray {
+private fun encodeSchedule(context: SchoolContext, snapshot: ScheduleSnapshot, proven: Boolean): ByteArray {
 	val bytes = ByteArrayOutputStream()
 	DataOutputStream(bytes).use { out ->
-		out.writeInt(1); out.writeLong(context.schoolId); out.writeInt(context.eduYear); out.writeLong(context.groupId)
+		out.writeInt(2); out.writeBoolean(proven); out.writeLong(context.schoolId); out.writeInt(context.eduYear); out.writeLong(context.groupId)
 		out.writeUTF(context.studentSchoolUuid ?: ""); out.writeUTF(snapshot.date); out.writeLong(snapshot.lastSuccessMillis)
 		out.writeInt(snapshot.schedule.days.size)
 		snapshot.schedule.days.forEach { day ->
@@ -525,11 +558,15 @@ private fun encodeSchedule(context: SchoolContext, snapshot: ScheduleSnapshot): 
 	return bytes.toByteArray()
 }
 
-private fun decodeSchedule(bytes: ByteArray, context: SchoolContext, date: String): ScheduleSnapshot? {
+private fun decodeSchedule(bytes: ByteArray, context: SchoolContext, date: String?, requireProven: Boolean): ScheduleSnapshot? {
+	return try {
 	val input = DataInputStream(ByteArrayInputStream(bytes))
-	check(input.readInt() == 1)
+	val version = input.readInt()
+	if (version != 1 && version != 2) return null
+	val proven = if (version == 2) input.readBoolean() else false
+	if (requireProven && !proven) return null
 	val school = input.readLong(); val year = input.readInt(); val group = input.readLong(); val uuid = input.readUTF(); val savedDate = input.readUTF()
-	if (school != context.schoolId || year != context.eduYear || group != context.groupId || uuid != (context.studentSchoolUuid ?: "") || savedDate != date) return null
+	if (school != context.schoolId || year != context.eduYear || group != context.groupId || uuid != (context.studentSchoolUuid ?: "") || (date != null && savedDate != date)) return null
 	val time = input.readLong()
 	fun count() = input.readInt().also { require(it in 0..10000) }
 	val days = List(count()) {
@@ -537,5 +574,21 @@ private fun decodeSchedule(bytes: ByteArray, context: SchoolContext, date: Strin
 		ScheduleDay(timestamp, formatted, current, holiday, List(count()) { ScheduleLesson(input.readUTF(), input.readLong(), input.readUTF()) })
 	}
 	check(input.available() == 0)
-	return ScheduleSnapshot(Schedule(days), savedDate, time)
+	val snapshot = ScheduleSnapshot(Schedule(days), savedDate, time)
+	if (requireProven && !validSchedule(snapshot)) null else snapshot
+	} catch (_: Exception) { null }
+}
+
+private fun validSchedule(snapshot: ScheduleSnapshot): Boolean {
+	fun parse(value: String): Long? {
+		if (!value.matches(Regex("[0-9]{2}\\.[0-9]{2}\\.[0-9]{4}"))) return null
+		val format = java.text.SimpleDateFormat("dd.MM.yyyy", java.util.Locale.ROOT).apply { isLenient = false; timeZone = java.util.TimeZone.getTimeZone("UTC") }
+		val position = java.text.ParsePosition(0)
+		val parsed = format.parse(value, position) ?: return null
+		return if (position.index == value.length) parsed.time else null
+	}
+	val requested = parse(snapshot.date) ?: return false
+	if (snapshot.schedule.days.size != 7) return false
+	val dates = snapshot.schedule.days.map { parse(it.dateFormat) ?: return false }
+	return requested in dates && dates.zipWithNext().all { (first, second) -> second - first == 86_400_000L }
 }
