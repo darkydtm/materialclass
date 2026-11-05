@@ -19,6 +19,7 @@ class AnnualGradesCacheTest {
 		var response: GatewayResult<AnnualGrades> = GatewayResult.Success(AnnualGrades(listOf(AnnualGradeRow("Synthetic subject", listOf("4", null, null, null), null, ""))))
 		val gateway = object : TestSchoolGateway(), AnnualGradesGateway {
 			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic", login, "student", SchoolContext(1, 2026, 2)))
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = error("Unexpected diary request")
 			override fun annualGrades(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<AnnualGrades> = response
 		}
 		val verifier = IdentityVerifier { session, _ ->
