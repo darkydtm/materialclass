@@ -62,6 +62,28 @@ class WrapperIntegrityTest(unittest.TestCase):
 			with self.assertRaises(ValueError):
 				MODULE.check(path)
 
+	def test_launch_files_are_pinned_regular_files(self):
+		root = HERE.parent.parent
+		MODULE.check_launch_files(root)
+		with tempfile.TemporaryDirectory() as directory:
+			work = Path(directory)
+			for name in ("gradlew", "gradle/wrapper/gradle-wrapper.jar"):
+				path = work / name
+				path.parent.mkdir(parents=True, exist_ok=True)
+				shutil.copyfile(root / name, path)
+			MODULE.check_launch_files(work)
+			for name in ("gradlew", "gradle/wrapper/gradle-wrapper.jar"):
+				path = work / name
+				path.write_bytes(path.read_bytes() + b"tampered")
+				with self.assertRaises(ValueError):
+					MODULE.check_launch_files(work)
+				path.unlink()
+				path.symlink_to(root / name)
+				with self.assertRaises(ValueError):
+					MODULE.check_launch_files(work)
+				path.unlink()
+				shutil.copyfile(root / name, path)
+
 	def test_workflow_checksum_command_accepts_original_and_rejects_tampering(self):
 		root = HERE.parent.parent
 		with tempfile.TemporaryDirectory() as directory:
