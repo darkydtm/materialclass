@@ -48,7 +48,7 @@ def device_script(ref):
 	text = WORKFLOW.read_text()
 	device = text.split('  device:\n', 1)[1].split('\n  test-apk:', 1)[0]
 	script = device.split('          script: |\n', 1)[1]
-	return textwrap.dedent(script).replace('${{ github.ref }}', ref)
+	return textwrap.dedent(script).replace('${{ github.ref }}', ref).replace('${{ matrix.api }}', '24')
 
 
 class DeviceScriptTest(unittest.TestCase):
@@ -104,7 +104,7 @@ printf 'RESTART EXIT 0\\n' >> "$COMMAND_LOG"
 
 	def test_routes_and_stops_on_every_failure(self):
 		routes = [('feat/integrate-backup-cleanup', RESTART), ('feat/debug-apk', DEBUG_APK)]
-		routes.extend((branch, RESTART + DEBUG_APK[1:]) for branch in ('feat/integrate-restart-ui', 'feat/integrate-network-contract', 'feat/integrate-homework', 'feat/integrate-profile-security'))
+		routes.extend((branch, RESTART + DEBUG_APK[1:]) for branch in ('feat/integrate-restart-ui', 'feat/integrate-network-contract', 'feat/integrate-homework', 'feat/integrate-profile-security', 'feat/integrate-wrapper-profile'))
 		routes.extend((branch, DEFAULT) for branch in DEFAULT_BRANCHES)
 		routes.append(('unlisted-branch', DEFAULT))
 		for branch, commands in routes:

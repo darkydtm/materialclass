@@ -35,20 +35,33 @@ class NativeUiControllerTest {
 	private fun waitFor(text: String): AccessibilityNodeInfo {
 		val deadline = SystemClock.uptimeMillis() + 10000
 		var direction = AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+		var forward = 0
+		var backward = 0
+		var failed = 0
+		var missingRoot = 0
 		while (SystemClock.uptimeMillis() < deadline) {
 			val root = instrumentation.uiAutomation.rootInActiveWindow
+			if (root == null) missingRoot++
 			root?.let { find(it, text) }?.let { return it }
 			val scroller = root?.let(::scrollable)
 			if (scroller != null) {
 				if (!scroller.performAction(direction)) {
+					failed++
 					direction = if (direction == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD else AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
 				} else {
+					if (direction == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) forward++ else backward++
 					instrumentation.waitForIdleSync()
 				}
 			}
 			SystemClock.sleep(100)
 		}
-		throw AssertionError("Missing node: $text")
+		fun structure(node: AccessibilityNodeInfo, depth: Int): String {
+			val bounds = android.graphics.Rect().also { node.getBoundsInScreen(it) }
+			val summary = "depth=$depth class=${node.className} visible=${node.isVisibleToUser} scrollable=${node.isScrollable} clickable=${node.isClickable} bounds=$bounds children=${node.childCount}"
+			return (listOf(summary) + (0 until node.childCount).mapNotNull { node.getChild(it)?.let { child -> structure(child, depth + 1) } }).joinToString("\n")
+		}
+		val tree = instrumentation.uiAutomation.rootInActiveWindow?.let { structure(it, 0) } ?: "no active root"
+		throw AssertionError("Missing node: $text; scroll forward=$forward backward=$backward failed=$failed missingRoot=$missingRoot\n$tree")
 	}
 	private fun click(text: String) {
 		val deadline = SystemClock.uptimeMillis() + 10000

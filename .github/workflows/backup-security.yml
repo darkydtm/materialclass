@@ -1,17 +1,22 @@
 name: Backup security audit
 on:
   push:
-    branches: [feat/integrate-backup-cleanup, feat/integrate-restart-ui, feat/integrate-network-contract, feat/integrate-homework, feat/integrate-profile-security]
+    branches: [feat/integrate-wrapper-profile, feat/integrate-backup-cleanup, feat/integrate-restart-ui, feat/integrate-network-contract, feat/integrate-homework, feat/integrate-profile-security]
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   audit:
-    if: github.ref == 'refs/heads/feat/integrate-profile-security' || github.ref == 'refs/heads/feat/integrate-homework' || github.ref == 'refs/heads/feat/integrate-network-contract' || github.ref == 'refs/heads/feat/integrate-restart-ui' || github.ref == 'refs/heads/feat/integrate-backup-cleanup'
+    if: github.ref == 'refs/heads/feat/integrate-wrapper-profile' || github.ref == 'refs/heads/feat/integrate-profile-security' || github.ref == 'refs/heads/feat/integrate-homework' || github.ref == 'refs/heads/feat/integrate-network-contract' || github.ref == 'refs/heads/feat/integrate-restart-ui' || github.ref == 'refs/heads/feat/integrate-backup-cleanup'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Verify Gradle wrapper integrity
+        run: |
+          set -eu
+          printf '%s  %s\n' '497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7' gradle/wrapper/gradle-wrapper.jar | sha256sum --check
+          python3 .github/scripts/check-wrapper-properties.py gradle/wrapper/gradle-wrapper.properties
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
         with:
           distribution: temurin
@@ -46,7 +51,7 @@ jobs:
           if-no-files-found: error
           retention-days: 3
   artifact-device:
-    if: github.ref == 'refs/heads/feat/integrate-profile-security' || github.ref == 'refs/heads/feat/integrate-homework' || github.ref == 'refs/heads/feat/integrate-network-contract' || github.ref == 'refs/heads/feat/integrate-restart-ui' || github.ref == 'refs/heads/feat/integrate-backup-cleanup'
+    if: github.ref == 'refs/heads/feat/integrate-wrapper-profile' || github.ref == 'refs/heads/feat/integrate-profile-security' || github.ref == 'refs/heads/feat/integrate-homework' || github.ref == 'refs/heads/feat/integrate-network-contract' || github.ref == 'refs/heads/feat/integrate-restart-ui' || github.ref == 'refs/heads/feat/integrate-backup-cleanup'
     needs: audit
     runs-on: ubuntu-latest
     timeout-minutes: 45
