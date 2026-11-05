@@ -164,7 +164,9 @@ class GradesDiaryRaceTest {
 		) { emit -> SchoolRepository(fixture.gateway, fixture.verifier, coordinator, fixture.cache, { 1L }, emit, SessionStore(context, coordinator)) }
 		main { controller = create(); controller!!.login("1", charArrayOf('x')) }
 		val first = controller!!
-		await { first.state.signedIn && first.state.profile != null && first.state.diary is DiaryState.Ready && first.state.schedule != null }
+		await { first.state.signedIn && first.state.profile != null && first.state.diary is DiaryState.Ready && first.state.schedule != null && first.state.diaryWeeks.isNotEmpty() }
+		main { first.refreshAnnualGrades() }
+		await { contents(first.state)?.contains("Subject-1") == true && !first.state.gradesLoading }
 		drain(first)
 		main { replacement = create() }
 		val second = replacement!!
@@ -177,6 +179,13 @@ class GradesDiaryRaceTest {
 			val secondAfterCancel = second.state
 			assertFalse("First controller retained signed-in state before the blocked commit resumed", firstAfterCancel.signedIn)
 			assertNull(firstAfterCancel.profile)
+			assertTrue(firstAfterCancel.diary is DiaryState.Cleared)
+			assertTrue(firstAfterCancel.diaryWeeks.isEmpty())
+			assertNull(firstAfterCancel.selectedDiaryDate)
+			assertNull(firstAfterCancel.schedule)
+			assertNull(firstAfterCancel.scheduleSnapshot)
+			assertNull(firstAfterCancel.annualGrades)
+			assertFalse(firstAfterCancel.gradesLoading)
 			assertFalse("Second controller retained signed-in state before the blocked commit resumed", secondAfterCancel.signedIn)
 			assertNull(secondAfterCancel.profile)
 		} finally { gate.release.countDown() }
