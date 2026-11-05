@@ -68,15 +68,20 @@ adb install "$RUNNER_TEMP/probe.apk"
 adb install "$RUNNER_TEMP/probe-test.apk"
 run_fixture seed
 adb shell monkey -p "$package" -c android.intent.category.LAUNCHER 1
-adb shell run-as "$package" mkdir -p shared_prefs cache files
+adb shell run-as "$package" mkdir -p shared_prefs cache files no_backup
 printf '%s' "<map><string name=\"fixture\">$nonce</string></map>" | adb shell run-as "$package" tee shared_prefs/session.xml > /dev/null
 printf '%s' "$nonce" | adb shell run-as "$package" tee files/fixture > /dev/null
 printf '%s' "$nonce" | adb shell run-as "$package" tee cache/fixture > /dev/null
+printf '%s' "$nonce" | adb shell run-as "$package" tee files/backup-reference > /dev/null
+printf '%s' "$nonce" | adb shell run-as "$package" tee no_backup/backup-reference > /dev/null
+test "$(adb exec-out run-as "$package" cat files/backup-reference)" = "$nonce"
+test "$(adb exec-out run-as "$package" cat no_backup/backup-reference)" = "$nonce"
 run_fixture verifySeededPayloads
 adb shell am force-stop "$package"
 cache_file=$(adb shell run-as "$package" ls files/backup-cache | tr -d '\r' | grep -v '^index$')
 test -n "$cache_file"
 case "$cache_file" in *[!a-zA-Z0-9._-]*|'') exit 1;; esac
+adb shell run-as "$package" sh -c "'test -s files/backup-cache/$cache_file && test -s files/backup-cache/index && test -s no_backup/session'"
 cache_hash=$(adb exec-out run-as "$package" cat "files/backup-cache/$cache_file" | sha256sum | cut -d ' ' -f 1)
 index_hash=$(adb exec-out run-as "$package" cat files/backup-cache/index | sha256sum | cut -d ' ' -f 1)
 adb shell monkey -p "$package" -c android.intent.category.LAUNCHER 1
@@ -84,7 +89,7 @@ adb shell bmgr backupnow "$package" | tr -d '\r' | tee "$RUNNER_TEMP/probe-backu
 python3 .github/scripts/check-bmgr-output.py backup "$package" "$api" < "$RUNNER_TEMP/probe-backup.txt"
 adb shell am force-stop "$package"
 adb shell pm clear "$package" | tr -d '\r' | grep -Fx Success
-for path in shared_prefs/session.xml files/fixture cache/fixture no_backup/session files/backup-cache; do
+for path in shared_prefs/session.xml files/fixture files/backup-reference cache/fixture no_backup/session no_backup/backup-reference files/backup-cache; do
 	adb shell run-as "$package" sh -c "'test ! -e $path'"
 done
 adb shell bmgr list sets | tr -d '\r' > "$RUNNER_TEMP/probe-sets.txt"
@@ -99,12 +104,15 @@ python3 .github/scripts/check-bmgr-output.py restore "$package" "$api" < "$RUNNE
 adb shell am force-stop "$package"
 test "$(adb exec-out run-as "$package" cat shared_prefs/session.xml)" = "<map><string name=\"fixture\">$nonce</string></map>"
 test "$(adb exec-out run-as "$package" cat files/fixture)" = "$nonce"
+test "$(adb exec-out run-as "$package" cat files/backup-reference)" = "$nonce"
 test "$(adb exec-out run-as "$package" cat "files/backup-cache/$cache_file" | sha256sum | cut -d ' ' -f 1)" = "$cache_hash"
 test "$(adb exec-out run-as "$package" cat files/backup-cache/index | sha256sum | cut -d ' ' -f 1)" = "$index_hash"
-for path in cache/fixture no_backup/session; do
+for path in cache/fixture no_backup/session no_backup/backup-reference; do
 	adb shell run-as "$package" sh -c "'test ! -e $path'"
 done
-printf '%s\n' 'STAGE: permissive app restored synthetic sensitive files and encrypted cache'
+run_fixture verifyProbeRestoredNonceAndAbsentSession
+printf '%s\n' 'STAGE: permissive app restored synthetic file and cache ciphertext; no_backup excluded'
+printf '%s\n' 'Cache ciphertext was compared as bytes; Keystore key restoration and decryption were not tested'
 package=org.materialclass
 run_fixture seed
 adb shell monkey -p "$package" -c android.intent.category.LAUNCHER 1

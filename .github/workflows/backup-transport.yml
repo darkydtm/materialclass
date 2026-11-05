@@ -1,13 +1,13 @@
 name: Isolated local backup transport
 on:
   push:
-    branches: [test/backup-transport]
+    branches: [test/backup-transport, test/backup-no-backup-control]
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   transport:
-    if: github.ref == 'refs/heads/test/backup-transport'
+    if: github.ref == 'refs/heads/test/backup-transport' || github.ref == 'refs/heads/test/backup-no-backup-control'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:

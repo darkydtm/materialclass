@@ -53,6 +53,13 @@ class BackupTransportFixtureTest {
 	}
 
 	@Test
+	fun verifyProbeRestoredNonceAndAbsentSession() {
+		assertEquals(nonce, context.getSharedPreferences("appearance", 0).getString("backup_nonce", null))
+		assertFalse(File(context.noBackupFilesDir, "session").exists())
+		assertFalse(File(context.noBackupFilesDir, "backup-reference").exists())
+	}
+
+	@Test
 	fun verifyRestoredAppearanceAndAbsentSession() {
 		val appearance = context.getSharedPreferences("appearance", 0)
 		assertEquals("black", appearance.getString("theme", null))
