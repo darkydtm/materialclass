@@ -36,8 +36,11 @@ for stage in write cache session clear; do
   fi
   echo "Terminated process $pid after $stage failure"
   output="${RUNNER_TEMP}/cleanup-verify-${stage}.txt"
-  adb shell am instrument -w -r -e cleanupRestartPhase verify -e class "${test_class}#recoverBeforeLoginAfterProcessDeath" "$runner" >"$output"
+  adb shell am instrument -w -r -e cleanupRestartPhase verify -e cleanupRestartStage "$stage" -e class "${test_class}#recoverBeforeLoginAfterProcessDeath" "$runner" >"$output"
   cat "$output"
-  grep -Eq '^OK \(1 test\)' "$output"
+  tr -d '\r' < "$output" > "${output}.normalized"
+  grep -Fx "INSTRUMENTATION_STATUS: cleanupRestartVerified=$stage" "${output}.normalized"
+  grep -Fx 'INSTRUMENTATION_CODE: -1' "${output}.normalized"
+  grep -Fx 'OK (1 test)' "${output}.normalized"
 done
 adb shell pm clear "$package" >/dev/null
