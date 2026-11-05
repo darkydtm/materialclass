@@ -38,6 +38,27 @@ private class AtomicPrivateState<T>(private val empty: T) {
 
 class AtomicPrivateStateTest {
 	@Test
+	fun admissionBindsRegistryTokenToTheLeaseBeforeAccountReplacement() {
+		val coordinator = SessionCoordinator { }
+		val registry = SessionCoordinator.privateStates
+		val id = registry.register()
+		try {
+			val first = coordinator.activate(AccountId("synthetic-admission-a"))
+			val lease = coordinator.admit(first)!!
+			val field = RequestLease::class.java.declaredFields.firstOrNull { it.type == PrivateStateRegistry.Token::class.java }
+			assertTrue("Admission must bind a registry token to the request lease", field != null)
+			field!!.isAccessible = true
+			val token = field.get(lease) as PrivateStateRegistry.Token
+			coordinator.activate(AccountId("synthetic-admission-b"))
+			assertFalse(registry.commit(token, id) { it.copy(signedIn = true) })
+			assertEquals(NativeUiState(), registry.read().states[id])
+		} finally {
+			registry.unregister(id)
+			coordinator.logout()
+		}
+	}
+
+	@Test
 	fun productionCommitLosingCasToRevokeIsRejected() {
 		val entered = CountDownLatch(1)
 		val resume = CountDownLatch(1)
