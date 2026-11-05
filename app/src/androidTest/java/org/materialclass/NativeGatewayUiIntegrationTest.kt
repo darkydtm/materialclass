@@ -182,7 +182,14 @@ class NativeGatewayUiIntegrationTest {
 		val fields = editables(instrumentation.uiAutomation.rootInActiveWindow)
 		assertEquals(2, fields.size)
 		enterText(fields.first { !it.isPassword }, "synthetic-user")
-		waitFor("synthetic-user")
+		val deadline = SystemClock.uptimeMillis() + 15000
+		while (true) {
+			val root = instrumentation.uiAutomation.rootInActiveWindow
+			val username = root?.let(::editables)?.firstOrNull { !it.isPassword }?.text?.toString().orEmpty()
+			if (username.contains("synthetic-user")) break
+			check(SystemClock.uptimeMillis() < deadline) { "Username was not retained in the login field: $username" }
+			SystemClock.sleep(50)
+		}
 		enterText(editables(instrumentation.uiAutomation.rootInActiveWindow).first { it.isPassword }, "synthetic-password")
 		instrumentation.waitForIdleSync()
 		instrumentation.runOnMainSync { (context.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).hideSoftInputFromWindow(activity.window.decorView.windowToken, 0) }
