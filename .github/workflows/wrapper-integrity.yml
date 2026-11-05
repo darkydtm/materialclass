@@ -1,13 +1,13 @@
 name: Gradle wrapper integrity
 on:
   push:
-    branches: [feat/integrate-wrapper, feat/integrate-wrapper-profile]
+    branches: [test/homework-flake-review, feat/integrate-wrapper, feat/integrate-wrapper-profile]
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   verify:
-    if: github.ref == 'refs/heads/feat/integrate-wrapper' || github.ref == 'refs/heads/feat/integrate-wrapper-profile'
+    if: github.ref == 'refs/heads/test/homework-flake-review' || github.ref == 'refs/heads/feat/integrate-wrapper' || github.ref == 'refs/heads/feat/integrate-wrapper-profile'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4

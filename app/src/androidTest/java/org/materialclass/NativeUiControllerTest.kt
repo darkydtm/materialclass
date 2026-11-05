@@ -96,6 +96,61 @@ class NativeUiControllerTest {
 	}
 	private fun editables(node: AccessibilityNodeInfo): List<AccessibilityNodeInfo> = (if (node.isEditable) listOf(node) else emptyList()) + (0 until node.childCount).flatMap { node.getChild(it)?.let(::editables) ?: emptyList() }
 
+	private fun filterNodeSnapshotExperiment(useSavedNode: Boolean) {
+		val context = ApplicationProvider.getApplicationContext<Context>()
+		context.getSharedPreferences("appearance", 0).edit().clear().putBoolean("warning_seen", true).putString("language", "en").commit()
+		fun snapshot(version: Long) = DiarySnapshot(Diary("week", listOf(DiaryDay("one", "day one", listOf(DiarySubject("Math", "lesson", "id", "text", "Task", null, false, false))))), version)
+		val fake = object : NativeUiController {
+			override var state by mutableStateOf(NativeUiState(signedIn = true, diary = DiaryState.Ready(snapshot(1))))
+			override fun start() { }
+			override fun login(username: String, password: CharArray) { password.fill('\u0000') }
+			override fun refresh() { }
+			override fun logout() { state = NativeUiState() }
+			override fun close() { }
+		}
+		val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
+		try {
+			instrumentation.runOnMainSync { activity.setContent { MaterialClassApp(nativeEnabled = true, controllerFactory = { fake }) } }
+			waitFor("Sign out")
+			click("Homework")
+			click("Show filters")
+			var saved = waitFor("Hide filters")
+			while (!saved.isClickable && saved.parent != null) saved = saved.parent
+			assertTrue(saved.isClickable)
+			instrumentation.runOnMainSync { fake.state = fake.state.copy(diary = DiaryState.Ready(snapshot(2))) }
+			instrumentation.waitForIdleSync()
+			val root = instrumentation.uiAutomation.rootInActiveWindow
+			assertNotNull(find(root, "Show filters"))
+			assertNull(find(root, "Hide filters"))
+			assertNull(find(root, "All subjects"))
+			var fresh = find(root, "Show filters")!!
+			while (!fresh.isClickable && fresh.parent != null) fresh = fresh.parent
+			assertTrue(fresh.isClickable)
+			val accepted = (if (useSavedNode) saved else fresh).performAction(AccessibilityNodeInfo.ACTION_CLICK)
+			instrumentation.waitForIdleSync()
+			val after = instrumentation.uiAutomation.rootInActiveWindow
+			val show = find(after, "Show filters") != null
+			val hide = find(after, "Hide filters") != null
+			val radio = find(after, "All subjects") != null
+			assertEquals("Toggle and radio state must agree", hide, radio)
+			assertTrue("Exactly one toggle label must exist", show != hide)
+			if (useSavedNode) {
+				assertFalse("Saved node must not activate after recomposition; accepted=$accepted show=$show hide=$hide radio=$radio", accepted)
+				assertTrue("Saved node must not change state", show)
+			} else {
+				assertTrue("Fresh node click must be accepted", accepted)
+				assertTrue("Fresh node must open filters", hide && radio)
+			}
+		} finally {
+			instrumentation.runOnMainSync { activity.finish() }
+			instrumentation.waitForIdleSync()
+			context.getSharedPreferences("appearance", 0).edit().clear().commit()
+		}
+	}
+
+	@Test fun savedFilterNodeIsRejectedAfterRecomposition() = filterNodeSnapshotExperiment(true)
+	@Test fun freshFilterNodeWorksAfterRecomposition() = filterNodeSnapshotExperiment(false)
+
 	@Test fun homeworkNavigationShowsDiaryHomework() {
 		val context = ApplicationProvider.getApplicationContext<Context>()
 		context.getSharedPreferences("appearance", 0).edit().putBoolean("warning_seen", true).putString("language", "en").commit()
