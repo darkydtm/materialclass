@@ -181,7 +181,12 @@ class NativeGatewayUiIntegrationTest {
 	private fun loginRoot(): AccessibilityNodeInfo? = instrumentation.uiAutomation.windows
 		.filter { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION }
 		.mapNotNull { it.root }
-		.firstOrNull { it.packageName?.toString() == context.packageName && editables(it).size == 2 }
+		.firstOrNull { it.packageName?.toString() == context.packageName && editables(it).isNotEmpty() }
+
+	private fun scrollForward(node: AccessibilityNodeInfo): Boolean {
+		if (node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD } && node.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) return true
+		return (0 until node.childCount).any { node.getChild(it)?.let(::scrollForward) == true }
+	}
 
 	private fun enterText(password: Boolean, value: String) {
 		val deadline = SystemClock.uptimeMillis() + 15000
@@ -194,6 +199,8 @@ class NativeGatewayUiIntegrationTest {
 					node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
 					instrumentation.waitForIdleSync()
 				} else if (node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) return
+			} else if (root != null) {
+				scrollForward(root)
 			}
 			SystemClock.sleep(50)
 		}
@@ -213,6 +220,8 @@ class NativeGatewayUiIntegrationTest {
 			check(SystemClock.uptimeMillis() < deadline) { "Username was not retained in the login field: $username" }
 			SystemClock.sleep(50)
 		}
+		instrumentation.runOnMainSync { (context.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).hideSoftInputFromWindow(activity.window.decorView.windowToken, 0) }
+		instrumentation.waitForIdleSync()
 		enterText(true, "synthetic-password")
 		instrumentation.waitForIdleSync()
 		instrumentation.runOnMainSync { (context.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).hideSoftInputFromWindow(activity.window.decorView.windowToken, 0) }
