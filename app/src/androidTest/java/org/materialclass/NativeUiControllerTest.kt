@@ -52,6 +52,17 @@ class NativeUiControllerTest {
 			var node = waitFor(text)
 			while (!node.isClickable && node.parent != null) node = node.parent
 			if (node.isClickable && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+				instrumentation.waitForIdleSync()
+				if (text.startsWith("Subject: ") || text.startsWith("Date: ") || text == "All subjects" || text == "All dates") {
+					var confirmed = false
+					while (SystemClock.uptimeMillis() < deadline) {
+						var selected = waitFor(text)
+						while (!selected.isCheckable && selected.parent != null) selected = selected.parent
+						if (selected.isCheckable && selected.isChecked) { confirmed = true; break }
+						SystemClock.sleep(50)
+					}
+					assertTrue("Selection did not update: $text", confirmed)
+				}
 				if (text == "Show filters") waitFor("Hide filters")
 				if (text == "Hide filters") waitFor("Show filters")
 				return
