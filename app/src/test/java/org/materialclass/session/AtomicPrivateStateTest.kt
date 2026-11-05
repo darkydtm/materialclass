@@ -38,6 +38,44 @@ private class AtomicPrivateState<T>(private val empty: T) {
 
 class AtomicPrivateStateTest {
 	@Test
+	fun loginInvalidatesLeaseTokenWithoutClearingExistingState() {
+		val first = SessionCoordinator { }
+		val second = SessionCoordinator { }
+		val registry = SessionCoordinator.privateStates
+		val id = registry.register()
+		try {
+			val active = first.activate(AccountId("synthetic-login"))
+			val lease = second.admit(active)!!
+			val token = lease.privateToken!!
+			assertTrue(registry.commit(token, id) { it.copy(signedIn = true) })
+			first.beginLogin()
+			assertFalse(registry.commit(token, id) { NativeUiState() })
+			assertTrue(registry.read().states[id]!!.signedIn)
+			assertTrue(lease.isCancelled())
+		} finally { registry.unregister(id); first.logout() }
+	}
+
+	@Test
+	fun schoolInvalidationRejectsOldTokenAndPreservesState() {
+		val first = SessionCoordinator { }
+		val second = SessionCoordinator { }
+		val registry = SessionCoordinator.privateStates
+		val id = registry.register()
+		try {
+			val active = first.activate(AccountId("synthetic-school"))
+			val old = second.admit(active)!!
+			val selected = first.admit(active)!!
+			val token = old.privateToken!!
+			assertTrue(registry.commit(token, id) { it.copy(signedIn = true) })
+			first.invalidateSchoolRequests(active, selected)
+			assertFalse(registry.commit(token, id) { NativeUiState() })
+			assertTrue(registry.read().states[id]!!.signedIn)
+			assertTrue(old.isCancelled())
+			assertFalse(selected.isCancelled())
+		} finally { registry.unregister(id); first.logout() }
+	}
+
+	@Test
 	fun admissionBindsRegistryTokenToTheLeaseBeforeAccountReplacement() {
 		val coordinator = SessionCoordinator { }
 		val registry = SessionCoordinator.privateStates

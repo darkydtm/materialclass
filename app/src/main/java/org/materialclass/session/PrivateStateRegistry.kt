@@ -46,6 +46,12 @@ internal class PrivateStateRegistry(initiallyActive: Boolean = true, private val
 
 	fun revokeAndClear() = transition(false)
 	fun activateAndClear() = transition(true)
+	fun rotate() {
+		while (true) {
+			val current = state.get()
+			if (state.compareAndSet(current, snapshot(Token(), current.states, current.active))) return
+		}
+	}
 
 	private fun transition(active: Boolean) {
 		while (true) {

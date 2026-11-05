@@ -19,6 +19,7 @@ jobs:
         with:
           packages: platform-tools
       - run: ./gradlew --no-daemon testDebugUnitTest --tests org.materialclass.session.AtomicPrivateStateTest
+      - run: ./gradlew --no-daemon testDebugUnitTest
   device:
     if: github.ref == 'refs/heads/test/privacy-integrated-red' || github.ref == 'refs/heads/fix/privacy-data-guard'
     runs-on: ubuntu-latest
