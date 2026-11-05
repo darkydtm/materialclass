@@ -37,7 +37,7 @@ class EncryptedCache(context: Context, private val coordinator: SessionCoordinat
 			context: Context,
 			namespace: org.materialclass.session.CacheNamespace,
 			deleteFile: (File) -> Boolean = { it.delete() },
-			deleteKey: (String) -> Unit = { KeystoreKeys().delete(it) },
+			deleteKey: ((String) -> Unit)? = null,
 		) = synchronized(StorageLock) {
 			val files = CacheFiles(context)
 			val keys = KeystoreKeys()
@@ -49,7 +49,7 @@ class EncryptedCache(context: Context, private val coordinator: SessionCoordinat
 			for (suffix in listOf("", ":schedule", ":grades")) {
 				try {
 					val id = keys.namespace(namespace.value + suffix, false)
-					EncryptedFile(File(files.directory, id), "cache-$id", keys, files).reset(deleteFile, deleteKey)
+					EncryptedFile(File(files.directory, id), "cache-$id", keys, files).reset(deleteFile, deleteKey ?: keys::delete)
 				} catch (error: Exception) {
 					if (failure == null) failure = error else failure.addSuppressed(error)
 				}

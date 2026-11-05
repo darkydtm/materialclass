@@ -71,9 +71,29 @@ jobs:
           target: default
           arch: x86_64
           script: |
+            set -e
             adb shell input keyevent KEYCODE_WAKEUP
             adb shell wm dismiss-keyguard
             if [ "${{ github.ref }}" = 'refs/heads/feat/debug-apk' ]; then ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=org.materialclass.NativeUiWiringTest && ./gradlew --no-daemon -PintegrationTestNativeUi=true connectedDebugAndroidTest; else ./gradlew --no-daemon connectedDebugAndroidTest; fi
+            if [ "${{ github.ref }}" = 'refs/heads/feat/grade-cache' ]; then
+              python3 -c '
+            from pathlib import Path
+            import xml.etree.ElementTree as ET
+            expected = {"gradeFileDeletionFailureKeepsLogoutRetryable", "gradeKeyDeletionFailureKeepsLogoutRetryable"}
+            results = {}
+            for path in Path("app/build/outputs/androidTest-results/connected").rglob("*.xml"):
+                for case in ET.parse(path).iter("testcase"):
+                    if case.get("classname") == "org.materialclass.NativeControllerIntegrationTest" and case.get("name") in expected:
+                        name = case.get("name")
+                        if name in results or any(case.find(tag) is not None for tag in ("failure", "error", "skipped")):
+                            raise SystemExit(f"Duplicate or unsuccessful instrumentation test: {name}")
+                        results[name] = path
+            if set(results) != expected:
+                raise SystemExit(f"Missing instrumentation tests: {expected - set(results)}")
+            for name, path in sorted(results.items()):
+                print(f"PASS {name} ({path})")
+            '
+            fi
 
   test-apk:
     if: github.ref == 'refs/heads/feat/debug-apk'
