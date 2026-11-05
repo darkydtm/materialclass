@@ -30,7 +30,7 @@ class BackupSecurityTest(unittest.TestCase):
 		return f'<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application android:allowBackup="true" android:fullBackupContent="{legacy}" android:dataExtractionRules="{modern}"/></manifest>'
 
 	def tree(self, legacy, modern):
-		return f'E: manifest (line=1)\n  E: application (line=2)\n    A: http://schemas.android.com/apk/res/android:fullBackupContent(0x010104eb)=@{legacy}\n    A: http://schemas.android.com/apk/res/android:dataExtractionRules(0x0101064e)=@{modern}\n'
+		return f'E: manifest (line=1)\n  E: application (line=2)\n    A: http://schemas.android.com/apk/res/android:fullBackupContent(0x010104eb)=@{legacy}\n    A: http://schemas.android.com/apk/res/android:dataExtractionRules(0x0101063e)=@{modern}\n'
 
 	def run_check(self):
 		return subprocess.run([sys.executable, str(SCRIPT), str(self.root)], cwd=self.root, capture_output=True, text=True)
@@ -38,6 +38,41 @@ class BackupSecurityTest(unittest.TestCase):
 	def test_expected_packaged_references_pass(self):
 		result = self.run_check()
 		self.assertEqual(result.returncode, 0, result.stderr)
+
+	def test_attributes_on_activity_are_rejected(self):
+		path = self.root / 'manifest-tree.txt'
+		path.write_text(path.read_text().replace('    A:', '    E: activity (line=3)\n      A:', 1).replace('\n    A:', '\n      A:'))
+		self.assertNotEqual(self.run_check().returncode, 0)
+
+	def test_missing_application_attributes_are_rejected(self):
+		path = self.root / 'manifest.xml'
+		path.write_text(self.manifest('@0x7f150000', '@0x7f150001').replace(' android:fullBackupContent="@0x7f150000"', ''))
+		self.assertNotEqual(self.run_check().returncode, 0)
+
+	def test_duplicate_application_is_rejected(self):
+		path = self.root / 'manifest.xml'
+		path.write_text(path.read_text().replace('</manifest>', '<application/></manifest>'))
+		self.assertNotEqual(self.run_check().returncode, 0)
+
+	def test_nested_application_impersonation_is_rejected(self):
+		path = self.root / 'manifest-tree.txt'
+		path.write_text(path.read_text().replace('  E: application (line=2)', '  E: activity (line=2)\n    E: application (line=3)').replace('\n    A:', '\n      A:'))
+		self.assertNotEqual(self.run_check().returncode, 0)
+
+	def test_wrong_namespace_is_rejected(self):
+		path = self.root / 'manifest.xml'
+		path.write_text(path.read_text().replace('xmlns:android="http://schemas.android.com/apk/res/android"', 'xmlns:android="http://example.com/android"'))
+		self.assertNotEqual(self.run_check().returncode, 0)
+
+	def test_wrong_binary_namespace_is_rejected(self):
+		path = self.root / 'manifest-tree.txt'
+		path.write_text(path.read_text().replace('http://schemas.android.com/apk/res/android:fullBackupContent', 'http://example.com/android:fullBackupContent'))
+		self.assertNotEqual(self.run_check().returncode, 0)
+
+	def test_wrong_binary_attribute_id_is_rejected(self):
+		path = self.root / 'manifest-tree.txt'
+		path.write_text(path.read_text().replace('0x010104eb', '0x010104ec'))
+		self.assertNotEqual(self.run_check().returncode, 0)
 
 	def test_evil_packaged_reference_is_rejected(self):
 		(self.root / 'manifest.xml').write_text(self.manifest('@0x7f150002', '@0x7f150001'))

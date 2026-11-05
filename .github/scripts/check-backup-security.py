@@ -6,15 +6,43 @@ from pathlib import Path
 root = Path(sys.argv[1])
 android = '{http://schemas.android.com/apk/res/android}'
 manifest = ET.parse(root / 'manifest.xml').getroot()
-app = manifest.find('application')
-assert app is not None
+assert manifest.tag == 'manifest'
+apps = [element for element in manifest.iter() if element.tag.split('}')[-1] == 'application']
+assert len(apps) == 1 and apps[0] in list(manifest) and apps[0].tag == 'application'
+app = apps[0]
 assert app.get(android + 'allowBackup') == 'true'
 tree = (root / 'manifest-tree.txt').read_text()
 resources = (root / 'resources.txt').read_text()
+stack = []
+applications = []
+for line in tree.splitlines():
+	match = re.match(r'^( *)([EA]): (.*)$', line)
+	if not match:
+		continue
+	indent, kind, content = match.groups()
+	depth = len(indent)
+	if kind == 'E':
+		while stack and stack[-1][0] >= depth:
+			stack.pop()
+		name = content.split(' ', 1)[0]
+		if not stack:
+			assert name == 'manifest' and depth == 0
+		if name.split(':')[-1] == 'application':
+			assert name == 'application' and len(stack) == 1 and stack[0][1] == 'manifest'
+			applications.append({})
+		stack.append((depth, name))
+	elif stack and len(stack) == 2 and stack[-1][1] == 'application' and depth > stack[-1][0]:
+		match = re.fullmatch(r'http://schemas\.android\.com/apk/res/android:(fullBackupContent|dataExtractionRules)\((0x[0-9a-fA-F]+)\)=@(0x[0-9a-fA-F]{8})', content)
+		if match:
+			attribute, attribute_id, resource_id = match.groups()
+			assert attribute_id.lower() == {'fullBackupContent': '0x010104eb', 'dataExtractionRules': '0x0101063e'}[attribute]
+			assert attribute not in applications[-1]
+			applications[-1][attribute] = resource_id.lower()
+assert len(applications) == 1
 for attribute, name in (('fullBackupContent', 'backup_rules'), ('dataExtractionRules', 'data_extraction_rules')):
-	matches = re.findall(r'^\s*A: http://schemas\.android\.com/apk/res/android:' + attribute + r'\(0x[0-9a-fA-F]+\)=@(0x[0-9a-fA-F]{8})\s*$', tree, re.MULTILINE)
-	assert len(matches) == 1, (attribute, matches)
-	resource_id = matches[0].lower()
+	resource_id = applications[0][attribute]
+	assert app.get(android + attribute) in ('@' + resource_id, '@xml/' + name)
+
 	entries = re.split(r'(?m)^\s*resource ', resources)
 	matches = [entry for entry in entries if re.match(re.escape(resource_id) + r'\s', entry.lower())]
 	assert len(matches) == 1, (attribute, resource_id)
