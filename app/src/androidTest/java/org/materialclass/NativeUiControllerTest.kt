@@ -127,6 +127,44 @@ class NativeUiControllerTest {
 
 	private fun AccessibilityNodeInfo.boundsInScreenTop(): Int = android.graphics.Rect().also { getBoundsInScreen(it) }.top
 
+	@Test fun homeworkFiltersOnlyTheCurrentSnapshotAndClearsOnSignOut() {
+		val context = ApplicationProvider.getApplicationContext<Context>()
+		context.getSharedPreferences("appearance", 0).edit().putBoolean("warning_seen", true).putString("language", "en").commit()
+		fun item(label: String, body: String) = DiarySubject(label, "lesson", "id", "text", body, null, false, false)
+		val diary = Diary("week", listOf(DiaryDay("one", "day one", listOf(item("Math", "Math task"))), DiaryDay("two", "day two", listOf(item("Art", "Art task")))))
+		val fake = object : NativeUiController {
+			override var state by mutableStateOf(NativeUiState(signedIn = true, diary = DiaryState.Ready(DiarySnapshot(diary, 1))))
+			override fun start() { }
+			override fun login(username: String, password: CharArray) { password.fill('\u0000') }
+			override fun refresh() { }
+			override fun logout() { state = NativeUiState() }
+			override fun close() { }
+		}
+		val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
+		try {
+			instrumentation.runOnMainSync { activity.setContent { MaterialClassApp(nativeEnabled = true, controllerFactory = { fake }) } }
+			click("Homework")
+			click("Subject: Math")
+			waitFor("Math task")
+			assertNull(find(instrumentation.uiAutomation.rootInActiveWindow, "Art task"))
+			click("All subjects")
+			waitFor("Art task")
+			click("Date: day two")
+			waitFor("Art task")
+			assertNull(find(instrumentation.uiAutomation.rootInActiveWindow, "Math task"))
+			click("All dates")
+			waitFor("Math task")
+			click("Subject: Math")
+			instrumentation.runOnMainSync { fake.state = NativeUiState() }
+			waitFor(context.getString(R.string.data_unavailable))
+			instrumentation.runOnMainSync { fake.state = NativeUiState(signedIn = true, diary = DiaryState.Ready(DiarySnapshot(diary, 2))) }
+			waitFor("Art task")
+		} finally {
+			activity.finish()
+			context.getSharedPreferences("appearance", 0).edit().clear().commit()
+		}
+	}
+
 	@Test fun diaryShowsAttachmentIndicatorsWithoutHomeworkBody() {
 		val context = ApplicationProvider.getApplicationContext<Context>()
 		context.getSharedPreferences("appearance", 0).edit().putBoolean("warning_seen", true).putString("language", "en").commit()
