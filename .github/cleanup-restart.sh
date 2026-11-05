@@ -26,6 +26,10 @@ for stage in write cache session clear; do
   adb shell test -d "/proc/$pid"
   adb shell am force-stop "$package"
   wait "$instrumentation_pid" || true
+  for attempt in $(seq 1 20); do
+    if ! adb shell test -d "/proc/$pid"; then break; fi
+    sleep 1
+  done
   if adb shell test -d "/proc/$pid"; then
     echo "Process $pid survived force-stop" >&2
     exit 1
