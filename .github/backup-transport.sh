@@ -31,10 +31,20 @@ printf '%s' '<map><string name="fixture">allowed-appearance</string></map>' | ad
 printf '%s' '<map><string name="fixture">forbidden-session</string></map>' | adb shell run-as "$package" tee shared_prefs/session.xml > /dev/null
 printf '%s' forbidden-cache | adb shell run-as "$package" tee cache/fixture > /dev/null
 printf '%s' forbidden-file | adb shell run-as "$package" tee files/fixture > /dev/null
+printf '%s\n' 'STAGE: fixtures seeded'
+adb exec-out run-as "$package" cat shared_prefs/appearance.xml | grep -F allowed-appearance
+for path in shared_prefs/session.xml cache/fixture files/fixture; do
+	adb shell run-as "$package" test -f "$path"
+done
 adb shell bmgr backupnow "$package" | tr -d '\r' | tee "$RUNNER_TEMP/backup-result.txt"
 grep -F "Package $package with result: Success" "$RUNNER_TEMP/backup-result.txt"
+printf '%s\n' 'STAGE: package backup succeeded'
 adb shell am force-stop "$package"
-adb shell run-as "$package" rm -f shared_prefs/appearance.xml shared_prefs/session.xml cache/fixture files/fixture
+adb shell pm clear "$package" | tr -d '\r' | grep -Fx Success
+for path in shared_prefs/appearance.xml shared_prefs/session.xml cache/fixture files/fixture; do
+	adb shell run-as "$package" test ! -e "$path"
+done
+printf '%s\n' 'STAGE: app storage cleared'
 adb shell bmgr list sets | tr -d '\r' | tee "$RUNNER_TEMP/restore-sets.txt"
 token=$(awk '/^[[:space:]]*[0-9a-fA-F]+[[:space:]]*:/ {gsub(":", "", $1); print $1; exit}' "$RUNNER_TEMP/restore-sets.txt")
 test -n "$token"
