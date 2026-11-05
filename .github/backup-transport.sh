@@ -2,7 +2,7 @@
 set -euo pipefail
 
 package=org.materialclass
-transport=android/com.android.internal.backup.LocalTransport
+transport=com.android.localtransport/.LocalTransport
 adb install app/build/outputs/apk/debug/app-debug.apk
 adb shell bmgr enable true
 adb shell bmgr enabled | tr -d '\r' | grep -F 'Backup Manager currently enabled'
