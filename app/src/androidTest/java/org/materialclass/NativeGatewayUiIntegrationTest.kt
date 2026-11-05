@@ -63,6 +63,7 @@ class NativeGatewayUiIntegrationTest {
 		val offlineWeeks = AtomicBoolean(false)
 		val blockDiary = AtomicBoolean(false)
 		val blockGrades = AtomicBoolean(false)
+		val offlineGrades = AtomicBoolean(false)
 		val gradesEntered = CountDownLatch(1)
 		val gradesRelease = CountDownLatch(1)
 		val gradesCalls = java.util.concurrent.atomic.AtomicInteger()
@@ -106,6 +107,7 @@ class NativeGatewayUiIntegrationTest {
 				}
 				"/api/v4/os/clientoffice/diary/year" -> {
 					val number = gradesCalls.incrementAndGet()
+					if (offlineGrades.get()) throw java.io.IOException("offline")
 					if (blockGrades.get() && number == 1) { gradesEntered.countDown(); check(gradesRelease.await(60, TimeUnit.SECONDS)) }
 					val subject = if (blockGrades.get() && number == 1) "Old annual subject" else "Synthetic annual subject"
 					Response(200, """{"data":{"rows":[{"subjectName":"$subject","attestations":{"quarter1":"4","quarter2":null,"quarter3":"0"},"yearScores":{"yearScore":null,"finalScore":""}}]}}""")
@@ -139,7 +141,8 @@ class NativeGatewayUiIntegrationTest {
 			override fun write(session: ActiveSession, bytes: ByteArray): Boolean { exchange.cacheWrites.incrementAndGet(); return true }
 		}
 		val scheduleCache = org.materialclass.data.EncryptedDiaryCache(org.materialclass.cache.EncryptedCache(context, coordinator, "schedule"))
-		val controller = NativeController { emit -> SchoolRepository(NativeGateway(exchange), NativeIdentityVerifier(exchange), coordinator, cache, { 1L }, emit, SessionStore(context, coordinator), scheduleCache) }
+		val gradesCache = org.materialclass.data.EncryptedDiaryCache(org.materialclass.cache.EncryptedCache(context, coordinator, "grades"))
+		val controller = NativeController { emit -> SchoolRepository(NativeGateway(exchange), NativeIdentityVerifier(exchange), coordinator, cache, { 1L }, emit, SessionStore(context, coordinator), scheduleCache, gradesCache = gradesCache) }
 		activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
 		try {
 			instrumentation.runOnMainSync { controller.start(); activity.setContent { MaterialClassApp(nativeEnabled = true, controllerFactory = { controller }) } }
@@ -246,6 +249,24 @@ class NativeGatewayUiIntegrationTest {
 		waitFor("Quarter 3: 0")
 		waitFor("Final: Unavailable")
 		assertTrue(exchange.paths.contains("/api/v4/os/clientoffice/diary/year"))
+	}
+
+	@Test fun offlineAnnualGradesShowSavedTimestampInVisibleUi() = exercise { exchange, controller ->
+		signIn(controller)
+		waitFor(context.getString(R.string.logout))
+		click(context.getString(R.string.grades))
+		click(context.getString(R.string.grades_load))
+		waitFor("Synthetic annual subject")
+		exchange.offlineGrades.set(true)
+		click(context.getString(R.string.grades_load))
+		waitFor(context.getString(R.string.stale_data, context.getString(R.string.error_offline)))
+		val formatted = java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT, java.util.Locale.ENGLISH).format(java.util.Date(1L))
+		waitFor(context.getString(R.string.last_updated, formatted))
+		waitFor("Synthetic annual subject")
+		instrumentation.runOnMainSync {
+			assertEquals(1L, controller.state.gradesLastSuccessMillis)
+			assertEquals(org.materialclass.api.AppError.OFFLINE, controller.state.gradesStaleError)
+		}
 	}
 
 	@Test fun latestPendingAnnualRequestWinsInVisibleUi() = exercise { exchange, controller ->
