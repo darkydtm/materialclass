@@ -59,7 +59,7 @@ class NativeUiControllerTest {
 			val bounds = android.graphics.Rect().also { node.getBoundsInScreen(it) }
 			val known = setOf("Homework", "Show filters", "Hide filters", "Subject: Math", "All subjects", "All dates", "Math task", "Art task", "Sign out")
 			val label = node.text?.toString()?.takeIf { it in known } ?: ""
-			val summary = "depth=$depth class=${node.className} visible=${node.isVisibleToUser} scrollable=${node.isScrollable} clickable=${node.isClickable} checkable=${node.isCheckable} checked=${node.isChecked} label=$label bounds=$bounds children=${node.childCount}"
+			val summary = "depth=$depth class=${node.className} window=${node.windowId} nodeIdHash=${node.hashCode()} viewId=${node.viewIdResourceName} visible=${node.isVisibleToUser} scrollable=${node.isScrollable} clickable=${node.isClickable} checkable=${node.isCheckable} checked=${node.isChecked} label=$label bounds=$bounds children=${node.childCount}"
 			return (listOf(summary) + (0 until node.childCount).mapNotNull { node.getChild(it)?.let { child -> structure(child, depth + 1) } }).joinToString("\n")
 		}
 		val tree = instrumentation.uiAutomation.rootInActiveWindow?.let { structure(it, 0) } ?: "no active root"
@@ -70,6 +70,7 @@ class NativeUiControllerTest {
 		while (SystemClock.uptimeMillis() < deadline) {
 			var node = waitFor(text)
 			while (!node.isClickable && node.parent != null) node = node.parent
+			if (text == "Show filters" || text == "Hide filters") HomeworkFilterTrace.recordAttempt(text)
 			val accepted = node.isClickable && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
 			if (text == "Show filters" || text == "Hide filters") HomeworkFilterTrace.recordInput(text, accepted)
 			if (accepted) {
@@ -118,7 +119,12 @@ class NativeUiControllerTest {
 			instrumentation.runOnMainSync { assertTrue("Fixture must be attached", activity.window.decorView.isAttachedToWindow) }
 			click("Homework")
 			waitFor("Task")
+			val attemptsBefore = HomeworkFilterTrace.count("attempt:")
+			val togglesBefore = HomeworkFilterTrace.count("toggle:")
 			click("Show filters")
+			instrumentation.waitForIdleSync()
+			assertEquals("One click attempt: ${HomeworkFilterTrace.snapshot()}", attemptsBefore + 1, HomeworkFilterTrace.count("attempt:"))
+			assertEquals("One toggle after idle: ${HomeworkFilterTrace.snapshot()}", togglesBefore + 1, HomeworkFilterTrace.count("toggle:"))
 			var saved = waitFor("Hide filters")
 			while (!saved.isClickable && saved.parent != null) saved = saved.parent
 			assertTrue(saved.isClickable)
