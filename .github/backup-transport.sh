@@ -4,10 +4,22 @@ set -euo pipefail
 package=org.materialclass
 transport=com.android.localtransport/.LocalTransport
 adb install app/build/outputs/apk/debug/app-debug.apk
+printf '%s\n' 'DIAGNOSTIC: device and package'
+adb shell getprop ro.build.fingerprint
+adb shell am get-current-user
+adb shell settings get global device_provisioned
+adb shell settings get secure user_setup_complete
+adb shell dumpsys package "$package" | grep -E 'flags=|privateFlags=|backupAgent|fullBackupContent|dataExtractionRules' || true
+adb shell pm list packages | grep -E 'backup|transport' || true
 adb shell bmgr enable true
 adb shell bmgr enabled | tr -d '\r' | grep -F 'Backup Manager currently enabled'
 adb shell bmgr list transports | tee "$RUNNER_TEMP/transports.txt"
-grep -Fq "$transport" "$RUNNER_TEMP/transports.txt"
+printf '%s\n' 'DIAGNOSTIC: backup manager state'
+adb shell dumpsys backup | grep -E -i 'enabled|provision|transport|eligible|setup|user|pending|backup is' || true
+if ! grep -Fq "$transport" "$RUNNER_TEMP/transports.txt"; then
+	printf '%s\n' 'BLOCKER: Android local backup transport is unavailable' >&2
+	exit 1
+fi
 adb shell bmgr transport "$transport" | tee "$RUNNER_TEMP/transport-selection.txt"
 adb shell bmgr list transports | tr -d '\r' | grep -F "* $transport"
 adb shell am force-stop "$package"
