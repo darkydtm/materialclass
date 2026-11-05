@@ -177,14 +177,37 @@ class NativeGatewayUiIntegrationTest {
 	}
 
 	@Test fun homeworkFiltersResetAcrossRealLogoutAndAccountSwitch() = exercise { exchange, controller ->
-		fun homework(body: String) = diary.replace("null,\"homeworkUuid\"", "\"$body\",\"homeworkUuid\"")
-		exchange.diaryResponse = homework("First account task")
+		fun homework(firstSubject: String, firstTask: String, secondSubject: String, secondTask: String): String {
+			val subject = """{"label":"$secondSubject","type":"lesson","scheduleUuid":"synthetic-2","homeworkType":"none","homeworkBody":"$secondTask","homeworkUuid":null,"hasBooks":false,"hasFiles":false}"""
+			return diary.replace("Synthetic diary lesson", firstSubject)
+				.replace("null,\"homeworkUuid\"", "\"$firstTask\",\"homeworkUuid\"")
+				.replace("\"hasFiles\":false}]", "\"hasFiles\":false},$subject]")
+		}
+		fun checkRadio(label: String, checked: Boolean) {
+			val deadline = SystemClock.uptimeMillis() + 15000
+			while (true) {
+				var node = waitFor(label)
+				while (!node.isCheckable && node.parent != null) node = node.parent
+				if (node.isCheckable && node.isChecked == checked) return
+				check(SystemClock.uptimeMillis() < deadline) { "Radio $label did not become checked=$checked" }
+				SystemClock.sleep(50)
+			}
+		}
+		exchange.diaryResponse = homework("Synthetic diary lesson", "First account task", "Other first lesson", "Other first task")
 		signIn(controller)
 		waitFor(context.getString(R.string.logout))
 		click("Homework")
 		waitFor("First account task")
+		waitFor("Other first task")
 		click("Show filters")
+		checkRadio("All subjects", true)
 		click("Subject: Synthetic diary lesson")
+		checkRadio("Subject: Synthetic diary lesson", true)
+		checkRadio("All subjects", false)
+		click("Hide filters")
+		waitFor("First account task")
+		instrumentation.waitForIdleSync()
+		assertNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, "Other first task") })
 		instrumentation.runOnMainSync { controller.logout() }
 		waitFor(context.getString(R.string.data_unavailable))
 		assertNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, "First account task") })
@@ -197,15 +220,20 @@ class NativeGatewayUiIntegrationTest {
 		}
 		exchange.loginProfile = profile.replace("123", "456").replace("Synthetic", "Second")
 		exchange.profileResponse = exchange.loginProfile
-		exchange.diaryResponse = homework("Second account task").replace("Synthetic diary lesson", "Second lesson")
+		exchange.diaryResponse = homework("Second lesson", "Second account task", "Other second lesson", "Other second task")
 		signIn(controller)
 		waitFor(context.getString(R.string.logout))
 		click("Homework")
 		waitFor("Second account task")
+		waitFor("Other second task")
 		assertNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, "First account task") })
+		assertNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, "Other first task") })
 		click("Show filters")
 		waitFor("Subject: Second lesson")
+		checkRadio("All subjects", true)
 		assertNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, "Subject: Synthetic diary lesson") })
+		checkRadio("Subject: Second lesson", false)
+		checkRadio("All dates", true)
 	}
 
 	private fun editables(node: AccessibilityNodeInfo): List<AccessibilityNodeInfo> =
