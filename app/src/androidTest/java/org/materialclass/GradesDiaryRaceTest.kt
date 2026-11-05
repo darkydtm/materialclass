@@ -135,7 +135,7 @@ class GradesDiaryRaceTest {
 		drain(second)
 		// Seed a second private view without accessing persisted credentials.
 		val copied = second.state
-		val stateField = NativeController::class.java.getDeclaredField("stateValue$delegate").apply { isAccessible = true }
+		val stateField = NativeController::class.java.getDeclaredField("stateValue\$delegate").apply { isAccessible = true }
 		main {
 			@Suppress("UNCHECKED_CAST")
 			(stateField.get(first) as androidx.compose.runtime.MutableState<NativeUiState>).value = copied
