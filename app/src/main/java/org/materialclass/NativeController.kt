@@ -53,6 +53,7 @@ internal class NativeController(
 	private val onState: (NativeUiState) -> Unit = {},
 	private val uiDispatch: ((() -> Unit) -> Boolean) = { action -> Handler(Looper.getMainLooper()).post(action) },
 	private val applyUiRevocation: ((() -> Unit) -> Unit) = { action -> action() },
+	private val beforePrivateCommit: (String) -> Unit = {},
 	private val repositoryFactory: ((DiaryState) -> Unit) -> SchoolRepository,
 ) : NativeUiController {
 	private val executor = Executors.newSingleThreadExecutor()
@@ -112,6 +113,7 @@ internal class NativeController(
 		post(task) {
 			if (diaryRevision != revision) return@post
 			if (!repository.acceptsDiary(diary)) return@post
+			if (diary is DiaryState.Ready) beforePrivateCommit("diary")
 			state = if (diary is DiaryState.Error && diary.error == AppError.SESSION_EXPIRED) NativeUiState(error = diary.error)
 			else state.copy(diary = if (diary is DiaryState.RestoreClear) DiaryState.Cleared else diary, error = if (diary is DiaryState.Error) diary.error else state.error)
 		}
@@ -167,6 +169,7 @@ internal class NativeController(
 				if (result is GatewayResult.Success) repository.ownedEpoch()?.let { currentTaskEpoch = it }
 				post(task) {
 					if (result is GatewayResult.Success) observedEpoch = currentTaskEpoch
+					if (result is GatewayResult.Success) beforePrivateCommit("login")
 					state = state.copy(busy = false, signedIn = result is GatewayResult.Success, profile = if (result is GatewayResult.Success) repository.currentProfile() else null, error = (result as? GatewayResult.Failure)?.error)
 					if (result is GatewayResult.Success) refresh()
 				}
@@ -193,6 +196,7 @@ internal class NativeController(
 				val profileUsable = repository.refreshProfile(repositoryProfileRequest) { profile, complete ->
 					post(task) {
 						if (profileRevision != profileRequest) return@post
+						beforePrivateCommit("profile")
 						state = if (complete) state.copy(profile = profile) else {
 							gradesRevision++
 							state.copy(profile = profile, diary = DiaryState.Cleared, diaryWeeks = emptyList(), selectedDiaryDate = null, schedule = null, scheduleSnapshot = null, annualGrades = null, gradesLoading = false, error = AppError.UNAVAILABLE)
@@ -202,7 +206,7 @@ internal class NativeController(
 				if (profileRevision != profileRequest || !profileUsable) return@execute
 				if (diaryRevision == revision) {
 					if (selected != null) repository.refreshDate(selected) else repository.refreshCurrent { weeks ->
-						post(task) { if (diaryRevision != revision) return@post; state = state.copy(diaryWeeks = weeks.options, selectedDiaryDate = weeks.currentWeek) }
+						post(task) { if (diaryRevision != revision) return@post; beforePrivateCommit("weeks"); state = state.copy(diaryWeeks = weeks.options, selectedDiaryDate = weeks.currentWeek) }
 					}
 
 				}
@@ -213,13 +217,13 @@ internal class NativeController(
 					if (closed || generation != task || scheduleRevision != scheduleRequest || repository.revocationEpoch() != epoch) return@currentWeekForSchedule
 					when (week) {
 						is GatewayResult.Success -> repository.scheduleSnapshot(week.value) { result ->
-							post(task) { if (scheduleRevision != scheduleRequest) return@post; state = when (result) {
+							post(task) { if (scheduleRevision != scheduleRequest) return@post; beforePrivateCommit("schedule"); state = when (result) {
 								is GatewayResult.Success -> state.copy(schedule = result.value.schedule, scheduleSnapshot = result.value)
 								is GatewayResult.Failure -> state.copy(schedule = null, scheduleSnapshot = null, error = result.error)
 							} }
 						}
 						is GatewayResult.Failure -> repository.savedSchedule(week.error, weekRevision) { result ->
-							post(task) { if (scheduleRevision != scheduleRequest) return@post; state = when (result) {
+							post(task) { if (scheduleRevision != scheduleRequest) return@post; beforePrivateCommit("schedule"); state = when (result) {
 								is GatewayResult.Success -> state.copy(schedule = result.value.schedule, scheduleSnapshot = result.value)
 								is GatewayResult.Failure -> state.copy(schedule = null, scheduleSnapshot = null, error = result.error)
 							} }
@@ -259,6 +263,7 @@ internal class NativeController(
 					delivered = true
 					handler.post {
 						if (!closed && generation == task && gradesRevision == revision && repository.revocationEpoch() == epoch && repository.acceptsAnnualGrades(delivery)) {
+							beforePrivateCommit("grades")
 							state = state.copy(annualGrades = delivery.result, gradesLoading = false)
 						}
 					}

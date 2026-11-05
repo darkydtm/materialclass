@@ -110,6 +110,62 @@ class GradesDiaryRaceTest {
 		}
 	}
 
+	private fun revokedPrivateCommitIsNotPublished(path: String, replacementAccount: Boolean) {
+		val fixture = Fixture()
+		val gate = Gate()
+		val armed = java.util.concurrent.atomic.AtomicBoolean(false)
+		val revoked = java.util.concurrent.atomic.AtomicBoolean(false)
+		val stale = java.util.concurrent.atomic.AtomicBoolean(false)
+		fun create(): NativeController = NativeController(
+			onState = { state ->
+				if (revoked.get() && if (path == "grades") contents(state)?.contains("Subject-1") == true else state.signedIn) stale.set(true)
+			},
+			beforePrivateCommit = { name -> if (name == path && armed.compareAndSet(true, false)) gate.waitHere() },
+		) { emit -> SchoolRepository(fixture.gateway, fixture.verifier, coordinator, fixture.cache, { 1L }, emit, SessionStore(context, coordinator)) }
+		main { controller = create(); controller!!.login("1", charArrayOf('x')) }
+		val first = controller!!
+		await { first.state.signedIn && first.state.diary is DiaryState.Ready && first.state.schedule != null && first.state.diaryWeeks.isNotEmpty() && first.state.profile != null }
+		drain(first)
+		main { replacement = create() }
+		val second = replacement!!
+		main { assertFalse(second.state.signedIn); assertNull(second.state.profile) }
+		if (path == "grades") {
+			main { first.refreshAnnualGrades() }
+			await { contents(first.state)?.contains("Subject-1") == true && !first.state.gradesLoading }
+		}
+		drain(first)
+		armed.set(true)
+		try {
+			main {
+				when (path) {
+					"login" -> first.login("1", charArrayOf('x'))
+					"weeks" -> { first.login("1", charArrayOf('x')) }
+					"grades" -> first.refreshAnnualGrades()
+					else -> first.refresh()
+				}
+			}
+			assertTrue("Did not reach $path commit", gate.entered.await(15, TimeUnit.SECONDS))
+			val epoch = coordinator.revocationEpoch()
+			if (replacementAccount) coordinator.activate(AccountId("2")) else coordinator.cancelInFlightNow()
+			assertTrue(coordinator.revocationEpoch() > epoch)
+			revoked.set(true)
+			gate.release.countDown()
+			drain(first)
+			assertFalse("Revoked $path state was published after ${if (replacementAccount) "account replacement" else "logout admission closed"}", stale.get())
+		} finally { gate.release.countDown() }
+	}
+
+	@Test fun revokedOnlineGradesAreNotPublished() = revokedPrivateCommitIsNotPublished("grades", false)
+
+	@Test fun revokedLoginPublication() = revokedPrivateCommitIsNotPublished("login", false)
+	@Test fun revokedProfilePublication() = revokedPrivateCommitIsNotPublished("profile", false)
+	@Test fun revokedWeeksPublication() = revokedPrivateCommitIsNotPublished("weeks", false)
+	@Test fun revokedDiaryPublication() = revokedPrivateCommitIsNotPublished("diary", false)
+	@Test fun revokedSchedulePublication() = revokedPrivateCommitIsNotPublished("schedule", false)
+	@Test fun replacedAccountProfilePublication() = revokedPrivateCommitIsNotPublished("profile", true)
+	@Test fun replacedAccountDiaryPublication() = revokedPrivateCommitIsNotPublished("diary", true)
+	@Test fun replacedAccountSchedulePublication() = revokedPrivateCommitIsNotPublished("schedule", true)
+
 	@Test fun diaryRefreshDoesNotCancelBlockedGrades() {
 		val fixture = Fixture()
 		val c = fixture.login()
