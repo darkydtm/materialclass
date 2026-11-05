@@ -119,6 +119,7 @@ class NativeUiControllerTest {
 			assertTrue(saved.isClickable)
 			instrumentation.runOnMainSync { fake.state = fake.state.copy(diary = DiaryState.Ready(snapshot(2))) }
 			instrumentation.waitForIdleSync()
+			waitFor("Show filters")
 			val root = instrumentation.uiAutomation.rootInActiveWindow
 			assertNotNull(find(root, "Show filters"))
 			assertNull(find(root, "Hide filters"))
