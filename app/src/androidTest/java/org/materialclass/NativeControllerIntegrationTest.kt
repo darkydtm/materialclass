@@ -14,6 +14,7 @@ import org.materialclass.data.*
 import org.materialclass.session.*
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
 
 @RunWith(AndroidJUnit4::class)
 class NativeControllerIntegrationTest {
@@ -183,10 +184,11 @@ class NativeControllerIntegrationTest {
 			assertEquals(false, first.isPendingLogout(expired))
 			assertEquals(true, first.isPendingLogout(cancelled))
 			assertNull(first.admit(first.beginLogin()))
-			logout = thread { try { second.logout(cancelled) } catch (error: Throwable) { failure.set(error) } }
+			val logoutWorker = thread { try { second.logout(cancelled) } catch (error: Throwable) { failure.set(error) } }
+			logout = logoutWorker
 			logoutAck.get().invoke()
-			logout.join(10000)
-			assertEquals(false, logout.isAlive)
+			logoutWorker.join(10000)
+			assertEquals(false, logoutWorker.isAlive)
 			assertNull(failure.get())
 			assertNull(first.pendingLogoutTicket())
 			assertEquals(false, callbackLocked.get())
