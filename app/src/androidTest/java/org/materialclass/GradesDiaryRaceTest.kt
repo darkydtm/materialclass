@@ -155,6 +155,41 @@ class GradesDiaryRaceTest {
 		} finally { gate.release.countDown() }
 	}
 
+	@Test fun revokedCapturedGradesAreNotDeliveredToUnstartedCallback() {
+		val fixture = Fixture()
+		val gate = Gate()
+		val armed = java.util.concurrent.atomic.AtomicBoolean(false)
+		val revoked = java.util.concurrent.atomic.AtomicBoolean(false)
+		val stale = java.util.concurrent.atomic.AtomicBoolean(false)
+		val receivedBeforeRevocation = java.util.concurrent.atomic.AtomicBoolean(false)
+		fun create() = NativeController(
+			onState = { snapshot ->
+				if (contents(snapshot)?.contains("Subject-1") == true) {
+					if (revoked.get()) stale.set(true) else receivedBeforeRevocation.set(true)
+				}
+			},
+			beforeStateCallback = { snapshot ->
+				if (contents(snapshot)?.contains("Subject-1") == true && armed.compareAndSet(true, false)) gate.waitHere()
+			},
+		) { emit -> SchoolRepository(fixture.gateway, fixture.verifier, coordinator, fixture.cache, { 1L }, emit, SessionStore(context, coordinator)) }
+		main { controller = create(); replacement = create(); controller!!.login("1", charArrayOf('x')) }
+		val first = controller!!
+		await { first.state.signedIn && first.state.diary is DiaryState.Ready && first.state.profile != null }
+		main { first.refreshAnnualGrades() }
+		await { receivedBeforeRevocation.get() }
+		drain(first)
+		armed.set(true)
+		try {
+			main { first.refreshAnnualGrades() }
+			assertTrue("Captured grades callback did not reach the barrier", gate.entered.await(15, TimeUnit.SECONDS))
+			coordinator.cancelInFlightNow()
+			revoked.set(true)
+			gate.release.countDown()
+			drain(first)
+			assertFalse("Revoked grades reached a callback that had not started", stale.get())
+		} finally { gate.release.countDown() }
+	}
+
 	@Test fun revokedStateIsClearedBeforeBlockedUiCommitResumes() {
 		val fixture = Fixture()
 		val gate = Gate()

@@ -238,7 +238,7 @@ class NativeControllerIntegrationTest {
 	}
 
 	@Test fun controllerRetriesFailedDispatchAndFailedApply() {
-		for (failDispatch in listOf(true, false)) {
+		for (failure in listOf("reject", "throw", "apply")) {
 			val shared = SessionCoordinator { }
 			val failing = java.util.concurrent.atomic.AtomicBoolean(true)
 			val handler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -253,8 +253,11 @@ class NativeControllerIntegrationTest {
 				override fun write(session: ActiveSession, bytes: ByteArray) = true
 			}
 			fun create() = NativeController(
-				uiDispatch = { action -> if (failDispatch && failing.get()) false else handler.post(action) },
-				applyUiRevocation = { action -> if (!failDispatch && failing.get()) throw IllegalStateException("Synthetic apply failure") else action() },
+				uiDispatch = { action ->
+					if (failing.get() && failure == "throw") throw IllegalStateException("Synthetic dispatch failure")
+					if (failing.get() && failure == "reject") false else handler.post(action)
+				},
+				applyUiRevocation = { action -> if (failure == "apply" && failing.get()) throw IllegalStateException("Synthetic apply failure") else action() },
 			) { emit -> SchoolRepository(gateway, IdentityVerifier { _, _ -> SessionVerification.Retry }, shared, cache, { 1L }, emit, SessionStore(context, shared)) }
 			try {
 				main { controller = create(); controller!!.logout() }

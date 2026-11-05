@@ -326,6 +326,7 @@ class NativeGatewayUiIntegrationTest {
 	@Test fun annualGradesReachVisibleUiThroughGatewayAndRepository() = exercise { exchange, controller ->
 		signIn(controller)
 		waitFor(context.getString(R.string.logout))
+		click(context.getString(R.string.grades))
 		instrumentation.runOnMainSync { controller.refreshAnnualGrades() }
 		val deadline = SystemClock.uptimeMillis() + 15000
 		while (true) {
@@ -335,7 +336,6 @@ class NativeGatewayUiIntegrationTest {
 			check(SystemClock.uptimeMillis() < deadline)
 			SystemClock.sleep(50)
 		}
-		click(context.getString(R.string.grades))
 		waitFor("Synthetic annual subject")
 		waitFor("Quarter 1: 4")
 		waitFor("Quarter 2: Unknown")
