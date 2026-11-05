@@ -47,6 +47,38 @@ class BmgrOutputTest(unittest.TestCase):
 			with self.subTest(output=output):
 				self.check_output('restore', output, False)
 
+	def test_backup_rejects_unexpected_events_before_finish(self):
+		for event in ('Package other.app with result: Success', 'Package org.materialclass with result: Success', 'Package org.materialclass with result: Failure', 'Package org.materialclass with progress: 512/1024'):
+			with self.subTest(event=event):
+				self.check_output('backup', BACKUP.replace('Backup finished', event + '\nBackup finished'), False)
+
+	def test_backup_rejects_unexpected_events_before_package_result(self):
+		for event in ('Package other.app with result: Success', 'Package @pm@ with result: Success', 'Package org.materialclass with result: Failure'):
+			with self.subTest(event=event):
+				self.check_output('backup', BACKUP.replace('Package org.materialclass with result: Success', event + '\nPackage org.materialclass with result: Success'), False)
+
+	def test_backup_rejects_malicious_success_and_trailing_whitespace(self):
+		for original in ('Package org.materialclass with result: Success', 'Backup finished with result: Success'):
+			for suffix in ('ButActuallyFailed', ' ', '\t'):
+				with self.subTest(original=original, suffix=suffix):
+					self.check_output('backup', BACKUP.replace(original, original + suffix), False)
+
+	def test_restore_rejects_multiple_updates_inside_sequence(self):
+		for event in ('onUpdate: 0 = org.materialclass', 'onUpdate: 1 = other.app', 'onUpdate: 0 = other.app'):
+			with self.subTest(event=event):
+				self.check_output('restore', RESTORE.replace('restoreFinished: 0', event + '\nrestoreFinished: 0'), False)
+
+	def test_restore_rejects_failure_inside_sequence(self):
+		for event in ('restoreFinished: 1', 'restoreFinished: -1 ', 'onUpdate: 0 = org.materialclass '):
+			with self.subTest(event=event):
+				self.check_output('restore', RESTORE.replace('restoreFinished: 0', event + '\nrestoreFinished: 0'), False)
+
+	def test_restore_rejects_nonexact_start_and_finish(self):
+		for original in ('restoreStarting: 1 packages', 'restoreFinished: 0'):
+			for suffix in ('0', 'Success', ' ', '\t'):
+				with self.subTest(original=original, suffix=suffix):
+					self.check_output('restore', RESTORE.replace(original, original + suffix), False)
+
 
 if __name__ == '__main__':
 	unittest.main()
