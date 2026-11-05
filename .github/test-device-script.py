@@ -104,7 +104,7 @@ printf 'RESTART EXIT 0\\n' >> "$COMMAND_LOG"
 
 	def test_routes_and_stops_on_every_failure(self):
 		routes = [('feat/integrate-backup-cleanup', RESTART), ('feat/debug-apk', DEBUG_APK)]
-		routes.extend((branch, RESTART + DEBUG_APK[1:]) for branch in ('feat/integrate-restart-ui', 'feat/integrate-network-contract'))
+		routes.extend((branch, RESTART + DEBUG_APK[1:]) for branch in ('feat/integrate-restart-ui', 'feat/integrate-network-contract', 'feat/integrate-homework'))
 		routes.extend((branch, DEFAULT) for branch in DEFAULT_BRANCHES)
 		routes.append(('unlisted-branch', DEFAULT))
 		for branch, commands in routes:
