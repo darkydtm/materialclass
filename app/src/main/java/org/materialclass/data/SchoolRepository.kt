@@ -33,6 +33,12 @@ internal fun interface IdentityVerifier {
 	fun verify(session: UnverifiedSession, lease: RequestLease): SessionVerification
 }
 
+// Linearize completion after parsing and before returning to the repository.
+private class CompletingIdentityVerifier(private val delegate: IdentityVerifier) : IdentityVerifier {
+	override fun verify(session: UnverifiedSession, lease: RequestLease): SessionVerification =
+		lease.completeVerification(delegate.verify(session, lease))
+}
+
 internal interface DiaryCache {
 	fun read(session: ActiveSession): ByteArray?
 	fun write(session: ActiveSession, bytes: ByteArray): Boolean
@@ -67,7 +73,7 @@ internal data class AnnualGradesDelivery(val result: GatewayResult<org.materialc
 
 internal class SchoolRepository(
 	private val gateway: SchoolGateway,
-	private val verifier: IdentityVerifier,
+	verifier: IdentityVerifier,
 	private val coordinator: SessionCoordinator,
 	private val cache: DiaryCache,
 	private val clock: () -> Long,
@@ -76,6 +82,7 @@ internal class SchoolRepository(
 	private val scheduleCache: DiaryCache? = null,
 	private val beforeSavedScheduleDelivery: () -> Unit = {},
 ) {
+	private val verifier = CompletingIdentityVerifier(verifier)
 	@Volatile private var session: ActiveSession? = null
 	private var remote: UnverifiedSession? = null
 	private var scheduleSession: VerifiedScheduleSession? = null
@@ -93,6 +100,8 @@ internal class SchoolRepository(
 	internal var afterRestoreActivation: () -> Unit = {}
 	internal var beforeRequestAdmission: () -> Unit = {}
 	internal var beforeIdentityAdmission: () -> Unit = {}
+	internal var beforeProfileReceipt: (SessionVerification, RequestLease) -> Unit = { _, _ -> }
+	internal var afterProfileVerification: (SessionVerification, RequestLease) -> Unit = { _, _ -> }
 
 	fun login(username: String, password: CharArray): GatewayResult<Unit> {
 		var revision: Long? = null
@@ -209,20 +218,25 @@ internal class SchoolRepository(
 		val active = session ?: return false
 		val request = coordinator.ifActive(active) {
 			val candidate = remote ?: return@ifActive null
-			Pair(candidate, coordinator.requestRevision())
+			Triple(candidate, coordinator.requestRevision(), coordinator.loginGeneration())
 		} ?: return false
 		beforeRequestAdmission()
 		val lease = coordinator.admit(active, request.second) ?: return false
 		try {
 			val verification = try { verifier.verify(request.first, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { SessionVerification.Retry }
+			beforeProfileReceipt(verification, lease)
+			val received = lease.trustedVerification() === verification
+			afterProfileVerification(verification, lease)
 			val outcome = coordinator.ifActive(active) {
-				if (lease.cancelled || session !== active || remote !== request.first || request.second != coordinator.requestRevision() || revision != profileRevision) null
-				else if (verification == SessionVerification.Invalid || verification == SessionVerification.Expired ||
-					(verification is SessionVerification.Verified && (!verification.pupil || verification.account != active.account))) {
-					remote = null; scheduleSession = null; diarySession = null; profile = null; session = null
-					coordinator.revokeIfActive(active, expired = true)
+				val contradiction = verification == SessionVerification.Invalid || verification == SessionVerification.Expired ||
+					(verification is SessionVerification.Verified && (!verification.pupil || verification.account != active.account))
+				if (received && contradiction && session === active && remote === request.first && request.third == coordinator.loginGeneration()) {
+					if (coordinator.revokeIfActive(active, expired = true)) {
+						remote = null; scheduleSession = null; diarySession = null; profile = null; session = null
+					}
 					null
-				} else {
+				} else if (lease.cancelled || session !== active || remote !== request.first || request.second != coordinator.requestRevision() || revision != profileRevision) null
+				else {
 					val verified = verification as? SessionVerification.Verified
 					scheduleSession = verified?.scheduleSession?.takeIf { it.remote === request.first && it.account == active.account.value }
 					val lostVerifiedUuid = verifiedScheduleRemote === request.first && scheduleSession == null

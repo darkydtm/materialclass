@@ -8,6 +8,7 @@ import android.content.Context
 import org.materialclass.api.*
 import org.materialclass.session.*
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.FutureTask
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
@@ -57,10 +58,349 @@ class SchoolRepositoryTest {
 		gateway, IdentityVerifier { session, _ -> if (verify && session.identityCandidate != null) proof(session) else SessionVerification.Retry }, coordinator, cache, { 1234L }, events::add, store
 	)
 
+	private fun profileWorker(action: () -> Boolean): FutureTask<Boolean> = FutureTask(action).also { Thread(it).start() }
+
 	private fun proof(session: UnverifiedSession): SessionVerification.Verified {
 		val id = session.identityCandidate!!
 		val profile = org.json.JSONObject("""{"userId":$id,"role":"student","school_id":1,"group":{"id":2},"studentInfo":{"studentSchoolUuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}""")
 		return SessionVerification.Verified(AccountId(id), true, VerifiedScheduleSession.compare(session, profile), VerifiedDiarySession.compare(session, profile))
+	}
+
+
+	@Test
+	fun contradictoryOlderProfileRevokesWhileNewerVerificationIsPending() {
+		listOf("teacher", "other").forEach { contradiction ->
+			val oldEntered = CountDownLatch(1); val oldRelease = CountDownLatch(1)
+			val newEntered = CountDownLatch(1); val newRelease = CountDownLatch(1)
+			val calls = java.util.concurrent.atomic.AtomicInteger()
+			val privateCalls = java.util.concurrent.atomic.AtomicInteger()
+			val gateway = object : TestSchoolGateway(), AnnualGradesGateway {
+				override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = error("Unexpected diary request")
+				override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", "1", "student", SchoolContext(1, 2026, 2)))
+				override fun annualGrades(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<AnnualGrades> { privateCalls.incrementAndGet(); return GatewayResult.Success(AnnualGrades(emptyList())) }
+			}
+			val good = """{"data":{"userId":1,"role":"student","school_id":1,"group":{"id":2},"studentInfo":{"studentSchoolUuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}}"""
+			val verifier = NativeIdentityVerifier(Exchange {
+				when (calls.incrementAndGet()) {
+					2 -> { oldEntered.countDown(); check(oldRelease.await(30, TimeUnit.SECONDS)); Response(200, if (contradiction == "teacher") good.replace("\"student\"", "\"teacher\"") else good.replace("\"userId\":1", "\"userId\":2")) }
+					3 -> { newEntered.countDown(); check(newRelease.await(30, TimeUnit.SECONDS)); Response(200, good) }
+					else -> Response(200, good)
+				}
+			})
+			val repo = SchoolRepository(gateway, verifier, coordinator, FakeCache(), { 1L }, {}, store)
+			assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+			val oldRevision = repo.beginProfileRefresh()
+			val old = profileWorker { repo.refreshProfile(oldRevision) { _, _ -> } }
+			var newer: FutureTask<Boolean>? = null
+			try {
+				assertTrue(oldEntered.await(10, TimeUnit.SECONDS))
+				val newRevision = repo.beginProfileRefresh()
+				newer = profileWorker { repo.refreshProfile(newRevision) { _, _ -> } }
+				assertTrue(newEntered.await(10, TimeUnit.SECONDS))
+				oldRelease.countDown(); assertFalse(old.get(10, TimeUnit.SECONDS))
+				var delivered = false
+				repo.annualGrades { delivered = true }
+				assertEquals("$contradiction must revoke before newer response", 0, privateCalls.get())
+				assertFalse(delivered)
+			} finally {
+				oldRelease.countDown(); newRelease.countDown(); old.get(10, TimeUnit.SECONDS); newer?.get(10, TimeUnit.SECONDS); repo.logout()
+			}
+		}
+	}
+
+	@Test
+	fun olderContradictionAfterNewerSuccessRevokesSession() {
+		listOf("teacher", "other").forEach { contradiction ->
+			val entered = CountDownLatch(1); val release = CountDownLatch(1)
+			val profiles = java.util.concurrent.atomic.AtomicInteger()
+			val privateCalls = java.util.concurrent.atomic.AtomicInteger()
+			val gateway = object : TestSchoolGateway(), AnnualGradesGateway {
+				override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = error("Unexpected diary request")
+				override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", "1", "student", SchoolContext(1, 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
+				override fun annualGrades(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<AnnualGrades> { privateCalls.incrementAndGet(); return GatewayResult.Success(AnnualGrades(emptyList())) }
+			}
+			val good = """{"data":{"userId":1,"role":"student","school_id":1,"group":{"id":2},"studentInfo":{"studentSchoolUuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}}"""
+			val verifier = NativeIdentityVerifier(Exchange {
+				if (profiles.incrementAndGet() == 2) {
+					entered.countDown(); check(release.await(30, TimeUnit.SECONDS))
+					Response(200, if (contradiction == "teacher") good.replace("\"student\"", "\"teacher\"") else good.replace("\"userId\":1", "\"userId\":2"))
+				} else Response(200, good)
+			})
+			val repo = SchoolRepository(gateway, verifier, coordinator, FakeCache(), { 1L }, {}, store)
+			assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+			val oldRevision = repo.beginProfileRefresh()
+			val old = profileWorker { repo.refreshProfile(oldRevision) { _, _ -> } }
+			try {
+				assertTrue(entered.await(10, TimeUnit.SECONDS))
+				assertTrue(repo.refreshProfile(repo.beginProfileRefresh()) { _, _ -> })
+				release.countDown(); assertFalse(old.get(10, TimeUnit.SECONDS))
+				var delivered = false
+				repo.annualGrades { delivered = true }
+				assertEquals(0, privateCalls.get()); assertFalse(delivered)
+			} finally { release.countDown(); old.get(10, TimeUnit.SECONDS); repo.logout() }
+		}
+	}
+
+	@Test
+	fun invalidReturnedBeforeRetryMustNotBecomeSuccessfulReverification() {
+		val entered = CountDownLatch(1); val release = CountDownLatch(1)
+		val calls = java.util.concurrent.atomic.AtomicInteger()
+		val verifier = IdentityVerifier { session, _ ->
+			when (calls.incrementAndGet()) {
+				1 -> proof(session)
+				2 -> SessionVerification.Invalid
+				3 -> SessionVerification.Retry
+				else -> proof(session)
+			}
+		}
+		val repo = SchoolRepository(FakeGateway(), verifier, coordinator, FakeCache(), { 1L }, {}, store)
+		assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+		repo.beforeProfileReceipt = { result, _ -> if (result == SessionVerification.Invalid) { entered.countDown(); check(release.await(30, TimeUnit.SECONDS)) } }
+		val old = profileWorker { repo.refreshProfile(repo.beginProfileRefresh()) { _, _ -> } }
+		try {
+			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			assertFalse(repo.refreshProfile(repo.beginProfileRefresh()) { _, _ -> })
+			release.countDown(); assertFalse(old.get(10, TimeUnit.SECONDS))
+			assertFalse("A returned contradiction must prevent renewed access", repo.refreshProfile(repo.beginProfileRefresh()) { _, _ -> })
+		} finally { release.countDown(); old.get(10, TimeUnit.SECONDS); repo.logout() }
+	}
+
+	@Test
+	fun receivedInvalidBeforeRetryMustNotBecomeSuccessfulReverification() {
+		val entered = CountDownLatch(1)
+		val release = CountDownLatch(1)
+		val calls = java.util.concurrent.atomic.AtomicInteger()
+		val good = """{"data":{"userId":1,"role":"student","school_id":1,"group":{"id":2},"studentInfo":{"studentSchoolUuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}}"""
+		val verifier = NativeIdentityVerifier(Exchange {
+			when (calls.incrementAndGet()) {
+				2 -> Response(200, good.replace("\"student\"", "\"teacher\""))
+				3 -> Response(503, "")
+				else -> Response(200, good)
+			}
+		})
+		val repo = SchoolRepository(FakeGateway(), verifier, coordinator, FakeCache(), { 1L }, {}, store)
+		assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+		val cancelled = java.util.concurrent.atomic.AtomicBoolean()
+		repo.afterProfileVerification = { verification, lease ->
+			if (verification == SessionVerification.Invalid) {
+				entered.countDown()
+				check(release.await(30, TimeUnit.SECONDS))
+				cancelled.set(lease.isCancelled())
+			}
+		}
+		val old = profileWorker { repo.refreshProfile(repo.beginProfileRefresh()) { _, _ -> } }
+		try {
+			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			assertFalse(repo.refreshProfile(repo.beginProfileRefresh()) { _, _ -> })
+			release.countDown(); assertFalse(old.get(10, TimeUnit.SECONDS))
+			assertTrue(cancelled.get())
+			assertFalse("A received contradiction must prevent renewed access", repo.refreshProfile(repo.beginProfileRefresh()) { _, _ -> })
+		} finally { release.countDown(); old.get(10, TimeUnit.SECONDS); repo.logout() }
+	}
+
+	@Test
+	fun receivedInvalidCannotRevokeReplacementFromAnotherRepository() {
+		val entered = CountDownLatch(1); val release = CountDownLatch(1)
+		val gateway = object : TestSchoolGateway(), AnnualGradesGateway {
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = error("Unexpected diary request")
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", login, "student", SchoolContext(1, 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
+			override fun annualGrades(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<AnnualGrades> = GatewayResult.Success(AnnualGrades(emptyList()))
+		}
+		val calls = java.util.concurrent.atomic.AtomicInteger()
+		val verifier = IdentityVerifier { session, _ -> if (calls.incrementAndGet() == 2) SessionVerification.Invalid else proof(session) }
+		val oldRepo = SchoolRepository(gateway, verifier, coordinator, FakeCache(), { 1L }, {}, store)
+		val newRepo = SchoolRepository(gateway, verifier, coordinator, FakeCache(), { 1L }, {}, store)
+		assertTrue(oldRepo.login("1", charArrayOf('x')) is GatewayResult.Success)
+		oldRepo.afterProfileVerification = { result, _ -> if (result == SessionVerification.Invalid) { entered.countDown(); check(release.await(30, TimeUnit.SECONDS)) } }
+		val worker = profileWorker { oldRepo.refreshProfile(oldRepo.beginProfileRefresh()) { _, _ -> } }
+		try {
+			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			assertTrue(newRepo.login("2", charArrayOf('x')) is GatewayResult.Success)
+			release.countDown(); assertFalse(worker.get(10, TimeUnit.SECONDS))
+			var delivered = false
+			newRepo.annualGrades { delivered = it.result is GatewayResult.Success }
+			assertTrue(delivered)
+		} finally { release.countDown(); worker.get(10, TimeUnit.SECONDS); newRepo.logout() }
+	}
+
+	@Test
+	fun completedInvalidCannotRevokeSameAccountReplacement() {
+		val entered = CountDownLatch(1); val release = CountDownLatch(1)
+		val calls = java.util.concurrent.atomic.AtomicInteger()
+		val verifier = IdentityVerifier { session, _ -> if (calls.incrementAndGet() == 2) SessionVerification.Invalid else proof(session) }
+		val oldRepo = SchoolRepository(FakeGateway(), verifier, coordinator, FakeCache(), { 1L }, {}, store)
+		val newRepo = SchoolRepository(FakeGateway(), verifier, coordinator, FakeCache(), { 1L }, {}, store)
+		assertTrue(oldRepo.login("1", charArrayOf('x')) is GatewayResult.Success)
+		oldRepo.beforeProfileReceipt = { result, _ -> if (result == SessionVerification.Invalid) { entered.countDown(); check(release.await(30, TimeUnit.SECONDS)) } }
+		val worker = profileWorker { oldRepo.refreshProfile(oldRepo.beginProfileRefresh()) { _, _ -> } }
+		try {
+			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			assertTrue(newRepo.login("1", charArrayOf('x')) is GatewayResult.Success)
+			val replacement = coordinator.event().session
+			release.countDown(); assertFalse(worker.get(10, TimeUnit.SECONDS))
+			assertSame(replacement, coordinator.event().session)
+			assertEquals(SessionChange.ACTIVATED, coordinator.event().change)
+		} finally { release.countDown(); worker.get(10, TimeUnit.SECONDS); newRepo.logout() }
+	}
+
+	@Test
+	fun completedInvalidCannotRevokeAfterReplacementLoginBegins() {
+		val entered = CountDownLatch(1); val release = CountDownLatch(1)
+		val loginEntered = CountDownLatch(1); val loginRelease = CountDownLatch(1)
+		val gateway = object : TestSchoolGateway() {
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = error("Unexpected diary request")
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> {
+				if (login == "new") { loginEntered.countDown(); check(loginRelease.await(30, TimeUnit.SECONDS)) }
+				return GatewayResult.Success(UnverifiedSession("synthetic-token", "1", "student", SchoolContext(1, 2026, 2)))
+			}
+		}
+		val calls = java.util.concurrent.atomic.AtomicInteger()
+		val verifier = IdentityVerifier { session, _ -> if (calls.incrementAndGet() == 2) SessionVerification.Invalid else proof(session) }
+		val oldRepo = SchoolRepository(gateway, verifier, coordinator, FakeCache(), { 1L }, {}, store)
+		val newRepo = SchoolRepository(gateway, verifier, coordinator, FakeCache(), { 1L }, {}, store)
+		assertTrue(oldRepo.login("old", charArrayOf('x')) is GatewayResult.Success)
+		oldRepo.beforeProfileReceipt = { result, _ -> if (result == SessionVerification.Invalid) { entered.countDown(); check(release.await(30, TimeUnit.SECONDS)) } }
+		val old = profileWorker { oldRepo.refreshProfile(oldRepo.beginProfileRefresh()) { _, _ -> } }
+		val login = FutureTask<GatewayResult<Unit>> { newRepo.login("new", charArrayOf('x')) }
+		try {
+			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			Thread(login).start()
+			assertTrue(loginEntered.await(10, TimeUnit.SECONDS))
+			val original = coordinator.event().session
+			release.countDown()
+			assertFalse(old.get(10, TimeUnit.SECONDS))
+			assertSame(original, coordinator.event().session)
+			assertEquals(SessionChange.ACTIVATED, coordinator.event().change)
+			loginRelease.countDown()
+			assertTrue(login.get(10, TimeUnit.SECONDS) is GatewayResult.Success)
+			assertNotSame(original, coordinator.event().session)
+		} finally {
+			release.countDown(); loginRelease.countDown()
+			old.get(10, TimeUnit.SECONDS)
+			if (login.isDone) login.get(10, TimeUnit.SECONDS)
+			newRepo.logout()
+		}
+	}
+
+	@Test
+	fun completedInvalidDoesNotConsumePendingLogoutTicket() {
+		val entered = CountDownLatch(1); val release = CountDownLatch(1)
+		val calls = java.util.concurrent.atomic.AtomicInteger()
+		val verifier = IdentityVerifier { session, _ -> if (calls.incrementAndGet() == 2) SessionVerification.Invalid else proof(session) }
+		val repo = SchoolRepository(FakeGateway(), verifier, coordinator, FakeCache(), { 1L }, {}, store)
+		assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+		repo.beforeProfileReceipt = { result, _ -> if (result == SessionVerification.Invalid) { entered.countDown(); check(release.await(30, TimeUnit.SECONDS)) } }
+		val worker = profileWorker { repo.refreshProfile(repo.beginProfileRefresh()) { _, _ -> } }
+		var ticket: Any? = null
+		try {
+			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			ticket = coordinator.cancelInFlightNow()
+			release.countDown(); assertFalse(worker.get(10, TimeUnit.SECONDS))
+			assertTrue(coordinator.isPendingLogout(ticket))
+			assertEquals(SessionChange.LOGOUT, coordinator.event().change)
+		} finally { release.countDown(); worker.get(10, TimeUnit.SECONDS); if (ticket != null) coordinator.logout(ticket); repo.logout() }
+	}
+
+	@Test
+	fun retryCancelsInvalidVerificationBeforeItReturns() {
+		val entered = CountDownLatch(1)
+		val release = CountDownLatch(1)
+		val calls = java.util.concurrent.atomic.AtomicInteger()
+		val verifier = IdentityVerifier { session, _ ->
+			when (calls.incrementAndGet()) {
+				1 -> proof(session)
+				2 -> { entered.countDown(); check(release.await(30, TimeUnit.SECONDS)); SessionVerification.Invalid }
+				else -> SessionVerification.Retry
+			}
+		}
+		val repo = SchoolRepository(FakeGateway(), verifier, coordinator, FakeCache(), { 1L }, {}, store)
+		assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+		val old = profileWorker { repo.refreshProfile(repo.beginProfileRefresh()) { _, _ -> } }
+		try {
+			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			assertFalse(repo.refreshProfile(repo.beginProfileRefresh()) { _, _ -> })
+			release.countDown()
+			assertFalse(old.get(10, TimeUnit.SECONDS))
+			assertEquals(SessionChange.ACTIVATED, coordinator.event().change)
+			var result: GatewayResult<AnnualGrades>? = null
+			repo.annualGrades { result = it.result }
+			assertEquals(AppError.UNAVAILABLE, (result as? GatewayResult.Failure)?.error)
+		} finally { release.countDown(); old.get(10, TimeUnit.SECONDS); repo.logout() }
+	}
+
+	@Test
+	fun retryKeepsSchoolRequestsBlockedUntilSuccessfulReverification() {
+		val entered = CountDownLatch(1); val release = CountDownLatch(1)
+		val profiles = java.util.concurrent.atomic.AtomicInteger()
+		val privateCalls = java.util.concurrent.atomic.AtomicInteger()
+		val gateway = object : TestSchoolGateway(), AnnualGradesGateway {
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = error("Unexpected diary request")
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", "1", "student", SchoolContext(1, 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
+			override fun annualGrades(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<AnnualGrades> { privateCalls.incrementAndGet(); return GatewayResult.Success(AnnualGrades(emptyList())) }
+		}
+		val good = """{"data":{"userId":1,"role":"student","school_id":1,"group":{"id":2},"studentInfo":{"studentSchoolUuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}}"""
+		val verifier = NativeIdentityVerifier(Exchange {
+			when (profiles.incrementAndGet()) {
+				2 -> { entered.countDown(); check(release.await(30, TimeUnit.SECONDS)); Response(200, good.replace("\"student\"", "\"teacher\"")) }
+				3 -> Response(503, "")
+				else -> Response(200, good)
+			}
+		})
+		val repo = SchoolRepository(gateway, verifier, coordinator, FakeCache(), { 1L }, {}, store)
+		assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+		val revision = repo.beginProfileRefresh()
+		val old = profileWorker { repo.refreshProfile(revision) { _, _ -> } }
+		try {
+			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			assertFalse(repo.refreshProfile(repo.beginProfileRefresh()) { _, _ -> })
+			repo.annualGrades { assertTrue(it.result is GatewayResult.Failure) }
+			assertEquals(0, privateCalls.get())
+			release.countDown(); assertFalse(old.get(10, TimeUnit.SECONDS))
+			repo.annualGrades { assertTrue(it.result is GatewayResult.Failure) }
+			assertEquals(0, privateCalls.get())
+			assertTrue(repo.refreshProfile(repo.beginProfileRefresh()) { _, _ -> })
+			var delivered = false
+			repo.annualGrades { delivered = true }
+			assertTrue(delivered); assertEquals(1, privateCalls.get())
+		} finally { release.countDown(); old.get(10, TimeUnit.SECONDS); repo.logout() }
+	}
+
+	@Test
+	fun olderContradictionCannotRevokeReplacementSession() {
+		val entered = CountDownLatch(1)
+		val release = CountDownLatch(1)
+		val calls = java.util.concurrent.atomic.AtomicInteger()
+		val gateway = object : TestSchoolGateway(), AnnualGradesGateway {
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = error("Unexpected diary request")
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", login, "student", SchoolContext(1, 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
+			override fun annualGrades(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<AnnualGrades> { calls.incrementAndGet(); return GatewayResult.Success(AnnualGrades(emptyList())) }
+		}
+		val profileCalls = java.util.concurrent.atomic.AtomicInteger()
+		val verifier = NativeIdentityVerifier(Exchange {
+			val number = profileCalls.incrementAndGet()
+			if (number == 2) {
+				entered.countDown(); check(release.await(30, TimeUnit.SECONDS))
+				Response(200, """{"data":{"userId":1,"role":"teacher"}}""")
+			} else {
+				val id = if (number == 1) 1 else 2
+				Response(200, """{"data":{"userId":$id,"role":"student","school_id":1,"group":{"id":2},"studentInfo":{"studentSchoolUuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}}""")
+			}
+		})
+		val repo = SchoolRepository(gateway, verifier, coordinator, FakeCache(), { 1L }, {}, store)
+		assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+		repo.annualGrades { }
+		val worker = thread { repo.refreshProfile(repo.beginProfileRefresh()) { _, _ -> } }
+		try {
+			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			repo.logout()
+			assertTrue(repo.login("2", charArrayOf('x')) is GatewayResult.Success)
+			release.countDown(); worker.join(10000)
+			assertFalse(worker.isAlive)
+			var delivered = false
+			repo.annualGrades { delivered = true }
+			assertTrue(delivered)
+			assertEquals(2, calls.get())
+		} finally { release.countDown(); worker.join(10000); repo.logout() }
 	}
 
 	@Test
