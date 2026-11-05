@@ -16,3 +16,6 @@ dependencyResolutionManagement {
 
 rootProject.name = "MaterialClass"
 include(":app")
+if (providers.gradleProperty("backupTransportFixture").orNull == "true") {
+	include(":backup-reference")
+}
