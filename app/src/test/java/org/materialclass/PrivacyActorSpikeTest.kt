@@ -135,6 +135,63 @@ private class ActorStore(private val dispatcher: Executor) {
 
 class PrivacyActorSpikeTest {
 	@Test
+	fun publicationDuringRejectedSubmissionIsDelivered() {
+		val entered = CountDownLatch(1)
+		val release = CountDownLatch(1)
+		val delivered = CountDownLatch(1)
+		val attempts = AtomicInteger()
+		val worker = Executors.newSingleThreadExecutor()
+		val store = ActorStore(Executor { task ->
+			if (attempts.incrementAndGet() == 1) {
+				entered.countDown()
+				check(release.await(5, TimeUnit.SECONDS))
+				throw RejectedExecutionException()
+			}
+			worker.execute(task)
+		})
+		val caller = Executors.newSingleThreadExecutor()
+		try {
+			val token = store.switchAccount()
+			val registration = caller.submit { store.subscribe(DirtySubscriber { delivered.countDown() }) }
+			assertTrue(entered.await(5, TimeUnit.SECONDS))
+			assertTrue(store.publish(token, "latest"))
+			release.countDown()
+			registration.get(5, TimeUnit.SECONDS)
+			assertTrue("notification stranded after rejection", delivered.await(2, TimeUnit.SECONDS))
+		} finally {
+			release.countDown()
+			store.close()
+			caller.shutdownNow()
+			worker.shutdownNow()
+		}
+	}
+
+	@Test
+	fun replacementDuringFailedCallbackIsDelivered() {
+		val entered = CountDownLatch(1)
+		val release = CountDownLatch(1)
+		val delivered = CountDownLatch(1)
+		val worker = Executors.newSingleThreadExecutor()
+		val store = ActorStore(worker)
+		try {
+			val registration = store.subscribe(DirtySubscriber {
+				entered.countDown()
+				check(release.await(5, TimeUnit.SECONDS))
+				error("failure")
+			})
+			assertTrue(entered.await(5, TimeUnit.SECONDS))
+			registration.close()
+			store.subscribe(DirtySubscriber { delivered.countDown() })
+			release.countDown()
+			assertTrue("replacement notification stranded after callback failure", delivered.await(2, TimeUnit.SECONDS))
+		} finally {
+			release.countDown()
+			store.close()
+			worker.shutdownNow()
+		}
+	}
+
+	@Test
 	fun subscriptionReadsCurrentStoreAndResubscribes() {
 		val tasks = mutableListOf<Runnable>()
 		val store = ActorStore(Executor { tasks.add(it) })
