@@ -10,7 +10,7 @@ import org.xmlpull.v1.XmlPullParser
 @RunWith(AndroidJUnit4::class)
 class BackupRulesTest {
 	@Test
-	fun packagedRulesOnlyIncludeCacheDirectory() {
+	fun packagedRulesOnlyIncludeAppearancePreferences() {
 		val context = InstrumentationRegistry.getInstrumentation().targetContext
 		for (name in listOf("backup_rules", "data_extraction_rules")) {
 			val id = context.resources.getIdentifier(name, "xml", context.packageName)
@@ -19,8 +19,8 @@ class BackupRulesTest {
 			var event = parser.eventType
 			while (event != XmlPullParser.END_DOCUMENT) {
 				if (event == XmlPullParser.START_TAG && parser.name == "include") {
-					assertEquals("file", parser.getAttributeValue(null, "domain"))
-					assertEquals("backup-cache/", parser.getAttributeValue(null, "path"))
+					assertEquals("sharedpref", parser.getAttributeValue(null, "domain"))
+					assertEquals("appearance.xml", parser.getAttributeValue(null, "path"))
 					includes++
 				}
 				event = parser.next()
