@@ -105,7 +105,7 @@ class PrivacyComposeBoundaryTest {
 		val entered = CountDownLatch(1)
 		val release = CountDownLatch(1)
 		try {
-			instrumentation.runOnMainSync { activity.setContent { MaterialClassApp(nativeEnabled = true, controllerFactory = { controller }) } }
+			instrumentation.runOnMainSync { activity.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE); activity.setContent { MaterialClassApp(nativeEnabled = true, controllerFactory = { controller }) } }
 			waitFor(context.getString(R.string.sign_in))
 			val deadline = SystemClock.uptimeMillis() + 15000
 			while (true) {
@@ -119,10 +119,16 @@ class PrivacyComposeBoundaryTest {
 			waitFor(context.getString(R.string.logout))
 			click(context.getString(R.string.diary))
 			val secret = "Homework for 01.01.2026"
-			waitFor(secret)
-			val node = find(instrumentation.uiAutomation.rootInActiveWindow, secret)!!
+			var node: AccessibilityNodeInfo? = null
+			val nodeDeadline = SystemClock.uptimeMillis() + 15000
+			while (node == null && SystemClock.uptimeMillis() < nodeDeadline) {
+				node = instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, secret) }
+				if (node == null) SystemClock.sleep(50)
+			}
+			assertNotNull("Missing secret semantics", node)
+			val secretNode = node!!
 			val bounds = android.graphics.Rect()
-			node.getBoundsInScreen(bounds)
+			secretNode.getBoundsInScreen(bounds)
 			assertTrue(bounds.width() > 0 && bounds.height() > 0)
 			val before = instrumentation.uiAutomation.takeScreenshot()!!
 			android.os.Handler(android.os.Looper.getMainLooper()).post {
@@ -139,7 +145,7 @@ class PrivacyComposeBoundaryTest {
 				if (before.getPixel(x, y) != after.getPixel(x, y)) differences++
 			}
 			assertEquals("Last presented secret pixels changed before main resumed", 0, differences)
-			assertEquals(secret, node.text.toString())
+			assertEquals(secret, secretNode.text.toString())
 			before.recycle()
 			after.recycle()
 			release.countDown()
