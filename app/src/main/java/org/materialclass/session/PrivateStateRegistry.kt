@@ -72,7 +72,8 @@ internal class PrivateStateRegistry(initiallyActive: Boolean = true, private val
 	fun rotate() {
 		while (true) {
 			val current = state.get()
-			if (state.compareAndSet(current, snapshot(Token(), current.states, current.active))) return
+			val cancelled = current.states.mapValues { (_, value) -> value.copy(gradesLoading = false) }
+			if (state.compareAndSet(current, snapshot(Token(), cancelled, current.active))) return
 		}
 	}
 

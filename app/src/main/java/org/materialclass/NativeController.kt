@@ -280,11 +280,11 @@ internal class NativeController(
 			var delivered = false
 			try {
 				repository.annualGrades { delivery ->
-					delivered = true
 					if (!closed && generation == task && gradesRevision == revision && repository.revocationEpoch() == epoch && repository.acceptsAnnualGrades(delivery)) {
 						val result = privateStates.commitLease(delivery.lease, privateId, beforeCas = { beforePrivateCommit("grades") }) {
 							if (it.gradesRequest == revision) it.copy(annualGrades = delivery.result, gradesLoading = false) else it
 						}
+						delivered = result != PrivateStateRegistry.LeaseCommit.STALE
 						handler.post {
 							if (!closed && generation == task && gradesRevision == revision && repository.revocationEpoch() == epoch) {
 								when (result) {
@@ -299,8 +299,7 @@ internal class NativeController(
 			} catch (_: Exception) { }
 			if (!delivered) handler.post {
 				if (!closed && generation == task && gradesRevision == revision && repository.revocationEpoch() == epoch) {
-					val current = privateStates.read().token
-					privateStates.commit(current, privateId) { if (it.gradesRequest == revision) it.copy(annualGrades = GatewayResult.Failure(AppError.UNAVAILABLE), gradesLoading = false) else it }
+					privateStates.commit(token, privateId) { if (it.gradesRequest == revision) it.copy(annualGrades = GatewayResult.Failure(AppError.UNAVAILABLE), gradesLoading = false) else it }
 					stateSignal++
 					onState(state)
 				}
