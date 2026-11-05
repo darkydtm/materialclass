@@ -9,6 +9,8 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -22,7 +24,14 @@ private class SessionStore {
 }
 private class Registration(val callback: DirtySubscriber)
 
-private class ActorStore(private val dispatcher: Executor) {
+// Supply a live lifecycle-managed scheduler and a prompt, non-inline dispatcher.
+// Expect retries only while both remain available; retain manual retry otherwise.
+// Allow selected callbacks to begin after close and never revoke already saved copies.
+private class ActorStore(
+	private val dispatcher: Executor,
+	retryScheduler: ScheduledExecutorService? = null,
+	private val beforeCallback: () -> Unit = {}
+) {
 	private val lock = Any()
 	private var session: Session? = null
 	private var store: SessionStore? = null
@@ -30,6 +39,9 @@ private class ActorStore(private val dispatcher: Executor) {
 	private var dirty = false
 	private var scheduled = false
 	private var closed = false
+	private val retryTask: ScheduledFuture<*>? = retryScheduler?.scheduleWithFixedDelay(
+		{ retry() }, 50, 50, TimeUnit.MILLISECONDS
+	)
 
 	fun switchAccount(): Session {
 		val result = synchronized(lock) {
@@ -112,11 +124,12 @@ private class ActorStore(private val dispatcher: Executor) {
 					subscriber
 				}
 			} ?: return
+			beforeCallback()
 			try {
 				target.callback.onDirty()
 			} catch (_: RuntimeException) {
 				synchronized(lock) {
-					dirty = true
+					if (!closed) dirty = true
 					scheduled = false
 				}
 				return
@@ -124,16 +137,95 @@ private class ActorStore(private val dispatcher: Executor) {
 		}
 	}
 
-	fun close() = synchronized(lock) {
-		closed = true
-		session = null
-		store = null
-		subscriber = null
-		dirty = false
+	fun close() {
+		synchronized(lock) {
+			closed = true
+			session = null
+			store = null
+			subscriber = null
+			dirty = false
+		}
+		retryTask?.cancel(false)
 	}
 }
 
 class PrivacyActorSpikeTest {
+	@Test
+	fun permanentRejectionRetriesAtBoundedRate() {
+		val scheduler = Executors.newSingleThreadScheduledExecutor()
+		val attempts = AtomicInteger()
+		val retried = CountDownLatch(3)
+		val store = ActorStore(Executor {
+			attempts.incrementAndGet()
+			retried.countDown()
+			throw RejectedExecutionException()
+		}, scheduler)
+		try {
+			store.subscribe(DirtySubscriber {})
+			assertTrue(retried.await(5, TimeUnit.SECONDS))
+			store.close()
+			assertTrue(attempts.get() < 20)
+		} finally {
+			store.close()
+			scheduler.shutdownNow()
+		}
+	}
+
+	@Test
+	fun selectedCallbackMayStartAfterClose() {
+		val selected = CountDownLatch(1)
+		val release = CountDownLatch(1)
+		val delivered = CountDownLatch(1)
+		val worker = Executors.newSingleThreadExecutor()
+		val store = ActorStore(worker, beforeCallback = {
+			selected.countDown()
+			check(release.await(5, TimeUnit.SECONDS))
+		})
+		try {
+			store.subscribe(DirtySubscriber { delivered.countDown() })
+			assertTrue(selected.await(5, TimeUnit.SECONDS))
+			store.close()
+			release.countDown()
+			assertTrue(delivered.await(5, TimeUnit.SECONDS))
+			assertNull(store.read())
+		} finally {
+			release.countDown()
+			store.close()
+			worker.shutdownNow()
+		}
+	}
+
+	@Test
+	fun unavailableSchedulerIsReportedAtConstruction() {
+		val scheduler = Executors.newSingleThreadScheduledExecutor()
+		scheduler.shutdownNow()
+		assertThrows(RejectedExecutionException::class.java) {
+			ActorStore(Executor { }, scheduler)
+		}
+	}
+
+	@Test
+	fun schedulerShutdownLeavesDirtyAvailableForManualRetry() {
+		val scheduler = Executors.newSingleThreadScheduledExecutor()
+		val tasks = mutableListOf<Runnable>()
+		val attempts = AtomicInteger()
+		val store = ActorStore(Executor {
+			if (attempts.incrementAndGet() == 1) throw RejectedExecutionException()
+			tasks.add(it)
+		}, scheduler)
+		try {
+			scheduler.shutdownNow()
+			val calls = AtomicInteger()
+			store.subscribe(DirtySubscriber { calls.incrementAndGet() })
+			assertTrue(store.retry())
+			tasks.single().run()
+			assertEquals(1, calls.get())
+		} finally {
+			store.close()
+			scheduler.shutdownNow()
+		}
+	}
+
 	@Test
 	fun publicationDuringRejectedSubmissionIsDelivered() {
 		val entered = CountDownLatch(1)
@@ -141,6 +233,7 @@ class PrivacyActorSpikeTest {
 		val delivered = CountDownLatch(1)
 		val attempts = AtomicInteger()
 		val worker = Executors.newSingleThreadExecutor()
+		val scheduler = Executors.newSingleThreadScheduledExecutor()
 		val store = ActorStore(Executor { task ->
 			if (attempts.incrementAndGet() == 1) {
 				entered.countDown()
@@ -148,7 +241,7 @@ class PrivacyActorSpikeTest {
 				throw RejectedExecutionException()
 			}
 			worker.execute(task)
-		})
+		}, scheduler)
 		val caller = Executors.newSingleThreadExecutor()
 		try {
 			val token = store.switchAccount()
@@ -162,6 +255,7 @@ class PrivacyActorSpikeTest {
 			release.countDown()
 			store.close()
 			caller.shutdownNow()
+			scheduler.shutdownNow()
 			worker.shutdownNow()
 		}
 	}
@@ -172,7 +266,8 @@ class PrivacyActorSpikeTest {
 		val release = CountDownLatch(1)
 		val delivered = CountDownLatch(1)
 		val worker = Executors.newSingleThreadExecutor()
-		val store = ActorStore(worker)
+		val scheduler = Executors.newSingleThreadScheduledExecutor()
+		val store = ActorStore(worker, scheduler)
 		try {
 			val registration = store.subscribe(DirtySubscriber {
 				entered.countDown()
@@ -187,6 +282,7 @@ class PrivacyActorSpikeTest {
 		} finally {
 			release.countDown()
 			store.close()
+			scheduler.shutdownNow()
 			worker.shutdownNow()
 		}
 	}

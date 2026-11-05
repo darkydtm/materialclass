@@ -31,7 +31,24 @@ jobs:
           assert len(paths) == 1, paths
           suite = ET.parse(paths[0]).getroot()
           print('Actor spike:', suite.attrib)
-          assert int(suite.get('tests')) == 8
+          expected = {
+              'subscriptionReadsCurrentStoreAndResubscribes',
+              'blockedObserverDoesNotDelayChangesAndCoalescesNotifications',
+              'publishAndRevokeLinearizeInBothOrdersAndRejectAba',
+              'rejectedDispatchKeepsDirtyForDelayedRetry',
+              'failedSubscriberKeepsDirtyForRetry',
+              'closeRevokesAndCancelsQueuedNotifications',
+              'oldSnapshotReadsCurrentStoreButSavedCopySurvives',
+              'blockingExecutorPreventsNonblockingSubmission',
+              'publicationDuringRejectedSubmissionIsDelivered',
+              'replacementDuringFailedCallbackIsDelivered',
+              'selectedCallbackMayStartAfterClose',
+              'unavailableSchedulerIsReportedAtConstruction',
+              'schedulerShutdownLeavesDirtyAvailableForManualRetry',
+              'permanentRejectionRetriesAtBoundedRate',
+          }
+          names = [case.get('name') for case in suite.findall('testcase')]
+          assert len(names) == len(expected) and set(names) == expected, names
           assert int(suite.get('failures')) == 0
           assert int(suite.get('errors')) == 0
           assert int(suite.get('skipped')) == 0
