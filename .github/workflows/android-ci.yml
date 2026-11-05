@@ -21,7 +21,7 @@ jobs:
           packages: platform-tools
       - run: ./gradlew --no-daemon assembleDebug testDebugUnitTest lintDebug
       - name: Build opt-in integration APK
-        if: github.ref == 'refs/heads/feat/debug-apk'
+        if: github.ref == 'refs/heads/feat/debug-apk' || github.ref == 'refs/heads/test/backup-security'
         run: ./gradlew --no-daemon -PintegrationTestNativeUi=true assembleDebug testDebugUnitTest lintDebug
       - name: Report resolved dependency graphs
         run: |
@@ -73,10 +73,10 @@ jobs:
           script: |
             adb shell input keyevent KEYCODE_WAKEUP
             adb shell wm dismiss-keyguard
-            if [ "${{ github.ref }}" = 'refs/heads/feat/debug-apk' ]; then ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=org.materialclass.NativeUiWiringTest && ./gradlew --no-daemon -PintegrationTestNativeUi=true connectedDebugAndroidTest; else ./gradlew --no-daemon connectedDebugAndroidTest; fi
+            if [ "${{ github.ref }}" = 'refs/heads/feat/debug-apk' ] || [ "${{ github.ref }}" = 'refs/heads/test/backup-security' ]; then ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=org.materialclass.NativeUiWiringTest && ./gradlew --no-daemon -PintegrationTestNativeUi=true connectedDebugAndroidTest; else ./gradlew --no-daemon connectedDebugAndroidTest; fi
 
   test-apk:
-    if: github.ref == 'refs/heads/feat/debug-apk'
+    if: github.ref == 'refs/heads/feat/debug-apk' || github.ref == 'refs/heads/test/backup-security'
     needs: [build, device]
     runs-on: ubuntu-latest
     timeout-minutes: 45
