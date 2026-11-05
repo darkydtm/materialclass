@@ -110,6 +110,37 @@ class GradesDiaryRaceTest {
 		}
 	}
 
+	@Test fun logoutBetweenGradesCheckAndSnapshotAssignmentDoesNotPublishOldGrades() {
+		val fixture = Fixture()
+		val gate = Gate()
+		val revoked = java.util.concurrent.atomic.AtomicBoolean(false)
+		val staleSnapshot = java.util.concurrent.atomic.AtomicBoolean(false)
+		main {
+			controller = NativeController(
+				onState = { state ->
+					if (revoked.get() && contents(state)?.contains("Subject-1") == true) {
+						staleSnapshot.set(contents(controller!!.state)?.contains("Subject-1") == true)
+					}
+				},
+				beforeGradesCommit = { gate.waitHere() },
+			) { emit -> SchoolRepository(fixture.gateway, fixture.verifier, coordinator, fixture.cache, { 1L }, emit, SessionStore(context, coordinator)) }
+			controller!!.login("1", charArrayOf('x'))
+		}
+		val c = controller!!
+		await { c.state.signedIn && c.state.diary is DiaryState.Ready && c.state.schedule != null }
+		try {
+			main { c.refreshAnnualGrades() }
+			assertTrue("Grades delivery did not reach the checked commit", gate.entered.await(10, TimeUnit.SECONDS))
+			val previousEpoch = coordinator.revocationEpoch()
+			coordinator.cancelInFlightNow()
+			assertTrue(coordinator.revocationEpoch() > previousEpoch)
+			revoked.set(true)
+			gate.release.countDown()
+			drain(c)
+			assertFalse("Revoked grades were assigned to the Compose state", staleSnapshot.get())
+		} finally { gate.release.countDown() }
+	}
+
 	@Test fun diaryRefreshDoesNotCancelBlockedGrades() {
 		val fixture = Fixture()
 		val c = fixture.login()

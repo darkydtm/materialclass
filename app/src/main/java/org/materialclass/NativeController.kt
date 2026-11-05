@@ -53,6 +53,7 @@ internal class NativeController(
 	private val onState: (NativeUiState) -> Unit = {},
 	private val uiDispatch: ((() -> Unit) -> Boolean) = { action -> Handler(Looper.getMainLooper()).post(action) },
 	private val applyUiRevocation: ((() -> Unit) -> Unit) = { action -> action() },
+	private val beforeGradesCommit: () -> Unit = {},
 	private val repositoryFactory: ((DiaryState) -> Unit) -> SchoolRepository,
 ) : NativeUiController {
 	private val executor = Executors.newSingleThreadExecutor()
@@ -259,6 +260,7 @@ internal class NativeController(
 					delivered = true
 					handler.post {
 						if (!closed && generation == task && gradesRevision == revision && repository.revocationEpoch() == epoch && repository.acceptsAnnualGrades(delivery)) {
+							beforeGradesCommit()
 							state = state.copy(annualGrades = delivery.result, gradesLoading = false)
 						}
 					}
