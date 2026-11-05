@@ -99,7 +99,7 @@ class NativeUiControllerTest {
 	private fun filterNodeSnapshotExperiment(useSavedNode: Boolean) {
 		val context = ApplicationProvider.getApplicationContext<Context>()
 		context.getSharedPreferences("appearance", 0).edit().clear().putBoolean("warning_seen", true).putString("language", "en").commit()
-		fun snapshot(version: Long) = DiarySnapshot(Diary("week", listOf(DiaryDay("one", "day one", listOf(DiarySubject("Math", "lesson", "id", "text", "Task", null, false, false))))), version)
+		fun snapshot(version: Long) = DiarySnapshot(Diary("week $version", listOf(DiaryDay("one", "day one", listOf(DiarySubject("Math", "lesson", "id", "text", "Task", null, false, false))))), version)
 		val fake = object : NativeUiController {
 			override var state by mutableStateOf(NativeUiState(signedIn = true, diary = DiaryState.Ready(snapshot(1))))
 			override fun start() { }
