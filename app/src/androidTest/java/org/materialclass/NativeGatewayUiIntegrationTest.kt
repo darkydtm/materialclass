@@ -78,6 +78,7 @@ class NativeGatewayUiIntegrationTest {
 		val profileReturned = CountDownLatch(1)
 		@Volatile var profileResponse = profile
 		@Volatile var loginProfile = profile
+		@Volatile var diaryResponse = diary
 		@Volatile var blockedProfile: Request? = null
 		@Volatile var blockedRequest: Request? = null
 		override fun execute(request: Request): Response {
@@ -121,7 +122,7 @@ class NativeGatewayUiIntegrationTest {
 						check(release.await(15, TimeUnit.SECONDS))
 						returned.countDown()
 					}
-					if (failDiary.get()) Response(503, "") else if (selectableWeeks.get()) Response(200, diary.replace("01.01.2026", date).replace("null,\"homeworkUuid\"", "\"Homework for $date\",\"homeworkUuid\"")) else Response(200, diary)
+					if (failDiary.get()) Response(503, "") else if (selectableWeeks.get()) Response(200, diary.replace("01.01.2026", date).replace("null,\"homeworkUuid\"", "\"Homework for $date\",\"homeworkUuid\"")) else Response(200, diaryResponse)
 				}
 				"/api/v4/os/clientoffice/schedule" -> Response(200, schedule)
 				else -> throw AssertionError("Unexpected request: ${request.url.path}")
@@ -168,6 +169,38 @@ class NativeGatewayUiIntegrationTest {
 
 	private fun signIn(controller: NativeController) {
 		instrumentation.runOnMainSync { controller.login("synthetic-user", "synthetic-password".toCharArray()) }
+	}
+
+	@Test fun homeworkFiltersResetAcrossRealLogoutAndAccountSwitch() = exercise { exchange, controller ->
+		fun homework(body: String) = diary.replace("null,\"homeworkUuid\"", "\"$body\",\"homeworkUuid\"")
+		exchange.diaryResponse = homework("First account task")
+		signIn(controller)
+		waitFor(context.getString(R.string.logout))
+		click("Homework")
+		waitFor("First account task")
+		click("Show filters")
+		click("Subject: Synthetic diary lesson")
+		instrumentation.runOnMainSync { controller.logout() }
+		waitFor(context.getString(R.string.data_unavailable))
+		assertNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, "First account task") })
+		click("Login")
+		waitFor(context.getString(R.string.sign_in))
+		drain(controller, "logoutExecutor")
+		instrumentation.runOnMainSync {
+			assertFalse(controller.state.signedIn)
+			assertTrue(controller.state.diary is DiaryState.Cleared)
+		}
+		exchange.loginProfile = profile.replace("123", "456").replace("Synthetic", "Second")
+		exchange.profileResponse = exchange.loginProfile
+		exchange.diaryResponse = homework("Second account task").replace("Synthetic diary lesson", "Second lesson")
+		signIn(controller)
+		waitFor(context.getString(R.string.logout))
+		click("Homework")
+		waitFor("Second account task")
+		assertNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, "First account task") })
+		click("Show filters")
+		waitFor("Subject: Second lesson")
+		assertNull(instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, "Subject: Synthetic diary lesson") })
 	}
 
 	private fun editables(node: AccessibilityNodeInfo): List<AccessibilityNodeInfo> =

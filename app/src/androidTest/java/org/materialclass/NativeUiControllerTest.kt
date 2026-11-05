@@ -142,11 +142,62 @@ class NativeUiControllerTest {
 
 	private fun AccessibilityNodeInfo.boundsInScreenTop(): Int = android.graphics.Rect().also { getBoundsInScreen(it) }.top
 
+	@Test fun homeworkFilterOptionsExposeLocalizedRadioSelection() {
+		val context = ApplicationProvider.getApplicationContext<Context>()
+		val labels = listOf(
+			listOf("en", "Homework", "Show filters", "All subjects", "Subject: Math", "All dates", "Date: day one"),
+			listOf("ru", "Домашнее задание", "Показать фильтры", "Все предметы", "Предмет: Math", "Все даты", "Дата: day one"),
+			listOf("kk", "Үй тапсырмасы", "Сүзгілерді көрсету", "Барлық пәндер", "Пән: Math", "Барлық күндер", "Күн: day one")
+		)
+		for (row in labels) {
+			val (language, navigation, show, allSubjects, subject) = row
+			val allDates = row[5]
+			val date = row[6]
+			context.getSharedPreferences("appearance", 0).edit().putBoolean("warning_seen", true).putString("language", language).commit()
+			val fake = object : NativeUiController {
+				override val state = NativeUiState(signedIn = true, diary = DiaryState.Ready(DiarySnapshot(Diary("week", listOf(DiaryDay("one", "day one", listOf(DiarySubject("Math", "lesson", "id", "text", "Task", null, false, false))))), 1)))
+				override fun start() { }
+				override fun login(username: String, password: CharArray) { password.fill('\u0000') }
+				override fun refresh() { }
+				override fun logout() { }
+				override fun close() { }
+			}
+			val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
+			try {
+				instrumentation.runOnMainSync { activity.setContent { MaterialClassApp(nativeEnabled = true, controllerFactory = { fake }) } }
+				click(navigation)
+				click(show)
+				fun checkRadio(label: String, checked: Boolean) {
+					var node = waitFor(label)
+					while (!node.isClickable && node.parent != null) node = node.parent
+					assertEquals("android.widget.RadioButton", node.className.toString())
+					assertTrue(node.isCheckable)
+					assertEquals(label, checked, node.isChecked)
+				}
+				checkRadio(allSubjects, true)
+				checkRadio(subject, false)
+				click(subject)
+				instrumentation.waitForIdleSync()
+				checkRadio(subject, true)
+				checkRadio(allSubjects, false)
+				checkRadio(allDates, true)
+				checkRadio(date, false)
+				click(date)
+				instrumentation.waitForIdleSync()
+				checkRadio(date, true)
+				checkRadio(allDates, false)
+			} finally {
+				activity.finish()
+				context.getSharedPreferences("appearance", 0).edit().clear().commit()
+			}
+		}
+	}
+
 	@Test fun homeworkFiltersOnlyTheCurrentSnapshotAndClearsOnSignOut() {
 		val context = ApplicationProvider.getApplicationContext<Context>()
 		context.getSharedPreferences("appearance", 0).edit().putBoolean("warning_seen", true).putString("language", "en").commit()
 		fun item(label: String, body: String) = DiarySubject(label, "lesson", "id", "text", body, null, false, false)
-		val diary = Diary("week", listOf(DiaryDay("one", "day one", listOf(item("Math", "Math task"))), DiaryDay("two", "day two", listOf(item("Art", "Art task")))))
+		val diary = Diary("week", listOf(DiaryDay("one", "day one", listOf(item("Math", "Math task"), item("Math", "Second math task"))), DiaryDay("two", "day two", listOf(item("Art", "Art task")))))
 		val fake = object : NativeUiController {
 			override var state by mutableStateOf(NativeUiState(signedIn = true, diary = DiaryState.Ready(DiarySnapshot(diary, 1))))
 			override fun start() { }
@@ -164,6 +215,9 @@ class NativeUiControllerTest {
 			click("Subject: Math")
 			click("Hide filters")
 			waitFor("Math task")
+			waitFor("Second math task")
+			val filteredRoot = instrumentation.uiAutomation.rootInActiveWindow
+			assertTrue(find(filteredRoot, "Math task")!!.boundsInScreenTop() < find(filteredRoot, "Second math task")!!.boundsInScreenTop())
 			assertNull(find(instrumentation.uiAutomation.rootInActiveWindow, "Art task"))
 			click("Show filters")
 			click("All subjects")
