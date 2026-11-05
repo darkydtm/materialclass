@@ -29,7 +29,9 @@ class OfflineUiTest {
 			var observed = false
 			while (!observed && SystemClock.uptimeMillis() < deadline) {
 				val root = instrumentation.uiAutomation.rootInActiveWindow
-				observed = root != null && contains(root, context.getString(R.string.warning_text)) && contains(root, context.getString(R.string.backend_unavailable))
+				observed = root != null && contains(root, context.getString(R.string.warning_text)) && if (BuildConfig.INTEGRATION_TEST_NATIVE_UI) {
+					!contains(root, context.getString(R.string.backend_unavailable)) && contains(root, context.getString(R.string.sign_in))
+				} else contains(root, context.getString(R.string.backend_unavailable))
 				if (!observed) SystemClock.sleep(100)
 			}
 			assertTrue("Warning and backend status must be visible without a consent gate", observed)
