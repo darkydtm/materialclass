@@ -34,7 +34,7 @@ printf '%s' forbidden-file | adb shell run-as "$package" tee files/fixture > /de
 printf '%s\n' 'STAGE: fixtures seeded'
 adb exec-out run-as "$package" cat shared_prefs/appearance.xml | grep -F allowed-appearance
 for path in shared_prefs/session.xml cache/fixture files/fixture; do
-	adb shell run-as "$package" test -f "$path"
+	adb shell run-as "$package" sh -c "'test -f $path'"
 done
 adb shell bmgr backupnow "$package" | tr -d '\r' | tee "$RUNNER_TEMP/backup-result.txt"
 grep -F "Package $package with result: Success" "$RUNNER_TEMP/backup-result.txt"
@@ -42,7 +42,7 @@ printf '%s\n' 'STAGE: package backup succeeded'
 adb shell am force-stop "$package"
 adb shell pm clear "$package" | tr -d '\r' | grep -Fx Success
 for path in shared_prefs/appearance.xml shared_prefs/session.xml cache/fixture files/fixture; do
-	adb shell run-as "$package" test ! -e "$path"
+	adb shell run-as "$package" sh -c "'test ! -e $path'"
 done
 printf '%s\n' 'STAGE: app storage cleared'
 adb shell bmgr list sets | tr -d '\r' | tee "$RUNNER_TEMP/restore-sets.txt"
@@ -53,7 +53,7 @@ grep -F 'restoreFinished: 0' "$RUNNER_TEMP/restore-result.txt"
 adb shell am force-stop "$package"
 adb exec-out run-as "$package" cat shared_prefs/appearance.xml | grep -F allowed-appearance
 for path in shared_prefs/session.xml cache/fixture files/fixture; do
-	adb shell run-as "$package" test ! -e "$path"
+	adb shell run-as "$package" sh -c "'test ! -e $path'"
 done
 printf '%s\n' 'Local transport restored appearance and excluded session, cache and files'
 printf '%s\n' 'Cloud backup and device-to-device transfer were not tested'
