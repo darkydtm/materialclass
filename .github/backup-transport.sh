@@ -27,6 +27,7 @@ fi
 adb shell bmgr transport "$transport" | tee "$RUNNER_TEMP/transport-selection.txt"
 adb shell bmgr list transports | tr -d '\r' | grep -F "* $transport"
 nonce=$(python3 -c 'import uuid; print(uuid.uuid4().hex)')
+api=$(adb shell getprop ro.build.version.sdk | tr -d '\r')
 reference=org.materialclass.backupreference
 adb install backup-reference/build/outputs/apk/debug/backup-reference-debug.apk
 adb shell am start -n "$reference/android.app.Activity"
@@ -37,7 +38,7 @@ printf '%s' "$nonce" | adb shell run-as "$reference" tee files/fixture > /dev/nu
 test "$(adb exec-out run-as "$reference" cat shared_prefs/session.xml)" = "$reference_prefs"
 test "$(adb exec-out run-as "$reference" cat files/fixture)" = "$nonce"
 adb shell bmgr backupnow "$reference" | tr -d '\r' | tee "$RUNNER_TEMP/reference-backup.txt"
-grep -F "Package $reference with result: Success" "$RUNNER_TEMP/reference-backup.txt"
+python3 .github/scripts/check-bmgr-output.py backup "$reference" "$api" < "$RUNNER_TEMP/reference-backup.txt"
 adb shell am force-stop "$reference"
 adb shell pm clear "$reference" | tr -d '\r' | grep -Fx Success
 for path in shared_prefs/session.xml files/fixture; do
@@ -52,8 +53,7 @@ if [ "$api" -eq 24 ]; then
 else
 	adb shell bmgr restore "$reference_token" "$reference" | tr -d '\r' | tee "$RUNNER_TEMP/reference-restore.txt"
 fi
-awk -v package="$reference" '$1 == "onUpdate:" && $2 ~ /^[0-9]+$/ && $3 == "=" && $4 == package && NF == 4 { found = 1 } END { exit !found }' "$RUNNER_TEMP/reference-restore.txt"
-grep -Fx 'restoreFinished: 0' "$RUNNER_TEMP/reference-restore.txt"
+python3 .github/scripts/check-bmgr-output.py restore "$reference" "$api" < "$RUNNER_TEMP/reference-restore.txt"
 adb shell am force-stop "$reference"
 test "$(adb exec-out run-as "$reference" cat shared_prefs/session.xml)" = "$reference_prefs"
 test "$(adb exec-out run-as "$reference" cat files/fixture)" = "$nonce"
@@ -81,7 +81,7 @@ cache_hash=$(adb exec-out run-as "$package" cat "files/backup-cache/$cache_file"
 index_hash=$(adb exec-out run-as "$package" cat files/backup-cache/index | sha256sum | cut -d ' ' -f 1)
 adb shell monkey -p "$package" -c android.intent.category.LAUNCHER 1
 adb shell bmgr backupnow "$package" | tr -d '\r' | tee "$RUNNER_TEMP/probe-backup.txt"
-grep -Fx "Package $package with result: Success" "$RUNNER_TEMP/probe-backup.txt"
+python3 .github/scripts/check-bmgr-output.py backup "$package" "$api" < "$RUNNER_TEMP/probe-backup.txt"
 adb shell am force-stop "$package"
 adb shell pm clear "$package" | tr -d '\r' | grep -Fx Success
 for path in shared_prefs/session.xml files/fixture cache/fixture no_backup/session files/backup-cache; do
@@ -95,8 +95,7 @@ if [ "$api" -eq 24 ]; then
 else
 	adb shell bmgr restore "$probe_token" "$package" | tr -d '\r' | tee "$RUNNER_TEMP/probe-restore.txt"
 fi
-awk -v package="$package" '$1 == "onUpdate:" && $2 ~ /^[0-9]+$/ && $3 == "=" && $4 == package && NF == 4 { found = 1 } END { exit !found }' "$RUNNER_TEMP/probe-restore.txt"
-grep -Fx 'restoreFinished: 0' "$RUNNER_TEMP/probe-restore.txt"
+python3 .github/scripts/check-bmgr-output.py restore "$package" "$api" < "$RUNNER_TEMP/probe-restore.txt"
 adb shell am force-stop "$package"
 test "$(adb exec-out run-as "$package" cat shared_prefs/session.xml)" = "<map><string name=\"fixture\">$nonce</string></map>"
 test "$(adb exec-out run-as "$package" cat files/fixture)" = "$nonce"
@@ -120,7 +119,7 @@ for path in shared_prefs/session.xml cache/fixture files/fixture no_backup/sessi
 	adb shell run-as "$package" sh -c "'test -f $path'"
 done
 adb shell bmgr backupnow "$package" | tr -d '\r' | tee "$RUNNER_TEMP/backup-result.txt"
-grep -F "Package $package with result: Success" "$RUNNER_TEMP/backup-result.txt"
+python3 .github/scripts/check-bmgr-output.py backup "$package" "$api" < "$RUNNER_TEMP/backup-result.txt"
 printf '%s\n' 'STAGE: package backup succeeded'
 adb shell am force-stop "$package"
 adb shell pm clear "$package" | tr -d '\r' | grep -Fx Success
@@ -137,8 +136,7 @@ if [ "$api" -eq 24 ]; then
 else
 	adb shell bmgr restore "$token" "$package" | tr -d '\r' | tee "$RUNNER_TEMP/restore-result.txt"
 fi
-awk -v package="$package" '$1 == "onUpdate:" && $2 ~ /^[0-9]+$/ && $3 == "=" && $4 == package && NF == 4 { found = 1 } END { exit !found }' "$RUNNER_TEMP/restore-result.txt"
-grep -Fx 'restoreFinished: 0' "$RUNNER_TEMP/restore-result.txt"
+python3 .github/scripts/check-bmgr-output.py restore "$package" "$api" < "$RUNNER_TEMP/restore-result.txt"
 adb shell am force-stop "$package"
 adb exec-out run-as "$package" cat shared_prefs/appearance.xml | grep -F 'name="theme">black'
 for path in shared_prefs/session.xml cache/fixture files/fixture no_backup/session files/backup-cache; do

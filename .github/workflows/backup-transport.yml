@@ -24,6 +24,8 @@ jobs:
       - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
         with:
           packages: platform-tools
+      - name: Test bmgr output parser
+        run: python3 -m unittest discover -s .github/scripts -p test_bmgr_output.py -v
       - name: Build isolated APKs
         run: |
           set -eu
