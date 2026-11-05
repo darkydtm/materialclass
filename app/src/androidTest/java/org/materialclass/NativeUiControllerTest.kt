@@ -144,17 +144,27 @@ class NativeUiControllerTest {
 		try {
 			instrumentation.runOnMainSync { activity.setContent { MaterialClassApp(nativeEnabled = true, controllerFactory = { fake }) } }
 			click("Homework")
+			click("Show filters")
 			click("Subject: Math")
+			click("Hide filters")
 			waitFor("Math task")
 			assertNull(find(instrumentation.uiAutomation.rootInActiveWindow, "Art task"))
+			click("Show filters")
 			click("All subjects")
+			click("Hide filters")
 			waitFor("Art task")
+			click("Show filters")
 			click("Date: day two")
+			click("Hide filters")
 			waitFor("Art task")
 			assertNull(find(instrumentation.uiAutomation.rootInActiveWindow, "Math task"))
+			click("Show filters")
 			click("All dates")
+			click("Hide filters")
 			waitFor("Math task")
+			click("Show filters")
 			click("Subject: Math")
+			click("Hide filters")
 			instrumentation.runOnMainSync { fake.state = NativeUiState() }
 			waitFor(context.getString(R.string.data_unavailable))
 			instrumentation.runOnMainSync { fake.state = NativeUiState(signedIn = true, diary = DiaryState.Ready(DiarySnapshot(diary, 2))) }

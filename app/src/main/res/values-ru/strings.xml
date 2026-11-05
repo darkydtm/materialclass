@@ -69,4 +69,6 @@
 	<string name="homework_all_dates">Все даты</string>
 	<string name="homework_date_option">Дата: %1$s</string>
 	<string name="homework_filter_empty">Нет заданий по выбранным фильтрам.</string>
+	<string name="homework_show_filters">Показать фильтры</string>
+	<string name="homework_hide_filters">Скрыть фильтры</string>
 </resources>

@@ -69,4 +69,6 @@
 	<string name="homework_all_dates">Барлық күндер</string>
 	<string name="homework_date_option">Күн: %1$s</string>
 	<string name="homework_filter_empty">Таңдалған сүзгілерге сәйкес тапсырма жоқ.</string>
+	<string name="homework_show_filters">Сүзгілерді көрсету</string>
+	<string name="homework_hide_filters">Сүзгілерді жасыру</string>
 </resources>

@@ -153,8 +153,12 @@ internal fun MaterialClassApp(example: ExampleData? = null, nativeEnabled: Boole
 												val snapshot = diary.snapshot.diary
 												var selectedSubject by remember(snapshot) { mutableStateOf<String?>(null) }
 												var selectedDate by remember(snapshot) { mutableStateOf<String?>(null) }
+												var filtersOpen by remember(snapshot) { mutableStateOf(false) }
 												val records = snapshot.days.flatMap { day -> day.subjects.filter { !it.homeworkBody.isNullOrBlank() }.map { day.date to it } }
 												if (records.isEmpty()) Text(stringResource(R.string.homework_empty)) else {
+													TextButton(onClick = { filtersOpen = !filtersOpen }) { Text(stringResource(if (filtersOpen) R.string.homework_hide_filters else R.string.homework_show_filters)) }
+												}
+												if (records.isNotEmpty() && filtersOpen) {
 													Text(stringResource(R.string.homework_filter_subject), style = MaterialTheme.typography.titleMedium)
 													Column(Modifier.selectableGroup()) {
 														Box(Modifier.selectable(selectedSubject == null, role = Role.RadioButton, onClick = { selectedSubject = null }).padding(12.dp)) { Text(stringResource(R.string.homework_all_subjects)) }
