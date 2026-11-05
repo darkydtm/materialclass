@@ -47,13 +47,17 @@ internal class PrivateStateRegistry(initiallyActive: Boolean = true, private val
 
 	enum class LeaseCommit { APPLIED, STALE, CONFLICT }
 
+	fun commitLease(lease: RequestLease, id: ControllerId, reduce: (NativeUiState) -> NativeUiState): LeaseCommit =
+		commitLease(lease, id, {}, reduce)
+
 	// Require a pure reducer; return a retryable conflict after eight attempts.
-	fun commitLease(lease: RequestLease, id: ControllerId, reduce: (NativeUiState) -> NativeUiState): LeaseCommit {
+	fun commitLease(lease: RequestLease, id: ControllerId, beforeCas: () -> Unit, reduce: (NativeUiState) -> NativeUiState): LeaseCommit {
 		repeat(8) {
 			val current = SessionCoordinator.capturePrivateState(this, lease) ?: return LeaseCommit.STALE
 			val previous = current.states[id] ?: return LeaseCommit.STALE
 			val next = snapshot(current.token, current.states + (id to reduce(previous)), current.active)
 			beforeCommitCas()
+			beforeCas()
 			when (SessionCoordinator.commitPrivateState(this, lease, current, next)) {
 				LeaseCommit.APPLIED -> return LeaseCommit.APPLIED
 				LeaseCommit.STALE -> return LeaseCommit.STALE

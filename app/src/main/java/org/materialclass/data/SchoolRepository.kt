@@ -63,7 +63,7 @@ internal sealed class DiaryState {
 
 internal data class DiaryGuard(val epoch: Long, val revision: Long, val requestRevision: Long, val active: ActiveSession, val expired: Boolean)
 
-internal data class AnnualGradesDelivery(val result: GatewayResult<org.materialclass.api.AnnualGrades>, val active: ActiveSession, val epoch: Long, val revision: Long, val requestRevision: Long)
+internal data class AnnualGradesDelivery(val result: GatewayResult<org.materialclass.api.AnnualGrades>, val active: ActiveSession, val epoch: Long, val revision: Long, val requestRevision: Long, val lease: RequestLease)
 
 internal class SchoolRepository(
 	private val gateway: SchoolGateway,
@@ -265,7 +265,7 @@ internal class SchoolRepository(
 					remote = null; scheduleSession = null; diarySession = null; session = null
 					coordinator.revokeIfActive(active, expired = true)
 					null
-				} else AnnualGradesDelivery(result, active, coordinator.revocationEpoch(), request.second, request.third)
+				} else AnnualGradesDelivery(result, active, coordinator.revocationEpoch(), request.second, request.third, lease)
 			}
 			if (delivery != null) deliver(delivery)
 		} finally { coordinator.finish(lease) }

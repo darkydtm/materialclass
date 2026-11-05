@@ -20,6 +20,7 @@ import org.materialclass.session.RestoreResult
 import org.materialclass.session.SessionChange
 import org.materialclass.session.SessionCoordinator
 import org.materialclass.session.SessionStore
+import org.materialclass.session.PrivateStateRegistry
 import java.util.concurrent.Executors
 
 internal data class NativeUiState(
@@ -33,6 +34,7 @@ internal data class NativeUiState(
 	val scheduleSnapshot: ScheduleSnapshot? = null,
 	val annualGrades: GatewayResult<org.materialclass.api.AnnualGrades>? = null,
 	val gradesLoading: Boolean = false,
+	val gradesRequest: Long = 0,
 	val profile: org.materialclass.api.StudentProfile? = null,
 
 	val error: AppError? = null,
@@ -102,10 +104,25 @@ internal class NativeController(
 	private var started = false
 	private var currentTaskGeneration = 0L
 	@Volatile private var currentTaskEpoch = 0L
+	private val privateStates = SessionCoordinator.privateStates
+	private val privateId = privateStates.register()
 	private var stateValue by mutableStateOf(NativeUiState())
+	private var stateSignal by mutableStateOf(0L)
 	override var state: NativeUiState
-		get() = stateValue
-		private set(value) { stateValue = value; onState(value) }
+		get() {
+			stateSignal
+			val local = stateValue
+			val grades = privateStates.read().states[privateId]
+			return local.copy(annualGrades = grades?.annualGrades, gradesLoading = grades?.gradesLoading ?: false)
+		}
+		private set(value) {
+			if (value.annualGrades == null) {
+				val token = privateStates.read().token
+				privateStates.commit(token, privateId) { it.copy(annualGrades = null, gradesLoading = value.gradesLoading) }
+			}
+			stateValue = value.copy(annualGrades = null, gradesLoading = false)
+			onState(state)
+		}
 
 	private val repository: SchoolRepository = repositoryFactory { diary ->
 		val task = currentTaskGeneration
@@ -254,24 +271,38 @@ internal class NativeController(
 		val task = generation
 		val revision = ++gradesRevision
 		val epoch = observedEpoch
-		state = state.copy(annualGrades = null, gradesLoading = true)
+		val token = privateStates.read().token
+		privateStates.commit(token, privateId) { it.copy(annualGrades = null, gradesLoading = true, gradesRequest = revision) }
+		stateSignal++
+		onState(state)
 		executor.execute {
 			if (closed || generation != task || gradesRevision != revision || repository.revocationEpoch() != epoch) return@execute
 			var delivered = false
 			try {
 				repository.annualGrades { delivery ->
 					delivered = true
-					handler.post {
-						if (!closed && generation == task && gradesRevision == revision && repository.revocationEpoch() == epoch && repository.acceptsAnnualGrades(delivery)) {
-							beforePrivateCommit("grades")
-							state = state.copy(annualGrades = delivery.result, gradesLoading = false)
+					if (!closed && generation == task && gradesRevision == revision && repository.revocationEpoch() == epoch && repository.acceptsAnnualGrades(delivery)) {
+						val result = privateStates.commitLease(delivery.lease, privateId, beforeCas = { beforePrivateCommit("grades") }) {
+							if (it.gradesRequest == revision) it.copy(annualGrades = delivery.result, gradesLoading = false) else it
+						}
+						handler.post {
+							if (!closed && generation == task && gradesRevision == revision && repository.revocationEpoch() == epoch) {
+								when (result) {
+									PrivateStateRegistry.LeaseCommit.APPLIED -> { stateSignal++; onState(state) }
+									PrivateStateRegistry.LeaseCommit.CONFLICT -> state = state.copy(annualGrades = null, gradesLoading = false, error = AppError.UNAVAILABLE)
+									PrivateStateRegistry.LeaseCommit.STALE -> Unit
+								}
+							}
 						}
 					}
 				}
 			} catch (_: Exception) { }
 			if (!delivered) handler.post {
 				if (!closed && generation == task && gradesRevision == revision && repository.revocationEpoch() == epoch) {
-					state = state.copy(annualGrades = GatewayResult.Failure(AppError.UNAVAILABLE), gradesLoading = false)
+					val current = privateStates.read().token
+					privateStates.commit(current, privateId) { if (it.gradesRequest == revision) it.copy(annualGrades = GatewayResult.Failure(AppError.UNAVAILABLE), gradesLoading = false) else it }
+					stateSignal++
+					onState(state)
 				}
 			}
 		}
@@ -302,6 +333,7 @@ internal class NativeController(
 
 	override fun close() {
 		closed = true
+		privateStates.unregister(privateId)
 		repository.removeRevocationObserver(observeLogout)
 		repository.removeUiRevocationObserver(observeUiLogout)
 		generation++
