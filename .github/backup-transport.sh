@@ -3,15 +3,13 @@ set -euo pipefail
 
 package=org.materialclass
 transport=android/com.android.internal.backup.LocalTransport
-adb shell svc wifi disable
-adb shell svc data disable
 adb install app/build/outputs/apk/debug/app-debug.apk
+adb shell bmgr enable true
+adb shell bmgr enabled | tr -d '\r' | grep -F 'Backup Manager currently enabled'
 adb shell bmgr list transports | tee "$RUNNER_TEMP/transports.txt"
 grep -Fq "$transport" "$RUNNER_TEMP/transports.txt"
 adb shell bmgr transport "$transport" | tee "$RUNNER_TEMP/transport-selection.txt"
 adb shell bmgr list transports | tr -d '\r' | grep -F "* $transport"
-adb shell bmgr enable true
-adb shell bmgr enabled | tr -d '\r' | grep -F 'Backup Manager currently enabled'
 adb shell am force-stop "$package"
 adb shell run-as "$package" sh -c "mkdir -p shared_prefs cache files; printf '%s' '<map><string name=\"fixture\">allowed-appearance</string></map>' > shared_prefs/appearance.xml; printf '%s' '<map><string name=\"fixture\">forbidden-session</string></map>' > shared_prefs/session.xml; printf '%s' forbidden-cache > cache/fixture; printf '%s' forbidden-file > files/fixture"
 adb shell bmgr backupnow "$package" | tr -d '\r' | tee "$RUNNER_TEMP/backup-result.txt"
