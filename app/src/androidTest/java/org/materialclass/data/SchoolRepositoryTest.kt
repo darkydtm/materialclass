@@ -114,7 +114,7 @@ class SchoolRepositoryTest {
 			val privateCalls = java.util.concurrent.atomic.AtomicInteger()
 			val gateway = object : TestSchoolGateway(), AnnualGradesGateway {
 				override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = error("Unexpected diary request")
-				override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", "1", "student", SchoolContext(1, 2026, 2)))
+				override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", "1", "student", SchoolContext(1, 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
 				override fun annualGrades(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<AnnualGrades> { privateCalls.incrementAndGet(); return GatewayResult.Success(AnnualGrades(emptyList())) }
 			}
 			val good = """{"data":{"userId":1,"role":"student","school_id":1,"group":{"id":2},"studentInfo":{"studentSchoolUuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}}"""
@@ -141,13 +141,50 @@ class SchoolRepositoryTest {
 	}
 
 	@Test
+	fun retryKeepsSchoolRequestsBlockedUntilSuccessfulReverification() {
+		val entered = CountDownLatch(1); val release = CountDownLatch(1)
+		val profiles = java.util.concurrent.atomic.AtomicInteger()
+		val privateCalls = java.util.concurrent.atomic.AtomicInteger()
+		val gateway = object : TestSchoolGateway(), AnnualGradesGateway {
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = error("Unexpected diary request")
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", "1", "student", SchoolContext(1, 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
+			override fun annualGrades(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<AnnualGrades> { privateCalls.incrementAndGet(); return GatewayResult.Success(AnnualGrades(emptyList())) }
+		}
+		val good = """{"data":{"userId":1,"role":"student","school_id":1,"group":{"id":2},"studentInfo":{"studentSchoolUuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}}"""
+		val verifier = NativeIdentityVerifier(Exchange {
+			when (profiles.incrementAndGet()) {
+				2 -> { entered.countDown(); check(release.await(30, TimeUnit.SECONDS)); Response(200, good.replace("\"student\"", "\"teacher\"")) }
+				3 -> Response(503, "")
+				else -> Response(200, good)
+			}
+		})
+		val repo = SchoolRepository(gateway, verifier, coordinator, FakeCache(), { 1L }, {}, store)
+		assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+		val revision = repo.beginProfileRefresh()
+		val old = thread { repo.refreshProfile(revision) { _, _ -> } }
+		try {
+			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			assertFalse(repo.refreshProfile(repo.beginProfileRefresh()) { _, _ -> })
+			repo.annualGrades { assertTrue(it.result is GatewayResult.Failure) }
+			assertEquals(0, privateCalls.get())
+			release.countDown(); old.join(10000); assertFalse(old.isAlive)
+			repo.annualGrades { assertTrue(it.result is GatewayResult.Failure) }
+			assertEquals(0, privateCalls.get())
+			assertTrue(repo.refreshProfile(repo.beginProfileRefresh()) { _, _ -> })
+			var delivered = false
+			repo.annualGrades { delivered = true }
+			assertTrue(delivered); assertEquals(1, privateCalls.get())
+		} finally { release.countDown(); old.join(10000); repo.logout() }
+	}
+
+	@Test
 	fun olderContradictionCannotRevokeReplacementSession() {
 		val entered = CountDownLatch(1)
 		val release = CountDownLatch(1)
 		val calls = java.util.concurrent.atomic.AtomicInteger()
 		val gateway = object : TestSchoolGateway(), AnnualGradesGateway {
 			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = error("Unexpected diary request")
-			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", login, "student", SchoolContext(1, 2026, 2)))
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", login, "student", SchoolContext(1, 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
 			override fun annualGrades(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<AnnualGrades> { calls.incrementAndGet(); return GatewayResult.Success(AnnualGrades(emptyList())) }
 		}
 		val profileCalls = java.util.concurrent.atomic.AtomicInteger()
