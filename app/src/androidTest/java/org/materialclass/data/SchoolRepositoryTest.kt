@@ -248,6 +248,7 @@ class SchoolRepositoryTest {
 		val entered = CountDownLatch(1); val release = CountDownLatch(1)
 		val loginEntered = CountDownLatch(1); val loginRelease = CountDownLatch(1)
 		val gateway = object : TestSchoolGateway() {
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = error("Unexpected diary request")
 			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> {
 				if (login == "new") { loginEntered.countDown(); check(loginRelease.await(30, TimeUnit.SECONDS)) }
 				return GatewayResult.Success(UnverifiedSession("synthetic-token", "1", "student", SchoolContext(1, 2026, 2)))
