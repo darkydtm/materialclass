@@ -21,7 +21,7 @@ jobs:
           packages: platform-tools
       - name: Test backup audit
         run: python3 -m unittest discover -s .github/scripts -p 'test_backup_security.py' -v
-      - run: ./gradlew --no-daemon assembleDebug
+      - run: ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest
       - name: Verify packaged backup rules
         run: |
           set -eu
@@ -36,7 +36,8 @@ jobs:
           python3 .github/scripts/check-backup-security.py "$RUNNER_TEMP"
           mkdir artifact
           cp "$APK" artifact/materialclass-debug.apk
-          (cd artifact && sha256sum materialclass-debug.apk | tee SHA256SUMS)
+          cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk artifact/materialclass-androidTest.apk
+          (cd artifact && sha256sum materialclass-debug.apk materialclass-androidTest.apk | tee SHA256SUMS)
           printf 'commit=%s\n' "$GITHUB_SHA" > artifact/metadata.txt
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -49,6 +50,10 @@ jobs:
     needs: audit
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        api: ['24', '37.0']
     steps:
       - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4
         with:
@@ -60,7 +65,7 @@ jobs:
       - name: Inspect downloaded artifact
         run: |
           set -eu
-          test "$(find artifact -maxdepth 1 -type f | wc -l)" -eq 3
+          test "$(find artifact -maxdepth 1 -type f | wc -l)" -eq 4
           (cd artifact && sha256sum -c SHA256SUMS)
           grep -Fx "commit=$GITHUB_SHA" artifact/metadata.txt
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)"
@@ -77,13 +82,17 @@ jobs:
       - name: Install and launch downloaded artifact
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
-          api-level: '24'
+          api-level: ${{ matrix.api }}
           target: default
           arch: x86_64
           script: |
             set -eu
             (cd artifact && sha256sum -c SHA256SUMS)
             adb install artifact/materialclass-debug.apk
+            adb install artifact/materialclass-androidTest.apk
+            adb shell am instrument -w -r -e class org.materialclass.security.BackupRulesTest org.materialclass.test/androidx.test.runner.AndroidJUnitRunner > "$RUNNER_TEMP/backup-instrumentation.txt"
+            cat "$RUNNER_TEMP/backup-instrumentation.txt"
+            grep -Eq '^OK \(1 test\)' "$RUNNER_TEMP/backup-instrumentation.txt"
             adb shell monkey -p org.materialclass -c android.intent.category.LAUNCHER 1
             adb shell pidof org.materialclass
             (cd artifact && sha256sum -c SHA256SUMS)

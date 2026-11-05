@@ -45,6 +45,26 @@ class BackupSecurityTest(unittest.TestCase):
 		result = self.run_check()
 		self.assertEqual(result.returncode, 0, result.stderr)
 
+	def test_named_manifest_references_pass(self):
+		(self.root / 'manifest.xml').write_text(self.manifest('@xml/backup_rules', '@xml/data_extraction_rules'))
+		self.assertEqual(self.run_check().returncode, 0)
+
+	def test_inconsistent_decoded_references_are_rejected(self):
+		for value in ('@xml/evil', '@0x7f150002', '@2132082690', '@garbage', '@xml/data_extraction_rules'):
+			with self.subTest(value=value):
+				(self.root / 'manifest.xml').write_text(self.manifest(value, '@0x7f150001'))
+				self.assertNotEqual(self.run_check().returncode, 0)
+
+	def test_decoded_backup_agent_is_rejected(self):
+		path = self.root / 'manifest.xml'
+		path.write_text(path.read_text().replace('<application ', '<application android:backupAgent=".CustomAgent" '))
+		self.assertNotEqual(self.run_check().returncode, 0)
+
+	def test_binary_backup_agent_is_rejected(self):
+		path = self.root / 'manifest-tree.txt'
+		path.write_text(path.read_text() + '    A: http://schemas.android.com/apk/res/android:backupAgent(0x0101027f)=".CustomAgent" (Raw: ".CustomAgent")\n')
+		self.assertNotEqual(self.run_check().returncode, 0)
+
 	def test_namespace_indented_root_passes(self):
 		path = self.root / 'manifest-tree.txt'
 		path.write_text('N: android=http://schemas.android.com/apk/res/android (line=2)\n' + ''.join('  ' + line for line in path.read_text().splitlines(keepends=True)))

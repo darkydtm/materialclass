@@ -11,6 +11,7 @@ apps = [element for element in manifest.iter() if element.tag.split('}')[-1] == 
 assert len(apps) == 1 and apps[0] in list(manifest) and apps[0].tag == 'application'
 app = apps[0]
 assert app.get(android + 'allowBackup') == 'true'
+assert android + 'backupAgent' not in app.attrib
 tree = (root / 'manifest-tree.txt').read_text()
 resources = (root / 'resources.txt').read_text()
 stack = []
@@ -32,6 +33,7 @@ for line in tree.splitlines():
 			applications.append({})
 		stack.append((depth, name))
 	elif stack and len(stack) == 2 and stack[-1][1] == 'application' and depth > stack[-1][0]:
+		assert not re.match(r'http://schemas\.android\.com/apk/res/android:backupAgent(?:\(|=)', content)
 		match = re.fullmatch(r'http://schemas\.android\.com/apk/res/android:(fullBackupContent|dataExtractionRules)\((0x[0-9a-fA-F]+)\)=@(0x[0-9a-fA-F]{8})', content)
 		if match:
 			attribute, attribute_id, resource_id = match.groups()
@@ -42,7 +44,13 @@ assert len(applications) == 1
 for attribute, name in (('fullBackupContent', 'backup_rules'), ('dataExtractionRules', 'data_extraction_rules')):
 	resource_id = applications[0][attribute]
 	value = app.get(android + attribute)
-	assert value is not None and value.startswith('@'), (attribute, value)
+	assert value is not None, attribute
+	if re.fullmatch(r'@0[xX][0-9a-fA-F]{1,8}', value):
+		assert int(value[1:], 16) == int(resource_id, 16), (attribute, value, resource_id)
+	elif re.fullmatch(r'@[0-9]+', value):
+		assert int(value[1:], 10) == int(resource_id, 16), (attribute, value, resource_id)
+	else:
+		assert value == '@xml/' + name, (attribute, value)
 
 	entries = re.split(r'(?m)^\s*resource ', resources)
 	matches = [entry for entry in entries if re.match(re.escape(resource_id) + r'\s', entry.lower())]
