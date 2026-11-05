@@ -207,6 +207,37 @@ class GradesDiaryRaceTest {
 		main { assertEquals("Profile-1", first.state.profile?.surname) }
 	}
 
+	private fun profileCommitIsDiscardedAfterRevocation(replace: Boolean) {
+		val fixture = Fixture()
+		val gate = Gate()
+		val armed = java.util.concurrent.atomic.AtomicBoolean(false)
+		main {
+			controller = NativeController(beforePrivateCommit = { name -> if (name == "profile" && armed.compareAndSet(true, false)) gate.waitHere() }) { emit ->
+				SchoolRepository(fixture.gateway, fixture.verifier, coordinator, fixture.cache, { 1L }, emit, SessionStore(context, coordinator))
+			}
+			controller!!.login("1", charArrayOf('x'))
+		}
+		val first = controller!!
+		await { first.state.profile?.surname == "Profile-1" && first.state.diary is DiaryState.Ready }
+		drain(first)
+		val field = NativeController::class.java.getDeclaredField("privateId").apply { isAccessible = true }
+		val id = field.get(first) as PrivateStateRegistry.ControllerId
+		armed.set(true)
+		try {
+			main { first.refresh() }
+			assertTrue(gate.entered.await(15, TimeUnit.SECONDS))
+			if (replace) coordinator.activate(AccountId("2")) else coordinator.cancelInFlightNow()
+			assertNull(SessionCoordinator.privateStates.read().states[id]?.profile)
+			gate.release.countDown()
+			drain(first)
+			assertNull(SessionCoordinator.privateStates.read().states[id]?.profile)
+			main { assertNull(first.state.profile) }
+		} finally { gate.release.countDown() }
+	}
+
+	@Test fun revokedProfileCommitIsDiscarded() = profileCommitIsDiscardedAfterRevocation(false)
+	@Test fun replacedAccountProfileCommitIsDiscarded() = profileCommitIsDiscardedAfterRevocation(true)
+
 	@Test fun revokedOnlineGradesAreNotPublished() = revokedPrivateCommitIsNotPublished("grades", false)
 
 	@Test fun concurrentLoginCancelsPendingGradesWithoutLeavingLoading() {

@@ -205,7 +205,10 @@ internal class SchoolRepository(
 
 	internal fun beginProfileRefresh(): Long = synchronized(StorageLock) { ++profileRevision }
 
-	internal fun refreshProfile(revision: Long, deliver: (org.materialclass.api.StudentProfile?, Boolean) -> Unit): Boolean {
+	internal fun refreshProfile(revision: Long, deliver: (org.materialclass.api.StudentProfile?, Boolean) -> Unit): Boolean =
+		refreshProfileLeased(revision) { profile, complete, _ -> deliver(profile, complete) }
+
+	internal fun refreshProfileLeased(revision: Long, deliver: (org.materialclass.api.StudentProfile?, Boolean, RequestLease) -> Unit): Boolean {
 		val active = session ?: return false
 		val request = coordinator.ifActive(active) {
 			val candidate = remote ?: return@ifActive null
@@ -238,7 +241,7 @@ internal class SchoolRepository(
 					Triple(profile, usable, scheduleSession != null)
 				}
 			}
-			if (outcome != null) deliver(outcome.first, outcome.second && outcome.third)
+			if (outcome != null) deliver(outcome.first, outcome.second && outcome.third, lease)
 			return outcome?.second == true
 		} finally { coordinator.finish(lease) }
 	}

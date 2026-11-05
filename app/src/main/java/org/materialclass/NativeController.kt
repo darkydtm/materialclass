@@ -36,6 +36,8 @@ internal data class NativeUiState(
 	val gradesLoading: Boolean = false,
 	val gradesRequest: Long = 0,
 	val profile: org.materialclass.api.StudentProfile? = null,
+	val profileRequest: Long = 0,
+	val profileIncomplete: Boolean = false,
 
 	val error: AppError? = null,
 )
@@ -112,8 +114,18 @@ internal class NativeController(
 		get() {
 			stateSignal
 			val local = stateValue
-			val grades = privateStates.read().states[privateId]
-			return local.copy(annualGrades = grades?.annualGrades, gradesLoading = grades?.gradesLoading ?: false)
+			val privateState = privateStates.read().states[privateId]
+			return local.copy(
+				profile = privateState?.profile,
+				annualGrades = privateState?.annualGrades,
+				gradesLoading = privateState?.gradesLoading ?: false,
+				diary = if (privateState?.profileIncomplete == true) DiaryState.Cleared else local.diary,
+				diaryWeeks = if (privateState?.profileIncomplete == true) emptyList() else local.diaryWeeks,
+				selectedDiaryDate = if (privateState?.profileIncomplete == true) null else local.selectedDiaryDate,
+				schedule = if (privateState?.profileIncomplete == true) null else local.schedule,
+				scheduleSnapshot = if (privateState?.profileIncomplete == true) null else local.scheduleSnapshot,
+				error = if (privateState?.profileIncomplete == true) AppError.UNAVAILABLE else local.error,
+			)
 		}
 		private set(value) {
 			if (value.annualGrades == null) {
@@ -199,6 +211,8 @@ internal class NativeController(
 		val task = generation
 		val revision = ++diaryRevision
 		val profileRequest = ++profileRevision
+		val profileToken = privateStates.read().token
+		privateStates.commit(profileToken, privateId) { it.copy(profileRequest = profileRequest) }
 		val repositoryProfileRequest = repository.beginProfileRefresh()
 		val scheduleRequest = ++scheduleRevision
 		val epoch = observedEpoch
@@ -210,13 +224,21 @@ internal class NativeController(
 			currentDiaryRevision = revision
 			currentTaskEpoch = epoch
 			try {
-				val profileUsable = repository.refreshProfile(repositoryProfileRequest) { profile, complete ->
-					post(task) {
-						if (profileRevision != profileRequest) return@post
-						beforePrivateCommit("profile")
-						state = if (complete) state.copy(profile = profile) else {
-							gradesRevision++
-							state.copy(profile = profile, diary = DiaryState.Cleared, diaryWeeks = emptyList(), selectedDiaryDate = null, schedule = null, scheduleSnapshot = null, annualGrades = null, gradesLoading = false, error = AppError.UNAVAILABLE)
+				val profileUsable = repository.refreshProfileLeased(repositoryProfileRequest) { profile, complete, lease ->
+					if (!closed && generation == task && profileRevision == profileRequest && repository.revocationEpoch() == epoch) {
+						val result = privateStates.commitLease(lease, privateId, beforeCas = { beforePrivateCommit("profile") }) {
+							if (it.profileRequest != profileRequest) it else it.copy(
+								profile = profile,
+								profileIncomplete = !complete,
+								annualGrades = if (complete) it.annualGrades else null,
+								gradesLoading = if (complete) it.gradesLoading else false,
+							)
+						}
+						if (result == PrivateStateRegistry.LeaseCommit.APPLIED) handler.post {
+							if (!closed && generation == task && profileRevision == profileRequest && repository.revocationEpoch() == epoch) {
+								stateSignal++
+								onState(state)
+							}
 						}
 					}
 				}
