@@ -117,13 +117,14 @@ jobs:
           target: default
           arch: x86_64
           script: |
-            set -euo pipefail
+            set -eu
             (cd artifact && sha256sum -c SHA256SUMS)
             adb shell input keyevent KEYCODE_WAKEUP
             adb shell wm dismiss-keyguard
             adb install artifact/materialclass-integration-test-debug.apk
             adb install app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-            adb shell am instrument -w -r -e verifyIntegrationArtifact true -e class org.materialclass.IntegrationArtifactTest,org.materialclass.LauncherTest org.materialclass.test/androidx.test.runner.AndroidJUnitRunner | tee "$RUNNER_TEMP/artifact-instrumentation.txt"
+            adb shell am instrument -w -r -e verifyIntegrationArtifact true -e class org.materialclass.IntegrationArtifactTest,org.materialclass.LauncherTest org.materialclass.test/androidx.test.runner.AndroidJUnitRunner > "$RUNNER_TEMP/artifact-instrumentation.txt"
+            cat "$RUNNER_TEMP/artifact-instrumentation.txt"
             grep -Eq '^OK \(3 tests\)' "$RUNNER_TEMP/artifact-instrumentation.txt"
             (cd artifact && sha256sum -c SHA256SUMS)
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
