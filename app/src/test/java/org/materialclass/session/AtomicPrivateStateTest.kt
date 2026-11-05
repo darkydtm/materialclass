@@ -50,21 +50,21 @@ class AtomicPrivateStateTest {
 			val active = coordinator.activate(AccountId("synthetic-concurrent-lease"))
 			val first = coordinator.admit(active)!!
 			val second = coordinator.admit(active)!!
-			fun submit(lease: RequestLease, id: PrivateStateRegistry.ControllerId) = executor.submit<PrivateStateRegistry.LeaseCommit> {
+			fun submit(lease: RequestLease, id: PrivateStateRegistry.ControllerId, firstField: Boolean) = executor.submit<PrivateStateRegistry.LeaseCommit> {
 				var initial = true
 				registry.commitLease(lease, id) {
 					if (initial) { initial = false; entered.countDown(); resume.awaitOrFail() }
-					it.copy(signedIn = true)
+					if (firstField) it.copy(signedIn = true) else it.copy(busy = true)
 				}
 			}
-			val firstResult = submit(first, one)
-			val secondResult = submit(second, two)
+			val firstResult = submit(first, one, true)
+			val secondResult = submit(second, two, false)
 			entered.awaitOrFail()
 			resume.countDown()
 			assertEquals(PrivateStateRegistry.LeaseCommit.APPLIED, firstResult.get(5, TimeUnit.SECONDS))
 			assertEquals(PrivateStateRegistry.LeaseCommit.APPLIED, secondResult.get(5, TimeUnit.SECONDS))
 			assertTrue(registry.read().states[one]!!.signedIn)
-			assertTrue(registry.read().states[two]!!.signedIn)
+			assertTrue(registry.read().states[two]!!.busy)
 		} finally {
 			resume.countDown()
 			executor.shutdownNow()
@@ -144,6 +144,32 @@ class AtomicPrivateStateTest {
 			firstResume.countDown()
 			retryResume.countDown()
 			executor.shutdownNow()
+			registry.unregister(id)
+			registry.unregister(otherId)
+			coordinator.logout()
+		}
+	}
+
+	@Test
+	fun repeatedConflictsReturnRetryableResultWithoutPublishing() {
+		val coordinator = SessionCoordinator { }
+		val registry = SessionCoordinator.privateStates
+		val id = registry.register()
+		val otherId = registry.register()
+		try {
+			val active = coordinator.activate(AccountId("synthetic-conflict-bound"))
+			val lease = coordinator.admit(active)!!
+			val other = coordinator.admit(active)!!
+			var attempts = 0
+			val result = registry.commitLease(lease, id) {
+				attempts++
+				assertEquals(PrivateStateRegistry.LeaseCommit.APPLIED, registry.commitLease(other, otherId) { state -> state.copy(busy = !state.busy) })
+				it.copy(signedIn = true)
+			}
+			assertEquals(PrivateStateRegistry.LeaseCommit.CONFLICT, result)
+			assertEquals(8, attempts)
+			assertEquals(NativeUiState(), registry.read().states[id])
+		} finally {
 			registry.unregister(id)
 			registry.unregister(otherId)
 			coordinator.logout()
