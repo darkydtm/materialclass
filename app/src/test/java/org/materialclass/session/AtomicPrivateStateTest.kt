@@ -35,6 +35,16 @@ private class AtomicPrivateState<T>(private val empty: T) {
 }
 
 class AtomicPrivateStateTest {
+	@Test
+	fun productionRegistryExists() {
+		val registry = try {
+			Class.forName("org.materialclass.session.PrivateStateRegistry")
+		} catch (_: ClassNotFoundException) {
+			null
+		}
+		assertTrue("Production private state registry is required", registry != null)
+	}
+
 	private fun CountDownLatch.awaitOrFail() {
 		assertTrue("Timed out waiting for barrier", await(5, TimeUnit.SECONDS))
 	}
