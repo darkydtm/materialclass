@@ -255,7 +255,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 
 	internal fun revokeIfActive(session: ActiveSession, expired: Boolean = false, selected: (Any) -> Unit = {}): Boolean = synchronized(StorageLock) {
 		val result = synchronized(CancellationLock) {
-			if (active !== session) null else {
+			if (active !== session || pending.isNotEmpty()) null else {
 				active = null; restorationAllowed = false
 				val token = Any()
 				pending.add(token)
