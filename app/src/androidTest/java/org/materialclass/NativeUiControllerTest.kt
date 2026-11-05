@@ -112,23 +112,33 @@ class NativeUiControllerTest {
 		try {
 			instrumentation.runOnMainSync { activity.setContent { MaterialClassApp(nativeEnabled = true, controllerFactory = { fake }) } }
 			waitFor("Sign out")
+			instrumentation.runOnMainSync { assertTrue("Fixture must be attached", activity.window.decorView.isAttachedToWindow) }
 			click("Homework")
+			waitFor("Task")
 			click("Show filters")
 			var saved = waitFor("Hide filters")
 			while (!saved.isClickable && saved.parent != null) saved = saved.parent
 			assertTrue(saved.isClickable)
 			instrumentation.runOnMainSync { fake.state = fake.state.copy(diary = DiaryState.Ready(snapshot(2))) }
-			instrumentation.waitForIdleSync()
 			waitFor("Show filters")
 			val root = instrumentation.uiAutomation.rootInActiveWindow
 			assertNotNull(find(root, "Show filters"))
 			assertNull(find(root, "Hide filters"))
 			assertNull(find(root, "All subjects"))
-			var fresh = find(root, "Show filters")!!
+			var fresh = waitFor("Show filters")
 			while (!fresh.isClickable && fresh.parent != null) fresh = fresh.parent
+			assertTrue("Fresh node must still be attached", fresh.refresh())
 			assertTrue(fresh.isClickable)
+			var clicks = 0
+			clicks++
 			val accepted = (if (useSavedNode) saved else fresh).performAction(AccessibilityNodeInfo.ACTION_CLICK)
-			instrumentation.waitForIdleSync()
+			assertEquals("Perform exactly one experiment click", 1, clicks)
+			if (accepted) {
+				waitFor("Hide filters")
+				var option = waitFor("All subjects")
+				while (!option.isCheckable && option.parent != null) option = option.parent
+				assertTrue("Opened filters must expose a selectable option", option.isCheckable)
+			}
 			val after = instrumentation.uiAutomation.rootInActiveWindow
 			val show = find(after, "Show filters") != null
 			val hide = find(after, "Hide filters") != null
