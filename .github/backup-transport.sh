@@ -26,12 +26,16 @@ if ! grep -Fq "$transport" "$RUNNER_TEMP/transports.txt"; then
 fi
 adb shell bmgr transport "$transport" | tee "$RUNNER_TEMP/transport-selection.txt"
 adb shell bmgr list transports | tr -d '\r' | grep -F "* $transport"
+nonce=$(python3 -c 'import uuid; print(uuid.uuid4().hex)')
 reference=org.materialclass.backupreference
 adb install backup-reference/build/outputs/apk/debug/backup-reference-debug.apk
 adb shell am start -n "$reference/android.app.Activity"
 adb shell run-as "$reference" mkdir -p shared_prefs files
-printf '%s' '<map><string name="fixture">forbidden-session</string></map>' | adb shell run-as "$reference" tee shared_prefs/session.xml > /dev/null
-printf '%s' forbidden-file | adb shell run-as "$reference" tee files/fixture > /dev/null
+reference_prefs="<map><string name=\"fixture\">$nonce</string></map>"
+printf '%s' "$reference_prefs" | adb shell run-as "$reference" tee shared_prefs/session.xml > /dev/null
+printf '%s' "$nonce" | adb shell run-as "$reference" tee files/fixture > /dev/null
+test "$(adb exec-out run-as "$reference" cat shared_prefs/session.xml)" = "$reference_prefs"
+test "$(adb exec-out run-as "$reference" cat files/fixture)" = "$nonce"
 adb shell bmgr backupnow "$reference" | tr -d '\r' | tee "$RUNNER_TEMP/reference-backup.txt"
 grep -F "Package $reference with result: Success" "$RUNNER_TEMP/reference-backup.txt"
 adb shell am force-stop "$reference"
@@ -48,15 +52,15 @@ if [ "$api" -eq 24 ]; then
 else
 	adb shell bmgr restore "$reference_token" "$reference" | tr -d '\r' | tee "$RUNNER_TEMP/reference-restore.txt"
 fi
-grep -E "^onUpdate: [0-9]+ = $reference$" "$RUNNER_TEMP/reference-restore.txt"
+awk -v package="$reference" '$1 == "onUpdate:" && $2 ~ /^[0-9]+$/ && $3 == "=" && $4 == package && NF == 4 { found = 1 } END { exit !found }' "$RUNNER_TEMP/reference-restore.txt"
 grep -Fx 'restoreFinished: 0' "$RUNNER_TEMP/reference-restore.txt"
 adb shell am force-stop "$reference"
-adb exec-out run-as "$reference" cat shared_prefs/session.xml | grep -Fx '<map><string name="fixture">forbidden-session</string></map>'
-adb exec-out run-as "$reference" cat files/fixture | grep -Fx forbidden-file
+test "$(adb exec-out run-as "$reference" cat shared_prefs/session.xml)" = "$reference_prefs"
+test "$(adb exec-out run-as "$reference" cat files/fixture)" = "$nonce"
 printf '%s\n' 'STAGE: permissive reference restored private fixtures'
 fixture=org.materialclass.security.BackupTransportFixtureTest
 run_fixture() {
-	adb shell am instrument -w -r -e class "$fixture#$1" "$package.test/androidx.test.runner.AndroidJUnitRunner" | tr -d '\r' | tee "$RUNNER_TEMP/fixture-$1.txt"
+	adb shell am instrument -w -r -e nonce "$nonce" -e class "$fixture#$1" "$package.test/androidx.test.runner.AndroidJUnitRunner" | tr -d '\r' | tee "$RUNNER_TEMP/fixture-$1.txt"
 	grep -Fx 'OK (1 test)' "$RUNNER_TEMP/fixture-$1.txt"
 }
 run_fixture seed
@@ -65,7 +69,8 @@ adb shell run-as "$package" mkdir -p shared_prefs cache files
 printf '%s' '<map><string name="fixture">forbidden-session</string></map>' | adb shell run-as "$package" tee shared_prefs/session.xml > /dev/null
 printf '%s' forbidden-cache | adb shell run-as "$package" tee cache/fixture > /dev/null
 printf '%s' forbidden-file | adb shell run-as "$package" tee files/fixture > /dev/null
-printf '%s\n' 'STAGE: fixtures seeded'
+run_fixture verifySeededPayloads
+printf '%s\n' 'STAGE: fixtures seeded and encrypted payloads verified'
 adb exec-out run-as "$package" cat shared_prefs/appearance.xml | grep -F 'name="theme">black'
 for path in shared_prefs/session.xml cache/fixture files/fixture no_backup/session files/backup-cache/index; do
 	adb shell run-as "$package" sh -c "'test -f $path'"
@@ -88,7 +93,7 @@ if [ "$api" -eq 24 ]; then
 else
 	adb shell bmgr restore "$token" "$package" | tr -d '\r' | tee "$RUNNER_TEMP/restore-result.txt"
 fi
-grep -E "^onUpdate: [0-9]+ = $package$" "$RUNNER_TEMP/restore-result.txt"
+awk -v package="$package" '$1 == "onUpdate:" && $2 ~ /^[0-9]+$/ && $3 == "=" && $4 == package && NF == 4 { found = 1 } END { exit !found }' "$RUNNER_TEMP/restore-result.txt"
 grep -Fx 'restoreFinished: 0' "$RUNNER_TEMP/restore-result.txt"
 adb shell am force-stop "$package"
 adb exec-out run-as "$package" cat shared_prefs/appearance.xml | grep -F 'name="theme">black'
