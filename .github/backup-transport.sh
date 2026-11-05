@@ -4,6 +4,7 @@ set -euo pipefail
 package=org.materialclass
 transport=com.android.localtransport/.LocalTransport
 adb install app/build/outputs/apk/debug/app-debug.apk
+adb install app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 printf '%s\n' 'DIAGNOSTIC: device and package'
 adb shell getprop ro.build.fingerprint
 adb shell am get-current-user
@@ -25,15 +26,20 @@ if ! grep -Fq "$transport" "$RUNNER_TEMP/transports.txt"; then
 fi
 adb shell bmgr transport "$transport" | tee "$RUNNER_TEMP/transport-selection.txt"
 adb shell bmgr list transports | tr -d '\r' | grep -F "* $transport"
+fixture=org.materialclass.security.BackupTransportFixtureTest
+run_fixture() {
+	adb shell am instrument -w -r -e class "$fixture#$1" "$package.test/androidx.test.runner.AndroidJUnitRunner" | tr -d '\r' | tee "$RUNNER_TEMP/fixture-$1.txt"
+	grep -Fx 'OK (1 test)' "$RUNNER_TEMP/fixture-$1.txt"
+}
+run_fixture seed
 adb shell monkey -p "$package" -c android.intent.category.LAUNCHER 1
 adb shell run-as "$package" mkdir -p shared_prefs cache files
-printf '%s' '<map><string name="fixture">allowed-appearance</string></map>' | adb shell run-as "$package" tee shared_prefs/appearance.xml > /dev/null
 printf '%s' '<map><string name="fixture">forbidden-session</string></map>' | adb shell run-as "$package" tee shared_prefs/session.xml > /dev/null
 printf '%s' forbidden-cache | adb shell run-as "$package" tee cache/fixture > /dev/null
 printf '%s' forbidden-file | adb shell run-as "$package" tee files/fixture > /dev/null
 printf '%s\n' 'STAGE: fixtures seeded'
-adb exec-out run-as "$package" cat shared_prefs/appearance.xml | grep -F allowed-appearance
-for path in shared_prefs/session.xml cache/fixture files/fixture; do
+adb exec-out run-as "$package" cat shared_prefs/appearance.xml | grep -F 'name="theme">black'
+for path in shared_prefs/session.xml cache/fixture files/fixture no_backup/session files/backup-cache/index; do
 	adb shell run-as "$package" sh -c "'test -f $path'"
 done
 adb shell bmgr backupnow "$package" | tr -d '\r' | tee "$RUNNER_TEMP/backup-result.txt"
@@ -41,7 +47,7 @@ grep -F "Package $package with result: Success" "$RUNNER_TEMP/backup-result.txt"
 printf '%s\n' 'STAGE: package backup succeeded'
 adb shell am force-stop "$package"
 adb shell pm clear "$package" | tr -d '\r' | grep -Fx Success
-for path in shared_prefs/appearance.xml shared_prefs/session.xml cache/fixture files/fixture; do
+for path in shared_prefs/appearance.xml shared_prefs/session.xml cache/fixture files/fixture no_backup/session files/backup-cache; do
 	adb shell run-as "$package" sh -c "'test ! -e $path'"
 done
 printf '%s\n' 'STAGE: app storage cleared'
@@ -57,9 +63,10 @@ fi
 grep -E "^onUpdate: [0-9]+ = $package$" "$RUNNER_TEMP/restore-result.txt"
 grep -Fx 'restoreFinished: 0' "$RUNNER_TEMP/restore-result.txt"
 adb shell am force-stop "$package"
-adb exec-out run-as "$package" cat shared_prefs/appearance.xml | grep -F allowed-appearance
-for path in shared_prefs/session.xml cache/fixture files/fixture; do
+adb exec-out run-as "$package" cat shared_prefs/appearance.xml | grep -F 'name="theme">black'
+for path in shared_prefs/session.xml cache/fixture files/fixture no_backup/session files/backup-cache; do
 	adb shell run-as "$package" sh -c "'test ! -e $path'"
 done
+run_fixture verifyRestoredAppearanceAndAbsentSession
 printf '%s\n' 'Local transport restored appearance and excluded session, cache and files'
 printf '%s\n' 'Cloud backup and device-to-device transfer were not tested'
