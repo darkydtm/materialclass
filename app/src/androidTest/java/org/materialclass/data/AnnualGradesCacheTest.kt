@@ -118,6 +118,66 @@ class AnnualGradesCacheTest {
 	@Test fun logoutRejectsGradeDeliveryAfterWrite() = cleanupRejectsCompletedGradeWrite(false)
 	@Test fun accountSwitchRejectsGradeDeliveryAfterWrite() = cleanupRejectsCompletedGradeWrite(true)
 
+	private fun cleanupWaitsForGradeWrite(switchAccount: Boolean) {
+		val gateway = object : TestSchoolGateway(), AnnualGradesGateway {
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = error("Unexpected diary request")
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic", login, "student", SchoolContext(1, 2026, 2)))
+			override fun annualGrades(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<AnnualGrades> = GatewayResult.Success(AnnualGrades(listOf(AnnualGradeRow("Synthetic subject", listOf("4", null, null, null), null, null))))
+		}
+		val verifier = IdentityVerifier { session, _ ->
+			val profile = JSONObject("""{"userId":${session.identityCandidate},"role":"student","school_id":1,"group":{"id":2},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}""")
+			SessionVerification.Verified(AccountId(session.identityCandidate!!), true, null, VerifiedDiarySession.compare(session, profile))
+		}
+		val entered = java.util.concurrent.CountDownLatch(1)
+		val release = java.util.concurrent.CountDownLatch(1)
+		val written = java.util.concurrent.CountDownLatch(1)
+		val encrypted = EncryptedDiaryCache(EncryptedCache(context, coordinator, "grades"))
+		val grades = object : DiaryCache {
+			override fun read(session: ActiveSession) = encrypted.read(session)
+			override fun write(session: ActiveSession, bytes: ByteArray): Boolean {
+				val result = encrypted.write(session, bytes)
+				written.countDown()
+				entered.countDown()
+				check(release.await(30, java.util.concurrent.TimeUnit.SECONDS))
+				return result
+			}
+		}
+		val diary = EncryptedDiaryCache(EncryptedCache(context, coordinator))
+		val repository = SchoolRepository(gateway, verifier, coordinator, diary, { 1234L }, {}, SessionStore(context, coordinator), null, {}, grades)
+		assertTrue(repository.login("1", charArrayOf('x')) is GatewayResult.Success)
+		val active = coordinator.event().session!!
+		val id = KeystoreKeys().namespace(active.cacheNamespace.value + ":grades", false)
+		val file = File(context.filesDir, "backup-cache/$id")
+		val alias = "cache-$id"
+		val delivery = java.util.concurrent.atomic.AtomicReference<AnnualGradesDelivery>()
+		val failure = java.util.concurrent.atomic.AtomicReference<Throwable>()
+		val writer = Thread { try { repository.annualGrades { delivery.set(it) } } catch (error: Throwable) { failure.set(error) } }
+		val changer = Thread { try { if (switchAccount) check(repository.login("2", charArrayOf('x')) is GatewayResult.Success) else repository.logout() } catch (error: Throwable) { failure.set(error) } }
+		writer.start()
+		try {
+			assertTrue(entered.await(15, java.util.concurrent.TimeUnit.SECONDS))
+			assertTrue(written.await(1, java.util.concurrent.TimeUnit.SECONDS))
+			assertTrue(file.isFile)
+			changer.start()
+			val deadline = android.os.SystemClock.uptimeMillis() + 15000
+			while (changer.state != Thread.State.BLOCKED && changer.isAlive && android.os.SystemClock.uptimeMillis() < deadline) Thread.yield()
+			assertEquals(Thread.State.BLOCKED, changer.state)
+		} finally {
+			release.countDown()
+			writer.join(15000)
+			changer.join(15000)
+		}
+		assertFalse(writer.isAlive)
+		assertFalse(changer.isAlive)
+		assertNull(failure.get())
+		assertFalse(file.exists())
+		assertFalse(KeystoreKeys().contains(alias))
+		delivery.get()?.let { assertFalse(repository.acceptsAnnualGrades(it)) }
+	}
+
+	@Test fun logoutWaitsForInProgressGradeWrite() = cleanupWaitsForGradeWrite(false)
+	@Test fun accountSwitchWaitsForInProgressGradeWrite() = cleanupWaitsForGradeWrite(true)
+
 	@Test fun populatedGradesAreDeletedOnAccountSwitchAndLogout() {
 		var response: GatewayResult<AnnualGrades> = GatewayResult.Success(AnnualGrades(listOf(AnnualGradeRow("Synthetic subject", listOf("4", null, null, null), null, null))))
 		val gateway = object : TestSchoolGateway(), AnnualGradesGateway {
