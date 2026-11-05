@@ -48,7 +48,7 @@ def device_script(ref):
 	text = WORKFLOW.read_text()
 	device = text.split('  device:\n', 1)[1].split('\n  test-apk:', 1)[0]
 	script = device.split('          script: |\n', 1)[1]
-	return textwrap.dedent(script).replace('${{ github.ref }}', ref)
+	return textwrap.dedent(script).replace('${{ github.ref }}', ref).replace('${{ matrix.api }}', '24')
 
 
 class DeviceScriptTest(unittest.TestCase):
