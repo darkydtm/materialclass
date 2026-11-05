@@ -33,7 +33,12 @@ class EncryptedCache(context: Context, private val coordinator: SessionCoordinat
 	fun reset(session: ActiveSession): Boolean = coordinator.ifActive(session) { file(session).reset(); true } ?: false
 
 	companion object {
-		internal fun clearNamespace(context: Context, namespace: org.materialclass.session.CacheNamespace) = synchronized(StorageLock) {
+		internal fun clearNamespace(
+			context: Context,
+			namespace: org.materialclass.session.CacheNamespace,
+			deleteFile: (File) -> Boolean = { it.delete() },
+			deleteKey: (String) -> Unit = { KeystoreKeys().delete(it) },
+		) = synchronized(StorageLock) {
 			val files = CacheFiles(context)
 			val keys = KeystoreKeys()
 			if (!keys.contains("cache-namespace")) {
@@ -44,7 +49,7 @@ class EncryptedCache(context: Context, private val coordinator: SessionCoordinat
 			for (suffix in listOf("", ":schedule", ":grades")) {
 				try {
 					val id = keys.namespace(namespace.value + suffix, false)
-					EncryptedFile(File(files.directory, id), "cache-$id", keys, files).reset()
+					EncryptedFile(File(files.directory, id), "cache-$id", keys, files).reset(deleteFile, deleteKey)
 				} catch (error: Exception) {
 					if (failure == null) failure = error else failure.addSuppressed(error)
 				}

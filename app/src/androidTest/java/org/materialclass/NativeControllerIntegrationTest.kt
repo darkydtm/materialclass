@@ -36,6 +36,78 @@ class NativeControllerIntegrationTest {
 		main { controller?.close() }
 		coordinator.logout()
 	}
+	@Test fun gradeFileDeletionFailureKeepsLogoutRetryable() = gradeDeletionFailure(true)
+
+	@Test fun gradeKeyDeletionFailureKeepsLogoutRetryable() = gradeDeletionFailure(false)
+
+	private fun gradeDeletionFailure(failFile: Boolean) {
+		val keys = org.materialclass.security.KeystoreKeys()
+		val journal = FileCleanupJournal(context)
+		val failing = java.util.concurrent.atomic.AtomicBoolean(false)
+		val hits = java.util.concurrent.atomic.AtomicInteger()
+		var gradeId = ""
+		val shared = SessionCoordinator(
+			{ SessionStore.clear(context) },
+			{ namespace -> org.materialclass.cache.EncryptedCache.clearNamespace(context, namespace,
+				{ file -> if (failing.get() && failFile && file.name == gradeId) { hits.incrementAndGet(); false } else file.delete() },
+				{ alias -> if (failing.get() && !failFile && alias == "cache-$gradeId") { hits.incrementAndGet(); throw java.io.IOException("Synthetic key deletion failure") } else keys.delete(alias) },
+			) },
+			journal,
+			{ keys.delete("session") },
+		)
+		val gateway = object : SchoolGateway {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Failure(AppError.UNAVAILABLE)
+			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = GatewayResult.Failure(AppError.UNAVAILABLE)
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = GatewayResult.Failure(AppError.UNAVAILABLE)
+			override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> = GatewayResult.Failure(AppError.UNAVAILABLE)
+		}
+		val cache = org.materialclass.cache.EncryptedCache(context, shared, "grades")
+		val otherNamespace = CacheNamespace.create()
+		val files = org.materialclass.cache.CacheFiles(context)
+		var otherId = ""
+		try {
+			val session = shared.activate(AccountId("synthetic-grade-cleanup"))
+			val payload = byteArrayOf(10, 20, 30)
+			assertTrue(cache.write(session, payload))
+			assertArrayEquals(payload, cache.read(session))
+			gradeId = keys.namespace(session.cacheNamespace.value + ":grades", false)
+			val gradeFile = java.io.File(files.directory, gradeId)
+			assertTrue(gradeFile.isFile)
+			assertTrue(keys.contains("cache-$gradeId"))
+			otherId = keys.namespace(otherNamespace.value + ":grades", false)
+			val other = org.materialclass.security.EncryptedFile(java.io.File(files.directory, otherId), "cache-$otherId", keys, files)
+			other.write(byteArrayOf(42))
+			main { controller = NativeController { emit -> SchoolRepository(gateway, IdentityVerifier { _, _ -> SessionVerification.Retry }, shared, EncryptedDiaryCache(cache), { 1L }, emit, SessionStore(context, shared)) } }
+			failing.set(true)
+			main { controller!!.logout() }
+			await { controller!!.state.logoutPending && !controller!!.state.busy && controller!!.state.error == AppError.UNAVAILABLE }
+			assertEquals(1, hits.get())
+			val ticket = shared.pendingLogoutTicket()
+			assertNotNull(ticket)
+			assertEquals(session.cacheNamespace.value, journal.read()?.value)
+			assertNull(shared.admit(session))
+			assertEquals(failFile, gradeFile.exists())
+			assertEquals(!failFile, keys.contains("cache-$gradeId"))
+			assertArrayEquals(byteArrayOf(42), other.read())
+			failing.set(false)
+			main { controller!!.logout() }
+			await { !controller!!.state.logoutPending && !controller!!.state.busy }
+			assertNull(shared.pendingLogoutTicket())
+			assertNull(journal.read())
+			assertFalse(gradeFile.exists())
+			assertFalse(keys.contains("cache-$gradeId"))
+			assertArrayEquals(byteArrayOf(42), other.read())
+			main { assertNull(controller!!.state.error); assertFalse(controller!!.state.signedIn) }
+		} finally {
+			failing.set(false)
+			main { controller?.close(); controller = null }
+			shared.pendingLogoutTicket()?.let { shared.logout(it) }
+			if (otherId.isNotEmpty()) org.materialclass.cache.EncryptedCache.clearNamespace(context, otherNamespace)
+			shared.logout()
+			cache.clearAll()
+		}
+	}
+
 	@Test fun logoutCompletionWaitsForUiRevocation() {
 		val cleaned = CountDownLatch(1)
 		val shared = SessionCoordinator { cleaned.countDown() }

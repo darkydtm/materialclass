@@ -39,15 +39,15 @@ internal class EncryptedFile(
 		files.replace(file, byteArrayOf(1) + cipher.iv + cipher.doFinal(value))
 	}
 
-	fun reset() {
+	fun reset(deleteFile: (File) -> Boolean = { it.delete() }, deleteKey: (String) -> Unit = { keys.delete(it) }) {
 		var failure: Exception? = null
 		try {
-			if (file.exists() && !file.delete()) throw java.io.IOException("Could not delete encrypted file")
+			if (file.exists() && !deleteFile(file)) throw java.io.IOException("Could not delete encrypted file")
 		} catch (error: Exception) {
 			failure = error
 		}
 		try {
-			keys.delete(alias)
+			deleteKey(alias)
 		} catch (error: Exception) {
 			if (failure == null) failure = error else failure.addSuppressed(error)
 		}
