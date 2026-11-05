@@ -4,6 +4,8 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
+import org.materialclass.NativeUiState
+import org.materialclass.security.StorageLock
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotSame
@@ -35,6 +37,110 @@ private class AtomicPrivateState<T>(private val empty: T) {
 }
 
 class AtomicPrivateStateTest {
+	@Test
+	fun productionCommitLosingCasToRevokeIsRejected() {
+		val entered = CountDownLatch(1)
+		val resume = CountDownLatch(1)
+		val registry = PrivateStateRegistry { entered.countDown(); resume.awaitOrFail() }
+		val id = registry.register()
+		val token = registry.read().token
+		val reducer: (NativeUiState) -> NativeUiState = { it.copy(signedIn = true) }
+		val executor = Executors.newSingleThreadExecutor()
+		try {
+			val result = executor.submit<Boolean> { registry.commit(token, id, reducer) }
+			entered.awaitOrFail()
+			registry.revokeAndClear()
+			resume.countDown()
+			assertFalse(result.get(5, TimeUnit.SECONDS))
+			assertEquals(NativeUiState(), registry.read().states[id])
+		} finally { resume.countDown(); executor.shutdownNow() }
+	}
+
+	@Test
+	fun productionCommitBeforeRevokeClearsBothClientsAndRejectsAba() {
+		val registry = PrivateStateRegistry()
+		val first = registry.register()
+		val second = registry.register()
+		val initial = registry.read().token
+		val reducer: (NativeUiState) -> NativeUiState = { it.copy(signedIn = true) }
+		assertTrue(registry.commit(initial, first, reducer))
+		assertTrue(registry.commit(initial, second, reducer))
+		val previous = registry.read()
+		registry.revokeAndClear()
+		assertTrue(previous.states[first]!!.signedIn)
+		assertEquals(NativeUiState(), registry.read().states[first])
+		assertEquals(NativeUiState(), registry.read().states[second])
+		registry.revokeAndClear()
+		assertNotSame(initial, registry.read().token)
+		assertFalse(registry.commit(initial, first, reducer))
+		registry.unregister(first)
+		assertFalse(registry.commit(registry.read().token, first, reducer))
+		assertFalse(registry.commit(registry.read().token, second, reducer))
+		registry.activateAndClear()
+		assertTrue(registry.commit(registry.read().token, second, reducer))
+	}
+
+	@Test
+	fun coordinatorRevokesRegistryWhileStorageAndCallbackAreBlocked() {
+		val coordinator = SessionCoordinator { }
+		coordinator.activate(AccountId("synthetic-registry"))
+		val registry = SessionCoordinator.privateStates
+		val first = registry.register()
+		val second = registry.register()
+		val token = registry.read().token
+		val reducer: (NativeUiState) -> NativeUiState = { it.copy(signedIn = true) }
+		assertTrue(registry.commit(token, first, reducer))
+		assertTrue(registry.commit(token, second, reducer))
+		val held = CountDownLatch(1)
+		val release = CountDownLatch(1)
+		val callbackEntered = CountDownLatch(1)
+		val callbackRelease = CountDownLatch(1)
+		val observer: (Long, () -> Unit) -> Unit = { _, acknowledge ->
+			callbackEntered.countDown()
+			callbackRelease.awaitOrFail()
+			acknowledge()
+		}
+		coordinator.observeUiRevocations(observer)
+		val executor = Executors.newFixedThreadPool(2)
+		try {
+			val storage = executor.submit { synchronized(StorageLock) { held.countDown(); release.awaitOrFail() } }
+			held.awaitOrFail()
+			val cancel = executor.submit<Any> { coordinator.cancelInFlightNow() }
+			callbackEntered.awaitOrFail()
+			assertNotSame(token, registry.read().token)
+			assertEquals(NativeUiState(), registry.read().states[first])
+			assertEquals(NativeUiState(), registry.read().states[second])
+			assertFalse(registry.commit(token, first, reducer))
+			callbackRelease.countDown()
+			val ticket = cancel.get(5, TimeUnit.SECONDS)
+			release.countDown()
+			storage.get(5, TimeUnit.SECONDS)
+			coordinator.logout(ticket)
+		} finally {
+			callbackRelease.countDown(); release.countDown()
+			coordinator.removeUiRevocationObserver(observer)
+			registry.unregister(first); registry.unregister(second)
+			executor.shutdownNow()
+			coordinator.pendingLogoutTicket()?.let { coordinator.logout(it) }
+		}
+	}
+
+	@Test
+	fun coordinatorChangesTokenOnAccountReplacement() {
+		val coordinator = SessionCoordinator { }
+		val registry = SessionCoordinator.privateStates
+		val id = registry.register()
+		try {
+			coordinator.activate(AccountId("synthetic-a"))
+			val old = registry.read().token
+			val reducer: (NativeUiState) -> NativeUiState = { it.copy(signedIn = true) }
+			assertTrue(registry.commit(old, id, reducer))
+			coordinator.activate(AccountId("synthetic-b"))
+			assertNotSame(old, registry.read().token)
+			assertEquals(NativeUiState(), registry.read().states[id])
+			assertFalse(registry.commit(old, id, reducer))
+		} finally { registry.unregister(id); coordinator.logout() }
+	}
 	@Test
 	fun productionRegistryExists() {
 		val registry = try {

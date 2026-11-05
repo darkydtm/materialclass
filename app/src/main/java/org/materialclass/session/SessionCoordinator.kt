@@ -61,6 +61,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		private val pending = mutableSetOf<Any>()
 		private val revoked = mutableMapOf<Any, CacheNamespace?>()
 		private val leases = mutableSetOf<RequestLease>()
+		internal val privateStates = PrivateStateRegistry(initiallyActive = false)
 		private val disconnectExecutor = Executors.newCachedThreadPool()
 
 		internal fun permits(lease: RequestLease, account: String): Boolean = synchronized(CancellationLock) {
@@ -173,6 +174,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 	fun cancelInFlightNow(): Any {
 		val token = Any()
 		val (disconnects, epoch, callbacks, deliver) = synchronized(CancellationLock) {
+			privateStates.revokeAndClear()
 			pending.add(token)
 			revoked[token] = active?.cacheNamespace
 			ownPending.addLast(token)
@@ -256,6 +258,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 	internal fun revokeIfActive(session: ActiveSession, expired: Boolean = false, selected: (Any) -> Unit = {}): Boolean = synchronized(StorageLock) {
 		val result = synchronized(CancellationLock) {
 			if (active !== session) null else {
+				privateStates.revokeAndClear()
 				active = null; restorationAllowed = false
 				val token = Any()
 				pending.add(token)
@@ -280,6 +283,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		recoverCleanup()
 		val activation = synchronized(CancellationLock) {
 			if (pending.isNotEmpty() || revision != expected) null else {
+				privateStates.revokeAndClear()
 				val previous = active
 				active = null; restorationAllowed = false
 				Pair(++revision, previous)
@@ -304,6 +308,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		val candidate = ActiveSession(account, CacheNamespace.create())
 		val event = synchronized(CancellationLock) {
 			if (pending.isNotEmpty() || revision != activationRevision) null else {
+				privateStates.activateAndClear()
 				active = candidate
 				lastEvent = SessionEvent(++revocationEpoch, SessionChange.ACTIVATED, candidate)
 				Pair(revocationEpoch, observers.toList())
@@ -326,6 +331,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 	internal fun acceptRestore(account: AccountId, namespace: CacheNamespace, notify: Boolean = true): ActiveSession? {
 		val result = synchronized(CancellationLock) {
 			if (pending.isNotEmpty() || active != null || !restorationAllowed) null else {
+				privateStates.activateAndClear()
 				restorationAllowed = false; revision++
 				val candidate = ActiveSession(account, namespace)
 				active = candidate
@@ -345,6 +351,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 	}
 	internal fun rejectRestore(namespace: CacheNamespace) {
 		val token = synchronized(CancellationLock) {
+			privateStates.revokeAndClear()
 			restorationAllowed = false; revision++
 			Any().also { pending.add(it); revoked[it] = namespace; ownPending.addLast(it) }
 		}
@@ -360,6 +367,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		if (token != null && !isPendingLogout(token)) return@synchronized
 		val (ownedToken, event) = synchronized(CancellationLock) {
 			val existing = token ?: ownPending.firstOrNull { it in pending }
+			if (existing == null) privateStates.revokeAndClear()
 			val owned = existing ?: Any().also { pending.add(it); revoked[it] = active?.cacheNamespace; ownPending.addLast(it) }
 			val namespace = revoked[owned]
 			if (active?.cacheNamespace === namespace || namespace == null) active = null
