@@ -51,7 +51,11 @@ class NativeUiControllerTest {
 		while (SystemClock.uptimeMillis() < deadline) {
 			var node = waitFor(text)
 			while (!node.isClickable && node.parent != null) node = node.parent
-			if (node.isClickable && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return
+			if (node.isClickable && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+				if (text == "Show filters") waitFor("Hide filters")
+				if (text == "Hide filters") waitFor("Show filters")
+				return
+			}
 			SystemClock.sleep(100)
 		}
 		throw AssertionError("Unable to click: $text")
@@ -170,8 +174,17 @@ class NativeUiControllerTest {
 				click(navigation)
 				click(show)
 				fun checkRadio(label: String, checked: Boolean) {
-					var node = waitFor(label)
-					while (!node.isCheckable && node.parent != null) node = node.parent
+					val deadline = SystemClock.uptimeMillis() + 10000
+					fun radioNode(): AccessibilityNodeInfo {
+						var node = waitFor(label)
+						while (!node.isCheckable && node.parent != null) node = node.parent
+						return node
+					}
+					var node = radioNode()
+					while (node.isChecked != checked && SystemClock.uptimeMillis() < deadline) {
+						SystemClock.sleep(50)
+						node = radioNode()
+					}
 					fun hasRadio(current: AccessibilityNodeInfo): Boolean = current.className?.toString() == "android.widget.RadioButton" ||
 						(0 until current.childCount).any { current.getChild(it)?.let(::hasRadio) == true }
 					assertTrue("Radio role missing for $label", hasRadio(node))
