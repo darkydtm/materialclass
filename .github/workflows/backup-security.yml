@@ -94,9 +94,5 @@ jobs:
             cat "$RUNNER_TEMP/backup-instrumentation.txt"
             grep -Eq '^OK \(1 test\)' "$RUNNER_TEMP/backup-instrumentation.txt"
             adb shell monkey -p org.materialclass -c android.intent.category.LAUNCHER 1
-            for attempt in $(seq 1 30); do
-              if adb shell pidof org.materialclass; then break; fi
-              test "$attempt" -lt 30
-              sleep 1
-            done
+            for attempt in $(seq 1 30); do if adb shell pidof org.materialclass; then break; fi; test "$attempt" -lt 30; sleep 1; done
             (cd artifact && sha256sum -c SHA256SUMS)
