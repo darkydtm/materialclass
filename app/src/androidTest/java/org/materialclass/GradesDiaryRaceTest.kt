@@ -102,6 +102,12 @@ class GradesDiaryRaceTest {
 			override fun read(session: ActiveSession): ByteArray? = null
 			override fun write(session: ActiveSession, bytes: ByteArray) = true
 		}
+		val savedGrades = AtomicReference<ByteArray?>(null)
+		val gradesCacheReads = java.util.concurrent.atomic.AtomicInteger()
+		val gradesCache = object : DiaryCache {
+			override fun read(session: ActiveSession): ByteArray? { gradesCacheReads.incrementAndGet(); return savedGrades.get() }
+			override fun write(session: ActiveSession, bytes: ByteArray): Boolean { savedGrades.set(bytes); return true }
+		}
 		fun login(account: String = "1"): NativeController {
 			main { controller = NativeController { emit -> SchoolRepository(gateway, verifier, coordinator, cache, { 1L }, emit, SessionStore(context, coordinator)) }; controller!!.login(account, charArrayOf('x')) }
 			val c = controller!!
@@ -109,6 +115,48 @@ class GradesDiaryRaceTest {
 			return c
 		}
 	}
+
+	private fun revokedGradesAreNotPublished(offline: Boolean) {
+		val fixture = Fixture()
+		val gate = Gate()
+		val armed = java.util.concurrent.atomic.AtomicBoolean(false)
+		val revoked = java.util.concurrent.atomic.AtomicBoolean(false)
+		val staleSnapshot = java.util.concurrent.atomic.AtomicBoolean(false)
+		main {
+			controller = NativeController(
+				onState = { state ->
+					if (revoked.get() && contents(state)?.contains("Subject-1") == true) {
+						staleSnapshot.set(contents(controller!!.state)?.contains("Subject-1") == true)
+					}
+				},
+				beforeGradesCommit = { if (armed.get()) gate.waitHere() },
+			) { emit -> SchoolRepository(fixture.gateway, fixture.verifier, coordinator, fixture.cache, { 1L }, emit, SessionStore(context, coordinator), gradesCache = fixture.gradesCache) }
+			controller!!.login("1", charArrayOf('x'))
+		}
+		val c = controller!!
+		await { c.state.signedIn && c.state.diary is DiaryState.Ready && c.state.schedule != null }
+		main { c.refreshAnnualGrades() }
+		await { contents(c.state)?.contains("Subject-1") == true && !c.state.gradesLoading }
+		assertNotNull("Expected a populated grades cache", fixture.savedGrades.get())
+		if (offline) fixture.gradesError.set(AppError.OFFLINE)
+		armed.set(true)
+		try {
+			main { c.refreshAnnualGrades() }
+			assertTrue("Grades delivery did not reach the checked commit", gate.entered.await(10, TimeUnit.SECONDS))
+			assertEquals(if (offline) 1 else 0, fixture.gradesCacheReads.get())
+			val previousEpoch = coordinator.revocationEpoch()
+			coordinator.cancelInFlightNow()
+			assertTrue(coordinator.revocationEpoch() > previousEpoch)
+			revoked.set(true)
+			gate.release.countDown()
+			drain(c)
+			assertFalse("Revoked grades were assigned to the Compose state", staleSnapshot.get())
+		} finally { gate.release.countDown() }
+	}
+
+	@Test fun revokedOfflineCachedGradesAreNotPublished() = revokedGradesAreNotPublished(true)
+
+	@Test fun revokedOnlineGradesAreNotPublished() = revokedGradesAreNotPublished(false)
 
 	@Test fun diaryRefreshDoesNotCancelBlockedGrades() {
 		val fixture = Fixture()
