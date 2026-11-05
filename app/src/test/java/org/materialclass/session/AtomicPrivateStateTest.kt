@@ -38,6 +38,43 @@ private class AtomicPrivateState<T>(private val empty: T) {
 
 class AtomicPrivateStateTest {
 	@Test
+	fun concurrentLeaseCommitsPreserveBothControllers() {
+		val coordinator = SessionCoordinator { }
+		val registry = SessionCoordinator.privateStates
+		val one = registry.register()
+		val two = registry.register()
+		val entered = CountDownLatch(2)
+		val resume = CountDownLatch(1)
+		val executor = Executors.newFixedThreadPool(2)
+		try {
+			val active = coordinator.activate(AccountId("synthetic-concurrent-lease"))
+			val first = coordinator.admit(active)!!
+			val second = coordinator.admit(active)!!
+			fun submit(lease: RequestLease, id: PrivateStateRegistry.ControllerId) = executor.submit<Boolean> {
+				var initial = true
+				registry.commitLease(lease, id) {
+					if (initial) { initial = false; entered.countDown(); resume.awaitOrFail() }
+					it.copy(signedIn = true)
+				}
+			}
+			val firstResult = submit(first, one)
+			val secondResult = submit(second, two)
+			entered.awaitOrFail()
+			resume.countDown()
+			assertTrue(firstResult.get(5, TimeUnit.SECONDS))
+			assertTrue(secondResult.get(5, TimeUnit.SECONDS))
+			assertTrue(registry.read().states[one]!!.signedIn)
+			assertTrue(registry.read().states[two]!!.signedIn)
+		} finally {
+			resume.countDown()
+			executor.shutdownNow()
+			registry.unregister(one)
+			registry.unregister(two)
+			coordinator.logout()
+		}
+	}
+
+	@Test
 	fun completedLogoutTicketCannotEraseReplacementState() {
 		val coordinator = SessionCoordinator { }
 		val registry = SessionCoordinator.privateStates
