@@ -63,6 +63,48 @@ class SchoolRepositoryTest {
 		return SessionVerification.Verified(AccountId(id), true, VerifiedScheduleSession.compare(session, profile), VerifiedDiarySession.compare(session, profile))
 	}
 
+
+	@Test
+	fun contradictoryOlderProfileRevokesWhileNewerVerificationIsPending() {
+		listOf("teacher", "other").forEach { contradiction ->
+			val oldEntered = CountDownLatch(1); val oldRelease = CountDownLatch(1)
+			val newEntered = CountDownLatch(1); val newRelease = CountDownLatch(1)
+			val calls = java.util.concurrent.atomic.AtomicInteger()
+			val privateCalls = java.util.concurrent.atomic.AtomicInteger()
+			val gateway = object : TestSchoolGateway(), AnnualGradesGateway {
+				override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", "1", "student", SchoolContext(1, 2026, 2)))
+				override fun annualGrades(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<AnnualGrades> { privateCalls.incrementAndGet(); return GatewayResult.Success(AnnualGrades(emptyList())) }
+			}
+			val good = """{"data":{"userId":1,"role":"student","school_id":1,"group":{"id":2},"studentInfo":{"studentSchoolUuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}}"""
+			val verifier = NativeIdentityVerifier(Exchange {
+				when (calls.incrementAndGet()) {
+					2 -> { oldEntered.countDown(); check(oldRelease.await(30, TimeUnit.SECONDS)); Response(200, if (contradiction == "teacher") good.replace("\"student\"", "\"teacher\"") else good.replace("\"userId\":1", "\"userId\":2")) }
+					3 -> { newEntered.countDown(); check(newRelease.await(30, TimeUnit.SECONDS)); Response(200, good) }
+					else -> Response(200, good)
+				}
+			})
+			val repo = SchoolRepository(gateway, verifier, coordinator, FakeCache(), { 1L }, {}, store)
+			assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+			val oldRevision = repo.beginProfileRefresh()
+			val old = thread { repo.refreshProfile(oldRevision) { _, _ -> } }
+			var newer: Thread? = null
+			try {
+				assertTrue(oldEntered.await(10, TimeUnit.SECONDS))
+				val newRevision = repo.beginProfileRefresh()
+				newer = thread { repo.refreshProfile(newRevision) { _, _ -> } }
+				assertTrue(newEntered.await(10, TimeUnit.SECONDS))
+				oldRelease.countDown(); old.join(10000)
+				assertFalse(old.isAlive)
+				var delivered = false
+				repo.annualGrades { delivered = true }
+				assertEquals("$contradiction must revoke before newer response", 0, privateCalls.get())
+				assertFalse(delivered)
+			} finally {
+				oldRelease.countDown(); newRelease.countDown(); old.join(10000); newer?.join(10000); repo.logout()
+			}
+		}
+	}
+
 	@Test
 	fun invalidatedProofCannotBeAdmittedAfterProfileRefresh() {
 		val prepared = CountDownLatch(1); val release = CountDownLatch(1)
