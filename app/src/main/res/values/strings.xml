@@ -62,4 +62,13 @@
 	<string name="grades_quarter">Quarter %1$d: %2$s</string>
 	<string name="grades_year">Year: %1$s</string>
 	<string name="grades_final">Final: %1$s</string>
+	<string name="homework_filter_subject">Filter by subject</string>
+	<string name="homework_all_subjects">All subjects</string>
+	<string name="homework_subject_option">Subject: %1$s</string>
+	<string name="homework_filter_date">Filter by record date</string>
+	<string name="homework_all_dates">All dates</string>
+	<string name="homework_date_option">Date: %1$s</string>
+	<string name="homework_filter_empty">No homework matches these filters.</string>
+	<string name="homework_show_filters">Show filters</string>
+	<string name="homework_hide_filters">Hide filters</string>
 </resources>

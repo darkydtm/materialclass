@@ -62,4 +62,13 @@
 	<string name="grades_quarter">Тоқсан %1$d: %2$s</string>
 	<string name="grades_year">Жыл: %1$s</string>
 	<string name="grades_final">Қорытынды: %1$s</string>
+	<string name="homework_filter_subject">Пән бойынша сүзгі</string>
+	<string name="homework_all_subjects">Барлық пәндер</string>
+	<string name="homework_subject_option">Пән: %1$s</string>
+	<string name="homework_filter_date">Жазба күні бойынша сүзгі</string>
+	<string name="homework_all_dates">Барлық күндер</string>
+	<string name="homework_date_option">Күн: %1$s</string>
+	<string name="homework_filter_empty">Таңдалған сүзгілерге сәйкес тапсырма жоқ.</string>
+	<string name="homework_show_filters">Сүзгілерді көрсету</string>
+	<string name="homework_hide_filters">Сүзгілерді жасыру</string>
 </resources>

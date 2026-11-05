@@ -28,18 +28,48 @@ class NativeUiControllerTest {
 		if (node.text?.toString() == text) return node
 		return (0 until node.childCount).firstNotNullOfOrNull { node.getChild(it)?.let { child -> find(child, text) } }
 	}
+	private fun scrollable(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+		if (node.isScrollable) return node
+		return (0 until node.childCount).firstNotNullOfOrNull { node.getChild(it)?.let(::scrollable) }
+	}
 	private fun waitFor(text: String): AccessibilityNodeInfo {
 		val deadline = SystemClock.uptimeMillis() + 10000
+		var direction = AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
 		while (SystemClock.uptimeMillis() < deadline) {
-			instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, text) }?.let { return it }
+			val root = instrumentation.uiAutomation.rootInActiveWindow
+			root?.let { find(it, text) }?.let { return it }
+			val scroller = root?.let(::scrollable)
+			if (scroller != null && !scroller.performAction(direction)) {
+				direction = if (direction == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD else AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+			}
 			SystemClock.sleep(100)
 		}
 		throw AssertionError("Missing node: $text")
 	}
 	private fun click(text: String) {
-		var node = waitFor(text)
-		while (!node.isClickable && node.parent != null) node = node.parent
-		assertTrue(node.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+		val deadline = SystemClock.uptimeMillis() + 10000
+		while (SystemClock.uptimeMillis() < deadline) {
+			var node = waitFor(text)
+			while (!node.isClickable && node.parent != null) node = node.parent
+			if (node.isClickable && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+				instrumentation.waitForIdleSync()
+				if (text.startsWith("Subject: ") || text.startsWith("Date: ") || text == "All subjects" || text == "All dates") {
+					var confirmed = false
+					while (SystemClock.uptimeMillis() < deadline) {
+						var selected = waitFor(text)
+						while (!selected.isCheckable && selected.parent != null) selected = selected.parent
+						if (selected.isCheckable && selected.isChecked) { confirmed = true; break }
+						SystemClock.sleep(50)
+					}
+					assertTrue("Selection did not update: $text", confirmed)
+				}
+				if (text == "Show filters") waitFor("Hide filters")
+				if (text == "Hide filters") waitFor("Show filters")
+				return
+			}
+			SystemClock.sleep(100)
+		}
+		throw AssertionError("Unable to click: $text")
 	}
 	private fun edit(node: AccessibilityNodeInfo, value: String) {
 		val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, value) }
@@ -126,6 +156,122 @@ class NativeUiControllerTest {
 	}
 
 	private fun AccessibilityNodeInfo.boundsInScreenTop(): Int = android.graphics.Rect().also { getBoundsInScreen(it) }.top
+
+	@Test fun homeworkFilterOptionsExposeLocalizedRadioSelection() {
+		val context = ApplicationProvider.getApplicationContext<Context>()
+		val labels = listOf(
+			listOf("en", "Homework", "Show filters", "All subjects", "Subject: Math", "All dates", "Date: day one"),
+			listOf("ru", "Домашнее задание", "Показать фильтры", "Все предметы", "Предмет: Math", "Все даты", "Дата: day one"),
+			listOf("kk", "Үй тапсырмасы", "Сүзгілерді көрсету", "Барлық пәндер", "Пән: Math", "Барлық күндер", "Күн: day one")
+		)
+		for (row in labels) {
+			val (language, navigation, show, allSubjects, subject) = row
+			val allDates = row[5]
+			val date = row[6]
+			context.getSharedPreferences("appearance", 0).edit().putBoolean("warning_seen", true).putString("language", language).commit()
+			val fake = object : NativeUiController {
+				override val state = NativeUiState(signedIn = true, diary = DiaryState.Ready(DiarySnapshot(Diary("week", listOf(DiaryDay("one", "day one", listOf(DiarySubject("Math", "lesson", "id", "text", "Task", null, false, false))))), 1)))
+				override fun start() { }
+				override fun login(username: String, password: CharArray) { password.fill('\u0000') }
+				override fun refresh() { }
+				override fun logout() { }
+				override fun close() { }
+			}
+			val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
+			try {
+				instrumentation.runOnMainSync { activity.setContent { MaterialClassApp(nativeEnabled = true, controllerFactory = { fake }) } }
+				val logout = when (language) { "ru" -> "Выйти"; "kk" -> "Шығу"; else -> "Sign out" }
+				waitFor(logout)
+				click(navigation)
+				click(show)
+				fun checkRadio(label: String, checked: Boolean) {
+					val deadline = SystemClock.uptimeMillis() + 10000
+					fun radioNode(): AccessibilityNodeInfo {
+						var node = waitFor(label)
+						while (!node.isCheckable && node.parent != null) node = node.parent
+						return node
+					}
+					var node = radioNode()
+					while (node.isChecked != checked && SystemClock.uptimeMillis() < deadline) {
+						SystemClock.sleep(50)
+						node = radioNode()
+					}
+					fun hasRadio(current: AccessibilityNodeInfo): Boolean = current.className?.toString() == "android.widget.RadioButton" ||
+						(0 until current.childCount).any { current.getChild(it)?.let(::hasRadio) == true }
+					assertTrue("Radio role missing for $label", hasRadio(node))
+					assertTrue(node.isCheckable)
+					assertEquals(label, checked, node.isChecked)
+				}
+				checkRadio(allSubjects, true)
+				checkRadio(subject, false)
+				click(subject)
+				instrumentation.waitForIdleSync()
+				checkRadio(subject, true)
+				checkRadio(allSubjects, false)
+				checkRadio(allDates, true)
+				checkRadio(date, false)
+				click(date)
+				instrumentation.waitForIdleSync()
+				checkRadio(date, true)
+				checkRadio(allDates, false)
+			} finally {
+				activity.finish()
+				context.getSharedPreferences("appearance", 0).edit().clear().commit()
+			}
+		}
+	}
+
+	@Test fun homeworkFiltersOnlyTheCurrentSnapshotAndClearsOnSignOut() {
+		val context = ApplicationProvider.getApplicationContext<Context>()
+		context.getSharedPreferences("appearance", 0).edit().putBoolean("warning_seen", true).putString("language", "en").commit()
+		fun item(label: String, body: String) = DiarySubject(label, "lesson", "id", "text", body, null, false, false)
+		val diary = Diary("week", listOf(DiaryDay("one", "day one", listOf(item("Math", "Math task"), item("Math", "Second math task"))), DiaryDay("two", "day two", listOf(item("Art", "Art task")))))
+		val fake = object : NativeUiController {
+			override var state by mutableStateOf(NativeUiState(signedIn = true, diary = DiaryState.Ready(DiarySnapshot(diary, 1))))
+			override fun start() { }
+			override fun login(username: String, password: CharArray) { password.fill('\u0000') }
+			override fun refresh() { }
+			override fun logout() { state = NativeUiState() }
+			override fun close() { }
+		}
+		val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
+		try {
+			instrumentation.runOnMainSync { activity.setContent { MaterialClassApp(nativeEnabled = true, controllerFactory = { fake }) } }
+			waitFor(context.getString(R.string.logout))
+			click("Homework")
+			click("Show filters")
+			click("Subject: Math")
+			click("Hide filters")
+			waitFor("Math task")
+			waitFor("Second math task")
+			val filteredRoot = instrumentation.uiAutomation.rootInActiveWindow
+			assertTrue(find(filteredRoot, "Math task")!!.boundsInScreenTop() < find(filteredRoot, "Second math task")!!.boundsInScreenTop())
+			assertNull(find(instrumentation.uiAutomation.rootInActiveWindow, "Art task"))
+			click("Show filters")
+			click("All subjects")
+			click("Hide filters")
+			waitFor("Art task")
+			click("Show filters")
+			click("Date: day two")
+			click("Hide filters")
+			waitFor("Art task")
+			assertNull(find(instrumentation.uiAutomation.rootInActiveWindow, "Math task"))
+			click("Show filters")
+			click("All dates")
+			click("Hide filters")
+			waitFor("Math task")
+			click("Show filters")
+			click("Subject: Math")
+			click("Hide filters")
+			instrumentation.runOnMainSync { fake.state = NativeUiState() }
+			waitFor(context.getString(R.string.data_unavailable))
+			instrumentation.runOnMainSync { fake.state = NativeUiState(signedIn = true, diary = DiaryState.Ready(DiarySnapshot(diary, 2))) }
+			waitFor("Art task")
+		} finally {
+			activity.finish()
+			context.getSharedPreferences("appearance", 0).edit().clear().commit()
+		}
+	}
 
 	@Test fun diaryShowsAttachmentIndicatorsWithoutHomeworkBody() {
 		val context = ApplicationProvider.getApplicationContext<Context>()

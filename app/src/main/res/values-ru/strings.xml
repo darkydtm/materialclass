@@ -62,4 +62,13 @@
 	<string name="grades_quarter">Четверть %1$d: %2$s</string>
 	<string name="grades_year">Год: %1$s</string>
 	<string name="grades_final">Итог: %1$s</string>
+	<string name="homework_filter_subject">Фильтр по предмету</string>
+	<string name="homework_all_subjects">Все предметы</string>
+	<string name="homework_subject_option">Предмет: %1$s</string>
+	<string name="homework_filter_date">Фильтр по дате записи</string>
+	<string name="homework_all_dates">Все даты</string>
+	<string name="homework_date_option">Дата: %1$s</string>
+	<string name="homework_filter_empty">Нет заданий по выбранным фильтрам.</string>
+	<string name="homework_show_filters">Показать фильтры</string>
+	<string name="homework_hide_filters">Скрыть фильтры</string>
 </resources>
