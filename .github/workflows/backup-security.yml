@@ -19,12 +19,17 @@ jobs:
       - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
         with:
           packages: platform-tools
+      - name: Test backup audit
+        run: python3 -m unittest discover -s .github/scripts -p 'test_backup_security.py' -v
       - run: ./gradlew --no-daemon assembleDebug
       - name: Verify packaged backup rules
         run: |
           set -eu
           APK=app/build/outputs/apk/debug/app-debug.apk
           APKANALYZER="$(find "$ANDROID_HOME/cmdline-tools" -name apkanalyzer -type f | sort -V | tail -1)"
+          AAPT2="$(find "$ANDROID_HOME/build-tools" -name aapt2 -type f | sort -V | tail -1)"
+          "$AAPT2" dump xmltree --file AndroidManifest.xml "$APK" > "$RUNNER_TEMP/manifest-tree.txt"
+          "$AAPT2" dump resources "$APK" > "$RUNNER_TEMP/resources.txt"
           "$APKANALYZER" manifest print "$APK" > "$RUNNER_TEMP/manifest.xml"
           "$APKANALYZER" resources xml --file /res/xml/backup_rules.xml "$APK" > "$RUNNER_TEMP/backup_rules.xml"
           "$APKANALYZER" resources xml --file /res/xml/data_extraction_rules.xml "$APK" > "$RUNNER_TEMP/data_extraction_rules.xml"
@@ -39,3 +44,46 @@ jobs:
           path: artifact/
           if-no-files-found: error
           retention-days: 3
+  artifact-device:
+    if: github.ref == 'refs/heads/test/backup-security'
+    needs: audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4
+        with:
+          name: backup-audit-debug-apk
+          path: artifact
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
+        with:
+          packages: platform-tools
+      - name: Inspect downloaded artifact
+        run: |
+          set -eu
+          test "$(find artifact -maxdepth 1 -type f | wc -l)" -eq 3
+          (cd artifact && sha256sum -c SHA256SUMS)
+          grep -Fx "commit=$GITHUB_SHA" artifact/metadata.txt
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)"
+          APKANALYZER="$(find "$ANDROID_HOME/cmdline-tools" -name apkanalyzer -type f | sort -V | tail -1)"
+          "$APKSIGNER" verify --verbose --print-certs artifact/materialclass-debug.apk
+          test "$("$APKANALYZER" manifest application-id artifact/materialclass-debug.apk)" = org.materialclass
+          test "$("$APKANALYZER" manifest min-sdk artifact/materialclass-debug.apk)" = 24
+          test "$("$APKANALYZER" manifest debuggable artifact/materialclass-debug.apk)" = true
+      - name: Enable virtualization
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Install and launch downloaded artifact
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        with:
+          api-level: '24'
+          target: default
+          arch: x86_64
+          script: |
+            set -eu
+            (cd artifact && sha256sum -c SHA256SUMS)
+            adb install artifact/materialclass-debug.apk
+            adb shell monkey -p org.materialclass -c android.intent.category.LAUNCHER 1
+            adb shell pidof org.materialclass
+            (cd artifact && sha256sum -c SHA256SUMS)
