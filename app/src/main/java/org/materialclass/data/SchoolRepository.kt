@@ -63,7 +63,7 @@ internal sealed class DiaryState {
 
 internal data class DiaryGuard(val epoch: Long, val revision: Long, val requestRevision: Long, val active: ActiveSession, val expired: Boolean)
 
-internal data class AnnualGradesDelivery(val result: GatewayResult<org.materialclass.api.AnnualGrades>, val active: ActiveSession, val epoch: Long, val revision: Long, val requestRevision: Long)
+internal data class AnnualGradesDelivery(val result: GatewayResult<org.materialclass.api.AnnualGrades>, val active: ActiveSession, val epoch: Long, val revision: Long, val requestRevision: Long, val lastSuccessMillis: Long? = null, val staleError: AppError? = null)
 
 internal class SchoolRepository(
 	private val gateway: SchoolGateway,
@@ -75,6 +75,7 @@ internal class SchoolRepository(
 	private val store: SessionStore,
 	private val scheduleCache: DiaryCache? = null,
 	private val beforeSavedScheduleDelivery: () -> Unit = {},
+	private val gradesCache: DiaryCache? = null,
 ) {
 	@Volatile private var session: ActiveSession? = null
 	private var remote: UnverifiedSession? = null
@@ -265,7 +266,26 @@ internal class SchoolRepository(
 					remote = null; scheduleSession = null; diarySession = null; session = null
 					coordinator.revokeIfActive(active, expired = true)
 					null
-				} else AnnualGradesDelivery(result, active, coordinator.revocationEpoch(), request.second, request.third)
+				} else {
+					val context = request.first?.remote?.context
+					var stamp: Long? = null
+					var stale: AppError? = null
+					val converted = try {
+						when (result) {
+							is GatewayResult.Success -> {
+								stamp = clock()
+								if (context != null && gradesCache != null) check(gradesCache.write(active, encodeGrades(context, result.value, stamp!!)))
+								result
+							}
+							is GatewayResult.Failure -> {
+								val saved = if (context != null && result.error in listOf(AppError.OFFLINE, AppError.TIMEOUT)) gradesCache?.read(active)?.let { decodeGrades(it, context) } else null
+								if (saved == null) result else { stamp = saved.second; stale = result.error; GatewayResult.Success(saved.first) }
+							}
+						}
+					} catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.CACHE_UNREADABLE) }
+					if (lease.cancelled || request.second != gradesRevision || request.third != coordinator.requestRevision()) null
+					else AnnualGradesDelivery(converted, active, coordinator.revocationEpoch(), request.second, request.third, stamp, stale)
+				}
 			}
 			if (delivery != null) deliver(delivery)
 		} finally { coordinator.finish(lease) }
@@ -662,6 +682,38 @@ private fun decode(bytes: ByteArray, context: DiaryContext): DiarySnapshot? {
 	return DiarySnapshot(Diary(date, days), time)
 }
 
+
+private fun encodeGrades(context: SchoolContext, grades: org.materialclass.api.AnnualGrades, time: Long): ByteArray {
+	val bytes = ByteArrayOutputStream()
+	DataOutputStream(bytes).use { out ->
+		out.writeInt(1); out.writeLong(context.schoolId); out.writeInt(context.eduYear); out.writeLong(context.groupId); out.writeLong(time)
+		require(grades.rows.size <= 10000)
+		out.writeInt(grades.rows.size)
+		grades.rows.forEach { row ->
+			require(row.subjectName.length <= 1024 && row.quarters.size == 4)
+			out.writeUTF(row.subjectName)
+			(row.quarters + listOf(row.yearScore, row.finalScore)).forEach { value -> out.writeBoolean(value != null); if (value != null) out.writeUTF(value) }
+		}
+	}
+	return bytes.toByteArray()
+}
+
+private fun decodeGrades(bytes: ByteArray, context: SchoolContext): Pair<org.materialclass.api.AnnualGrades, Long>? = try {
+	val input = DataInputStream(ByteArrayInputStream(bytes))
+	require(input.readInt() == 1)
+	val school = input.readLong(); val year = input.readInt(); val group = input.readLong()
+	if (school != context.schoolId || year != context.eduYear || group != context.groupId) null else {
+		val time = input.readLong()
+		val count = input.readInt().also { require(it in 0..10000) }
+		fun nullable() = if (input.readBoolean()) input.readUTF() else null
+		val rows = List(count) {
+			val subject = input.readUTF().also { require(it.length <= 1024) }
+			org.materialclass.api.AnnualGradeRow(subject, List(4) { nullable() }, nullable(), nullable())
+		}
+		require(input.available() == 0)
+		Pair(org.materialclass.api.AnnualGrades(rows), time)
+	}
+} catch (_: Exception) { null }
 
 private fun encodeSchedule(context: SchoolContext, snapshot: ScheduleSnapshot, proven: Boolean): ByteArray {
 	val bytes = ByteArrayOutputStream()

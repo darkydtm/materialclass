@@ -32,6 +32,8 @@ internal data class NativeUiState(
 	val schedule: Schedule? = null,
 	val scheduleSnapshot: ScheduleSnapshot? = null,
 	val annualGrades: GatewayResult<org.materialclass.api.AnnualGrades>? = null,
+	val gradesLastSuccessMillis: Long? = null,
+	val gradesStaleError: AppError? = null,
 	val gradesLoading: Boolean = false,
 	val profile: org.materialclass.api.StudentProfile? = null,
 
@@ -250,7 +252,7 @@ internal class NativeController(
 		val task = generation
 		val revision = ++gradesRevision
 		val epoch = observedEpoch
-		state = state.copy(annualGrades = null, gradesLoading = true)
+		state = state.copy(annualGrades = null, gradesLastSuccessMillis = null, gradesStaleError = null, gradesLoading = true)
 		executor.execute {
 			if (closed || generation != task || gradesRevision != revision || repository.revocationEpoch() != epoch) return@execute
 			var delivered = false
@@ -259,7 +261,7 @@ internal class NativeController(
 					delivered = true
 					handler.post {
 						if (!closed && generation == task && gradesRevision == revision && repository.revocationEpoch() == epoch && repository.acceptsAnnualGrades(delivery)) {
-							state = state.copy(annualGrades = delivery.result, gradesLoading = false)
+							state = state.copy(annualGrades = delivery.result, gradesLastSuccessMillis = delivery.lastSuccessMillis, gradesStaleError = delivery.staleError, gradesLoading = false)
 						}
 					}
 				}
@@ -311,6 +313,6 @@ internal fun createNativeController(context: Context): NativeUiController {
 	val cache = EncryptedCache(app, coordinator)
 	val store = SessionStore(app, coordinator)
 	return NativeController { emit ->
-		SchoolRepository(NativeGateway(), NativeIdentityVerifier(), coordinator, EncryptedDiaryCache(cache), System::currentTimeMillis, emit, store, EncryptedDiaryCache(EncryptedCache(app, coordinator, "schedule")))
+		SchoolRepository(NativeGateway(), NativeIdentityVerifier(), coordinator, EncryptedDiaryCache(cache), System::currentTimeMillis, emit, store, EncryptedDiaryCache(EncryptedCache(app, coordinator, "schedule")), gradesCache = EncryptedDiaryCache(EncryptedCache(app, coordinator, "grades")))
 	}
 }

@@ -28,7 +28,7 @@ class AnnualGradesCacheTest {
 		}
 		val diary = EncryptedDiaryCache(EncryptedCache(context, coordinator))
 		val grades = EncryptedDiaryCache(EncryptedCache(context, coordinator, "grades"))
-		val constructor = SchoolRepository::class.java.declaredConstructors.singleOrNull { it.parameterCount == 10 && it.parameterTypes.last() == DiaryCache::class.java }
+		val constructor = SchoolRepository::class.java.declaredConstructors.singleOrNull { it.parameterTypes.size == 10 && it.parameterTypes.last() == DiaryCache::class.java }
 		assertNotNull("Annual grades must accept a separate encrypted cache", constructor)
 		val repository = constructor!!.newInstance(gateway, verifier, coordinator, diary, { 1234L }, { _: DiaryState -> }, SessionStore(context, coordinator), null, {}, grades) as SchoolRepository
 		assertTrue(repository.login("1", charArrayOf('x')) is GatewayResult.Success)
@@ -43,5 +43,21 @@ class AnnualGradesCacheTest {
 		assertEquals("Synthetic subject", (stale.result as GatewayResult.Success).value.rows.single().subjectName)
 		assertEquals(1234L, stale.javaClass.getMethod("getLastSuccessMillis").invoke(stale))
 		assertEquals(AppError.OFFLINE, stale.javaClass.getMethod("getStaleError").invoke(stale))
+		val row = (stale.result as GatewayResult.Success).value.rows.single()
+		assertEquals(listOf("4", null, null, null), row.quarters)
+		assertNull(row.yearScore); assertEquals("", row.finalScore)
+		response = GatewayResult.Failure(AppError.TIMEOUT)
+		assertEquals(AppError.TIMEOUT, load().staleError)
+		for (error in listOf(AppError.FORBIDDEN, AppError.UNAVAILABLE, AppError.INCOMPATIBLE_RESPONSE, AppError.SERVER)) {
+			response = GatewayResult.Failure(error)
+			assertEquals(error, (load().result as GatewayResult.Failure).error)
+		}
+		response = GatewayResult.Success(AnnualGrades(emptyList()))
+		assertTrue((load().result as GatewayResult.Success).value.rows.isEmpty())
+		response = GatewayResult.Failure(AppError.OFFLINE)
+		assertTrue((load().result as GatewayResult.Success).value.rows.isEmpty())
+		repository.logout()
+		assertTrue(repository.login("1", charArrayOf('x')) is GatewayResult.Success)
+		assertEquals(AppError.OFFLINE, (load().result as GatewayResult.Failure).error)
 	}
 }

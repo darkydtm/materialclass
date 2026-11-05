@@ -104,6 +104,8 @@ internal fun MaterialClassApp(example: ExampleData? = null, nativeEnabled: Boole
 								if (nativeState.gradesLoading) Text(stringResource(R.string.loading)) else when (val grades = nativeState.annualGrades) {
 									is GatewayResult.Failure -> Text(stringResource(errorMessage(grades.error)))
 									is GatewayResult.Success -> {
+										nativeState.gradesStaleError?.let { Text(stringResource(R.string.stale_data, stringResource(errorMessage(it)))) }
+										nativeState.gradesLastSuccessMillis?.let { Text(stringResource(R.string.last_updated, formatTimestamp(it, localized))) }
 										if (grades.value.rows.isEmpty()) Text(stringResource(R.string.grades_empty))
 										grades.value.rows.forEach { row ->
 											Text(row.subjectName, style = MaterialTheme.typography.titleMedium)

@@ -41,7 +41,7 @@ class EncryptedCache(context: Context, private val coordinator: SessionCoordinat
 				return@synchronized
 			}
 			var failure: Exception? = null
-			for (suffix in listOf("", ":schedule")) {
+			for (suffix in listOf("", ":schedule", ":grades")) {
 				try {
 					val id = keys.namespace(namespace.value + suffix, false)
 					EncryptedFile(File(files.directory, id), "cache-$id", keys, files).reset()
