@@ -25,7 +25,7 @@ internal class CacheNamespace(val value: String) {
 class ActiveSession internal constructor(val account: AccountId, internal val cacheNamespace: CacheNamespace)
 private val CancellationLock = Any()
 
-class RequestLease internal constructor(internal val owner: ActiveSession? = null, internal val privateToken: PrivateStateRegistry.Token? = null) {
+class RequestLease internal constructor(internal val owner: ActiveSession? = null, internal var privateToken: PrivateStateRegistry.Token? = null) {
 	@Volatile internal var cancelled = false
 	internal var disconnect: (() -> Unit)? = null
 	internal fun register(disconnect: () -> Unit): Boolean = synchronized(CancellationLock) {
@@ -66,6 +66,10 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 
 		internal fun permits(lease: RequestLease, account: String): Boolean = synchronized(CancellationLock) {
 			pending.isEmpty() && !lease.cancelled && lease in leases && lease.owner === active && active?.account?.value == account
+		}
+
+		internal fun commitPrivateState(registry: PrivateStateRegistry, lease: RequestLease, expected: PrivateStateRegistry.Snapshot, next: PrivateStateRegistry.Snapshot): Boolean = synchronized(CancellationLock) {
+			registry === privateStates && pending.isEmpty() && !lease.cancelled && lease in leases && lease.owner != null && lease.owner === active && lease.privateToken === expected.token && expected.active && registry.compareAndSet(expected, next)
 		}
 
 		private fun cancelRequests(owner: ActiveSession? = null) {
@@ -202,6 +206,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 			if (active !== session || pending.isNotEmpty()) return
 			revision++
 			privateStates.rotate()
+			if (except in leases && !except.cancelled && except.owner === session) except.privateToken = privateStates.read().token
 			val cancelled = leases.filter { it.owner === session && it !== except }
 			cancelled.forEach { it.cancelled = true }
 			leases.removeAll(cancelled.toSet())

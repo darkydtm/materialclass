@@ -12,6 +12,7 @@ internal class PrivateStateRegistry(initiallyActive: Boolean = true, private val
 	private val state = AtomicReference(Snapshot(Token(), emptyMap(), initiallyActive))
 
 	fun read(): Snapshot = state.get()
+	internal fun compareAndSet(expected: Snapshot, next: Snapshot): Boolean = state.compareAndSet(expected, next)
 
 	private fun snapshot(token: Token, states: Map<ControllerId, NativeUiState>, active: Boolean): Snapshot =
 		Snapshot(token, Collections.unmodifiableMap(HashMap(states)), active)
@@ -42,6 +43,14 @@ internal class PrivateStateRegistry(initiallyActive: Boolean = true, private val
 			beforeCommitCas()
 			if (state.compareAndSet(current, next)) return true
 		}
+	}
+
+	fun commitLease(lease: RequestLease, id: ControllerId, reduce: (NativeUiState) -> NativeUiState): Boolean {
+		val current = state.get()
+		val previous = current.states[id] ?: return false
+		val next = snapshot(current.token, current.states + (id to reduce(previous)), current.active)
+		beforeCommitCas()
+		return SessionCoordinator.commitPrivateState(this, lease, current, next)
 	}
 
 	fun revokeAndClear() = transition(false)

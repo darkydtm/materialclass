@@ -38,6 +38,88 @@ private class AtomicPrivateState<T>(private val empty: T) {
 
 class AtomicPrivateStateTest {
 	@Test
+	fun schoolInvalidationKeepsOnlySelectedLeaseAuthorized() {
+		val first = SessionCoordinator { }
+		val second = SessionCoordinator { }
+		val registry = SessionCoordinator.privateStates
+		val one = registry.register()
+		val two = registry.register()
+		try {
+			val active = first.activate(AccountId("synthetic-school-leases"))
+			val selected = first.admit(active)!!
+			val other = second.admit(active)!!
+			first.invalidateSchoolRequests(active, selected)
+			assertTrue(registry.commitLease(selected, one) { it.copy(signedIn = true) })
+			assertFalse(registry.commitLease(other, two) { it.copy(signedIn = true) })
+			assertTrue(registry.read().states[one]!!.signedIn)
+			assertEquals(NativeUiState(), registry.read().states[two])
+		} finally { registry.unregister(one); registry.unregister(two); first.logout() }
+	}
+
+	@Test
+	fun leaseCommitBeforeRevocationClearsBothControllers() {
+		val coordinator = SessionCoordinator { }
+		val registry = SessionCoordinator.privateStates
+		val one = registry.register()
+		val two = registry.register()
+		try {
+			val active = coordinator.activate(AccountId("synthetic-commit-first"))
+			val lease = coordinator.admit(active)!!
+			assertTrue(registry.commitLease(lease, one) { it.copy(signedIn = true) })
+			assertTrue(registry.commitLease(lease, two) { it.copy(signedIn = true) })
+			val ticket = coordinator.cancelInFlightNow()
+			assertEquals(NativeUiState(), registry.read().states[one])
+			assertEquals(NativeUiState(), registry.read().states[two])
+			assertFalse(registry.commitLease(lease, one) { it.copy(signedIn = true) })
+			coordinator.logout(ticket)
+		} finally { registry.unregister(one); registry.unregister(two); coordinator.logout() }
+	}
+
+	@Test
+	fun blockedOldLeaseCannotEraseNewAccountAfterAba() {
+		val coordinator = SessionCoordinator { }
+		val registry = SessionCoordinator.privateStates
+		val id = registry.register()
+		val entered = CountDownLatch(1)
+		val resume = CountDownLatch(1)
+		val executor = Executors.newSingleThreadExecutor()
+		try {
+			val original = coordinator.activate(AccountId("synthetic-aba-a"))
+			val old = coordinator.admit(original)!!
+			val blocked = executor.submit<Boolean> { registry.commitLease(old, id) { entered.countDown(); resume.awaitOrFail(); NativeUiState() } }
+			entered.awaitOrFail()
+			coordinator.activate(AccountId("synthetic-aba-b"))
+			val returned = coordinator.activate(AccountId("synthetic-aba-a"))
+			val current = coordinator.admit(returned)!!
+			assertTrue(registry.commitLease(current, id) { it.copy(signedIn = true) })
+			resume.countDown()
+			assertFalse(blocked.get(5, TimeUnit.SECONDS))
+			assertTrue(registry.read().states[id]!!.signedIn)
+		} finally { resume.countDown(); executor.shutdownNow(); registry.unregister(id); coordinator.logout() }
+	}
+
+	@Test
+	fun revocationWhileLeaseUpdateIsPreparedRejectsPublication() {
+		val coordinator = SessionCoordinator { }
+		val registry = SessionCoordinator.privateStates
+		val id = registry.register()
+		val entered = CountDownLatch(1)
+		val resume = CountDownLatch(1)
+		val executor = Executors.newSingleThreadExecutor()
+		try {
+			val active = coordinator.activate(AccountId("synthetic-revoke-first"))
+			val lease = coordinator.admit(active)!!
+			val blocked = executor.submit<Boolean> { registry.commitLease(lease, id) { entered.countDown(); resume.awaitOrFail(); it.copy(signedIn = true) } }
+			entered.awaitOrFail()
+			val ticket = coordinator.cancelInFlightNow()
+			resume.countDown()
+			assertFalse(blocked.get(5, TimeUnit.SECONDS))
+			assertEquals(NativeUiState(), registry.read().states[id])
+			coordinator.logout(ticket)
+		} finally { resume.countDown(); executor.shutdownNow(); registry.unregister(id); coordinator.logout() }
+	}
+
+	@Test
 	fun finishedLeaseCannotPublishAfterValidation() {
 		val coordinator = SessionCoordinator { }
 		val registry = SessionCoordinator.privateStates
@@ -48,17 +130,12 @@ class AtomicPrivateStateTest {
 		try {
 			val active = coordinator.activate(AccountId("synthetic-finished-lease"))
 			val lease = coordinator.admit(active)!!
-			val method = registry.javaClass.declaredMethods.firstOrNull {
-				it.name.startsWith("commitLease") && it.parameterTypes.firstOrNull() == RequestLease::class.java
-			}
-			assertTrue("Registry must atomically authorize lease publication", method != null)
-			method!!.isAccessible = true
 			val reducer: (NativeUiState) -> NativeUiState = {
 				entered.countDown()
 				resume.awaitOrFail()
 				it.copy(signedIn = true)
 			}
-			val result = executor.submit<Boolean> { method.invoke(registry, lease, id, reducer) as Boolean }
+			val result = executor.submit<Boolean> { registry.commitLease(lease, id, reducer) }
 			entered.awaitOrFail()
 			coordinator.finish(lease)
 			resume.countDown()
