@@ -39,8 +39,12 @@ class NativeUiControllerTest {
 			val root = instrumentation.uiAutomation.rootInActiveWindow
 			root?.let { find(it, text) }?.let { return it }
 			val scroller = root?.let(::scrollable)
-			if (scroller != null && !scroller.performAction(direction)) {
-				direction = if (direction == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD else AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+			if (scroller != null) {
+				if (!scroller.performAction(direction)) {
+					direction = if (direction == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD else AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+				} else {
+					instrumentation.waitForIdleSync()
+				}
 			}
 			SystemClock.sleep(100)
 		}
