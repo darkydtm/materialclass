@@ -38,6 +38,24 @@ private class AtomicPrivateState<T>(private val empty: T) {
 
 class AtomicPrivateStateTest {
 	@Test
+	fun completedLogoutTicketCannotEraseReplacementState() {
+		val coordinator = SessionCoordinator { }
+		val registry = SessionCoordinator.privateStates
+		val id = registry.register()
+		try {
+			coordinator.activate(AccountId("synthetic-ticket-a"))
+			val ticket = coordinator.cancelInFlightNow()
+			coordinator.logout(ticket)
+			val replacement = coordinator.activate(AccountId("synthetic-ticket-b"))
+			val lease = coordinator.admit(replacement)!!
+			assertTrue(registry.commitLease(lease, id) { it.copy(signedIn = true) })
+			coordinator.logout(ticket)
+			assertTrue(registry.read().states[id]!!.signedIn)
+			assertTrue(registry.commitLease(lease, id) { it.copy(signedIn = true) })
+		} finally { registry.unregister(id); coordinator.logout() }
+	}
+
+	@Test
 	fun schoolInvalidationKeepsOnlySelectedLeaseAuthorized() {
 		val first = SessionCoordinator { }
 		val second = SessionCoordinator { }
