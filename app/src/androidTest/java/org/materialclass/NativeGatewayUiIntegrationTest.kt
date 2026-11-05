@@ -191,9 +191,12 @@ class NativeGatewayUiIntegrationTest {
 	private fun enterText(password: Boolean, value: String) {
 		val deadline = SystemClock.uptimeMillis() + 15000
 		val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, value) }
+		var diagnostic = "no application window"
 		while (SystemClock.uptimeMillis() < deadline) {
 			val root = loginRoot()
-			val node = root?.let(::editables)?.firstOrNull { it.isPassword == password && it.isEnabled }
+			val nodes = root?.let(::editables).orEmpty()
+			diagnostic = nodes.joinToString { "password=${it.isPassword}, enabled=${it.isEnabled}, focused=${it.isFocused}, actions=${it.actionList.map { action -> action.id }}" }
+			val node = nodes.firstOrNull { it.isPassword == password && it.isEnabled }
 			if (node != null && node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT }) {
 				if (!node.isFocused) {
 					node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
@@ -204,7 +207,7 @@ class NativeGatewayUiIntegrationTest {
 			}
 			SystemClock.sleep(50)
 		}
-		throw AssertionError("Unable to enter text in ${if (password) "password" else "username"} field")
+		throw AssertionError("Unable to enter text in ${if (password) "password" else "username"} field: $diagnostic")
 	}
 
 	@Test fun studentJourneyUsesLoginFormAndVisibleModuleActions() = exercise { exchange, _ ->
