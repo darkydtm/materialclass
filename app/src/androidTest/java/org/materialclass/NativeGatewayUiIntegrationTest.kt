@@ -2,6 +2,7 @@ package org.materialclass
 
 import android.content.Context
 import android.content.Intent
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.os.Bundle
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityNodeInfo
@@ -91,7 +92,7 @@ class NativeGatewayUiIntegrationTest {
 				"/api/v2/os/login" -> {
 					assertEquals("POST", request.method)
 					assertEquals("synthetic-user", JSONObject(String(request.body!!)).getString("login"))
-					assertEquals("synthetic-password", JSONObject(String(request.body!!)).getString("password"))
+					assertTrue("Unexpected synthetic password payload", JSONObject(String(request.body!!)).getString("password") == "synthetic-password")
 					if (failLogin.get()) Response(503, "") else Response(200, """{"success":true,"access_token":"synthetic-token","user_info":$loginProfile}""")
 				}
 				"/api/v2/os/user-info" -> {
@@ -140,6 +141,9 @@ class NativeGatewayUiIntegrationTest {
 		}
 		val scheduleCache = org.materialclass.data.EncryptedDiaryCache(org.materialclass.cache.EncryptedCache(context, coordinator, "schedule"))
 		val controller = NativeController { emit -> SchoolRepository(NativeGateway(exchange), NativeIdentityVerifier(exchange), coordinator, cache, { 1L }, emit, SessionStore(context, coordinator), scheduleCache) }
+		val automation = instrumentation.uiAutomation
+		val originalFlags = automation.serviceInfo.flags
+		automation.serviceInfo = automation.serviceInfo.apply { flags = flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS }
 		activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
 		try {
 			instrumentation.runOnMainSync { controller.start(); activity.setContent { MaterialClassApp(nativeEnabled = true, controllerFactory = { controller }) } }
@@ -161,6 +165,7 @@ class NativeGatewayUiIntegrationTest {
 			exchange.profileRelease.countDown()
 
 			instrumentation.runOnMainSync { activity.finish(); controller.close() }
+			automation.serviceInfo = automation.serviceInfo.apply { flags = originalFlags }
 			coordinator.logout()
 			context.getSharedPreferences("appearance", 0).edit().clear().commit()
 		}
@@ -173,19 +178,47 @@ class NativeGatewayUiIntegrationTest {
 	private fun editables(node: AccessibilityNodeInfo): List<AccessibilityNodeInfo> =
 		(if (node.isEditable) listOf(node) else emptyList()) + (0 until node.childCount).flatMap { node.getChild(it)?.let(::editables) ?: emptyList() }
 
+	private fun loginRoot(): AccessibilityNodeInfo? = instrumentation.uiAutomation.windows
+		.filter { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION }
+		.mapNotNull { it.root }
+		.firstOrNull { it.packageName?.toString() == context.packageName && editables(it).isNotEmpty() }
+
+	private fun scrollForward(node: AccessibilityNodeInfo): Boolean {
+		if (node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD } && node.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) return true
+		return (0 until node.childCount).any { node.getChild(it)?.let(::scrollForward) == true }
+	}
+
 	private fun enterText(password: Boolean, value: String) {
 		val deadline = SystemClock.uptimeMillis() + 15000
 		val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, value) }
+		var diagnostic = "no application window"
+		var submitted = false
+		var focusRequests = 0
+		var focusAccepted = 0
+		var textAttempts = 0
 		while (SystemClock.uptimeMillis() < deadline) {
-			val root = instrumentation.uiAutomation.rootInActiveWindow
-			val node = root?.let(::editables)?.firstOrNull { it.isPassword == password && it.isEnabled }
-			if (node != null && node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT }) {
-				node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
-				if (node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) return
+			val root = loginRoot()
+			val nodes = root?.let(::editables).orEmpty()
+			nodes.forEach { it.refresh() }
+			diagnostic = "submitted:$submitted, focusRequests:$focusRequests, focusAccepted:$focusAccepted, textAttempts:$textAttempts, " + nodes.joinToString { "protected:${it.isPassword}, enabled:${it.isEnabled}, focused:${it.isFocused}, textLength:${it.text?.length}, actions:${it.actionList.map { action -> action.id }}" }
+			val node = nodes.filter { it.isPassword == password }.singleOrNull()?.takeIf { it.isEnabled }
+			if (node != null) {
+				if (!node.isFocused) {
+					focusRequests++
+					if (node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)) focusAccepted++
+					instrumentation.waitForIdleSync()
+				} else if (submitted && (password || node.text?.length == value.length)) {
+					return
+				} else if (!submitted && node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT }) {
+					textAttempts++
+					submitted = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+				}
+			} else if (root != null) {
+				scrollForward(root)
 			}
 			SystemClock.sleep(50)
 		}
-		throw AssertionError("Unable to enter text in ${if (password) "password" else "username"} field")
+		throw AssertionError("Unable to enter text in ${if (password) "password" else "username"} field: $diagnostic")
 	}
 
 	@Test fun studentJourneyUsesLoginFormAndVisibleModuleActions() = exercise { exchange, _ ->
@@ -195,12 +228,14 @@ class NativeGatewayUiIntegrationTest {
 		enterText(false, "synthetic-user")
 		val deadline = SystemClock.uptimeMillis() + 15000
 		while (true) {
-			val root = instrumentation.uiAutomation.rootInActiveWindow
+			val root = loginRoot()
 			val username = root?.let(::editables)?.firstOrNull { !it.isPassword }?.text?.toString().orEmpty()
 			if (username.contains("synthetic-user")) break
 			check(SystemClock.uptimeMillis() < deadline) { "Username was not retained in the login field: $username" }
 			SystemClock.sleep(50)
 		}
+		instrumentation.runOnMainSync { (context.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).hideSoftInputFromWindow(activity.window.decorView.windowToken, 0) }
+		instrumentation.waitForIdleSync()
 		enterText(true, "synthetic-password")
 		instrumentation.waitForIdleSync()
 		instrumentation.runOnMainSync { (context.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).hideSoftInputFromWindow(activity.window.decorView.windowToken, 0) }

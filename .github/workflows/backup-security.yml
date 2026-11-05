@@ -1,13 +1,13 @@
 name: Backup security audit
 on:
   push:
-    branches: [feat/integrate-backup-cleanup]
+    branches: [feat/integrate-backup-cleanup, feat/integrate-restart-ui]
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   audit:
-    if: github.ref == 'refs/heads/feat/integrate-backup-cleanup'
+    if: github.ref == 'refs/heads/feat/integrate-restart-ui' || github.ref == 'refs/heads/feat/integrate-backup-cleanup'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -46,7 +46,7 @@ jobs:
           if-no-files-found: error
           retention-days: 3
   artifact-device:
-    if: github.ref == 'refs/heads/feat/integrate-backup-cleanup'
+    if: github.ref == 'refs/heads/feat/integrate-restart-ui' || github.ref == 'refs/heads/feat/integrate-backup-cleanup'
     needs: audit
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -94,5 +94,5 @@ jobs:
             cat "$RUNNER_TEMP/backup-instrumentation.txt"
             grep -Eq '^OK \(1 test\)' "$RUNNER_TEMP/backup-instrumentation.txt"
             adb shell monkey -p org.materialclass -c android.intent.category.LAUNCHER 1
-            adb shell pidof org.materialclass
+            for attempt in $(seq 1 30); do if adb shell pidof org.materialclass; then break; fi; test "$attempt" -lt 30; sleep 1; done
             (cd artifact && sha256sum -c SHA256SUMS)

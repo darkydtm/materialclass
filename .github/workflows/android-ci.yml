@@ -1,13 +1,13 @@
 name: Android test only
 on:
   push:
-    branches: [ci-android-toolchain, fix/verified-session-restore, feat/integrate-student-work, fix/schedule-stale-flags, feat/integrate-student-v2, feat/integrate-a11y, feat/integrate-schedule-races, feat/integrate-student-v3, feat/integrate-durable, feat/integrate-restore, feat/integrate-profile-grades, feat/integrate-security, feat/integrate-readiness, feat/debug-apk, feat/integrate-backup-cleanup]
+    branches: [ci-android-toolchain, fix/verified-session-restore, feat/integrate-student-work, fix/schedule-stale-flags, feat/integrate-student-v2, feat/integrate-a11y, feat/integrate-schedule-races, feat/integrate-student-v3, feat/integrate-durable, feat/integrate-restore, feat/integrate-profile-grades, feat/integrate-security, feat/integrate-readiness, feat/debug-apk, feat/integrate-backup-cleanup, feat/integrate-restart-ui]
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   build:
-    if: github.ref == 'refs/heads/feat/integrate-backup-cleanup' || github.ref == 'refs/heads/feat/debug-apk' || github.ref == 'refs/heads/feat/integrate-readiness' || github.ref == 'refs/heads/ci-android-toolchain' || github.ref == 'refs/heads/fix/verified-session-restore' || github.ref == 'refs/heads/feat/integrate-student-work' || github.ref == 'refs/heads/fix/schedule-stale-flags' || github.ref == 'refs/heads/feat/integrate-student-v2' || github.ref == 'refs/heads/feat/integrate-a11y' || github.ref == 'refs/heads/feat/integrate-schedule-races' || github.ref == 'refs/heads/feat/integrate-student-v3' || github.ref == 'refs/heads/feat/integrate-durable' || github.ref == 'refs/heads/feat/integrate-restore' || github.ref == 'refs/heads/feat/integrate-profile-grades' || github.ref == 'refs/heads/feat/integrate-security'
+    if: github.ref == 'refs/heads/feat/integrate-restart-ui' || github.ref == 'refs/heads/feat/integrate-backup-cleanup' || github.ref == 'refs/heads/feat/debug-apk' || github.ref == 'refs/heads/feat/integrate-readiness' || github.ref == 'refs/heads/ci-android-toolchain' || github.ref == 'refs/heads/fix/verified-session-restore' || github.ref == 'refs/heads/feat/integrate-student-work' || github.ref == 'refs/heads/fix/schedule-stale-flags' || github.ref == 'refs/heads/feat/integrate-student-v2' || github.ref == 'refs/heads/feat/integrate-a11y' || github.ref == 'refs/heads/feat/integrate-schedule-races' || github.ref == 'refs/heads/feat/integrate-student-v3' || github.ref == 'refs/heads/feat/integrate-durable' || github.ref == 'refs/heads/feat/integrate-restore' || github.ref == 'refs/heads/feat/integrate-profile-grades' || github.ref == 'refs/heads/feat/integrate-security'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -23,7 +23,7 @@ jobs:
         run: python3 .github/test-device-script.py
       - run: ./gradlew --no-daemon assembleDebug testDebugUnitTest lintDebug
       - name: Build opt-in integration APK
-        if: github.ref == 'refs/heads/feat/debug-apk'
+        if: github.ref == 'refs/heads/feat/integrate-restart-ui' || github.ref == 'refs/heads/feat/debug-apk'
         run: ./gradlew --no-daemon -PintegrationTestNativeUi=true assembleDebug testDebugUnitTest lintDebug
       - name: Report resolved dependency graphs
         run: |
@@ -46,7 +46,7 @@ jobs:
           print('Merged debug manifest minSdkVersion=24')
           PY
   device:
-    if: github.ref == 'refs/heads/feat/integrate-backup-cleanup' || github.ref == 'refs/heads/feat/debug-apk' || github.ref == 'refs/heads/feat/integrate-readiness' || github.ref == 'refs/heads/ci-android-toolchain' || github.ref == 'refs/heads/fix/verified-session-restore' || github.ref == 'refs/heads/feat/integrate-student-work' || github.ref == 'refs/heads/fix/schedule-stale-flags' || github.ref == 'refs/heads/feat/integrate-student-v2' || github.ref == 'refs/heads/feat/integrate-a11y' || github.ref == 'refs/heads/feat/integrate-schedule-races' || github.ref == 'refs/heads/feat/integrate-student-v3' || github.ref == 'refs/heads/feat/integrate-durable' || github.ref == 'refs/heads/feat/integrate-restore' || github.ref == 'refs/heads/feat/integrate-profile-grades' || github.ref == 'refs/heads/feat/integrate-security'
+    if: github.ref == 'refs/heads/feat/integrate-restart-ui' || github.ref == 'refs/heads/feat/integrate-backup-cleanup' || github.ref == 'refs/heads/feat/debug-apk' || github.ref == 'refs/heads/feat/integrate-readiness' || github.ref == 'refs/heads/ci-android-toolchain' || github.ref == 'refs/heads/fix/verified-session-restore' || github.ref == 'refs/heads/feat/integrate-student-work' || github.ref == 'refs/heads/fix/schedule-stale-flags' || github.ref == 'refs/heads/feat/integrate-student-v2' || github.ref == 'refs/heads/feat/integrate-a11y' || github.ref == 'refs/heads/feat/integrate-schedule-races' || github.ref == 'refs/heads/feat/integrate-student-v3' || github.ref == 'refs/heads/feat/integrate-durable' || github.ref == 'refs/heads/feat/integrate-restore' || github.ref == 'refs/heads/feat/integrate-profile-grades' || github.ref == 'refs/heads/feat/integrate-security'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -76,10 +76,10 @@ jobs:
             set -e
             adb shell input keyevent KEYCODE_WAKEUP
             adb shell wm dismiss-keyguard
-            if [ "${{ github.ref }}" = 'refs/heads/feat/integrate-backup-cleanup' ]; then set -e; ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=org.materialclass.session.CleanupProcessRestartTest; ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest; adb install -r app/build/outputs/apk/debug/app-debug.apk; adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk; bash .github/cleanup-restart.sh; elif [ "${{ github.ref }}" = 'refs/heads/feat/debug-apk' ]; then set -e; ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=org.materialclass.NativeUiWiringTest; ./gradlew --no-daemon -PintegrationTestNativeUi=true connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=org.materialclass.session.CleanupProcessRestartTest; else ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=org.materialclass.session.CleanupProcessRestartTest; fi
+            if [ "${{ github.ref }}" = 'refs/heads/feat/integrate-restart-ui' ]; then set -e; ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=org.materialclass.session.CleanupProcessRestartTest; ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest; adb install -r app/build/outputs/apk/debug/app-debug.apk; adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk; bash .github/cleanup-restart.sh; ./gradlew --no-daemon -PintegrationTestNativeUi=true connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=org.materialclass.session.CleanupProcessRestartTest; elif [ "${{ github.ref }}" = 'refs/heads/feat/integrate-backup-cleanup' ]; then set -e; ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=org.materialclass.session.CleanupProcessRestartTest; ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest; adb install -r app/build/outputs/apk/debug/app-debug.apk; adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk; bash .github/cleanup-restart.sh; elif [ "${{ github.ref }}" = 'refs/heads/feat/debug-apk' ]; then set -e; ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=org.materialclass.NativeUiWiringTest; ./gradlew --no-daemon -PintegrationTestNativeUi=true connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=org.materialclass.session.CleanupProcessRestartTest; else ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=org.materialclass.session.CleanupProcessRestartTest; fi
 
   test-apk:
-    if: github.ref == 'refs/heads/feat/debug-apk'
+    if: github.ref == 'refs/heads/feat/integrate-restart-ui' || github.ref == 'refs/heads/feat/debug-apk'
     needs: [build, device]
     runs-on: ubuntu-latest
     timeout-minutes: 45
