@@ -24,7 +24,16 @@ jobs:
       - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
         with:
           packages: platform-tools
-      - run: ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest :backup-reference:assembleDebug
+      - name: Build isolated APKs
+        run: |
+          set -eu
+          ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest :backup-reference:assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/normal.apk"
+          cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk "$RUNNER_TEMP/normal-test.apk"
+          ./gradlew --no-daemon -PbackupRulesProbe=true :app:assembleDebug :app:assembleDebugAndroidTest
+          cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/probe.apk"
+          cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk "$RUNNER_TEMP/probe-test.apk"
+          python3 .github/scripts/check-backup-probe.py
       - name: Enable virtualization
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules

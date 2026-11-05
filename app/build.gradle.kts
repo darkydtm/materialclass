@@ -19,10 +19,18 @@ android {
 
 	buildTypes {
 		getByName("debug") {
+			if (providers.gradleProperty("backupRulesProbe").orNull == "true") {
+				applicationIdSuffix = ".backupprobe"
+			}
 			val integrationUi = providers.gradleProperty("integrationTestNativeUi").map { it == "true" }.getOrElse(false)
 			buildConfigField("boolean", "NATIVE_UI_ENABLED", integrationUi.toString())
 			buildConfigField("boolean", "INTEGRATION_TEST_NATIVE_UI", integrationUi.toString())
 		}
+	}
+
+	if (providers.gradleProperty("backupRulesProbe").orNull == "true") {
+		sourceSets.getByName("debug").manifest.srcFile("src/backupProbe/AndroidManifest.xml")
+		sourceSets.getByName("debug").res.srcDir("src/backupProbe/res")
 	}
 
 	buildFeatures {

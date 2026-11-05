@@ -24,8 +24,8 @@ class BackupTransportFixtureTest {
 			.putString("theme", "black").putString("language", "kk").putString("backup_nonce", nonce).commit())
 		val coordinator = SessionCoordinator(context)
 		val session = coordinator.activate(AccountId("synthetic-backup-account"))
-		assertTrue(SessionStore(context, coordinator).write(session, "synthetic-backup-token".toByteArray()))
-		assertTrue(EncryptedCache(context, coordinator).write(session, "synthetic-backup-cache".toByteArray()))
+		assertTrue(SessionStore(context, coordinator).write(session, "synthetic-backup-token-$nonce".toByteArray()))
+		assertTrue(EncryptedCache(context, coordinator).write(session, "synthetic-backup-cache-$nonce".toByteArray()))
 		val sessionFile = File(context.noBackupFilesDir, "session")
 		assertTrue(sessionFile.isFile)
 		assertFalse(sessionFile.readBytes().toString(Charsets.ISO_8859_1).contains("synthetic-backup-token"))
@@ -41,15 +41,15 @@ class BackupTransportFixtureTest {
 		val store = SessionStore(context, coordinator)
 		var verified = false
 		val result = store.restore { material, _ ->
-			assertArrayEquals("synthetic-backup-token".toByteArray(), material)
+			assertArrayEquals("synthetic-backup-token-$nonce".toByteArray(), material)
 			verified = true
 			SessionVerification.Verified(AccountId("synthetic-backup-account"), true)
 		}
 		assertTrue(verified)
 		assertTrue(result is RestoreResult.Restored)
 		val session = (result as RestoreResult.Restored).session
-		assertArrayEquals("synthetic-backup-token".toByteArray(), store.read(session))
-		assertArrayEquals("synthetic-backup-cache".toByteArray(), EncryptedCache(context, coordinator).read(session))
+		assertArrayEquals("synthetic-backup-token-$nonce".toByteArray(), store.read(session))
+		assertArrayEquals("synthetic-backup-cache-$nonce".toByteArray(), EncryptedCache(context, coordinator).read(session))
 	}
 
 	@Test

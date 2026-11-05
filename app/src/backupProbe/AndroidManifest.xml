@@ -1,0 +1,7 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:tools="http://schemas.android.com/tools">
+	<application
+		android:fullBackupContent="@xml/probe_backup_rules"
+		android:dataExtractionRules="@xml/probe_data_extraction_rules"
+		tools:replace="android:fullBackupContent,android:dataExtractionRules" />
+</manifest>

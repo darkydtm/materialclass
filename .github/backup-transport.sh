@@ -3,8 +3,8 @@ set -euo pipefail
 
 package=org.materialclass
 transport=com.android.localtransport/.LocalTransport
-adb install app/build/outputs/apk/debug/app-debug.apk
-adb install app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb install "$RUNNER_TEMP/normal.apk"
+adb install "$RUNNER_TEMP/normal-test.apk"
 printf '%s\n' 'DIAGNOSTIC: device and package'
 adb shell getprop ro.build.fingerprint
 adb shell am get-current-user
@@ -63,6 +63,50 @@ run_fixture() {
 	adb shell am instrument -w -r -e nonce "$nonce" -e class "$fixture#$1" "$package.test/androidx.test.runner.AndroidJUnitRunner" | tr -d '\r' | tee "$RUNNER_TEMP/fixture-$1.txt"
 	grep -Fx 'OK (1 test)' "$RUNNER_TEMP/fixture-$1.txt"
 }
+package=org.materialclass.backupprobe
+adb install "$RUNNER_TEMP/probe.apk"
+adb install "$RUNNER_TEMP/probe-test.apk"
+run_fixture seed
+adb shell monkey -p "$package" -c android.intent.category.LAUNCHER 1
+adb shell run-as "$package" mkdir -p shared_prefs cache files
+printf '%s' "<map><string name=\"fixture\">$nonce</string></map>" | adb shell run-as "$package" tee shared_prefs/session.xml > /dev/null
+printf '%s' "$nonce" | adb shell run-as "$package" tee files/fixture > /dev/null
+printf '%s' "$nonce" | adb shell run-as "$package" tee cache/fixture > /dev/null
+run_fixture verifySeededPayloads
+adb shell am force-stop "$package"
+cache_file=$(adb shell run-as "$package" ls files/backup-cache | tr -d '\r' | grep -v '^index$')
+test -n "$cache_file"
+case "$cache_file" in *[!a-zA-Z0-9._-]*|'') exit 1;; esac
+cache_hash=$(adb exec-out run-as "$package" cat "files/backup-cache/$cache_file" | sha256sum | cut -d ' ' -f 1)
+index_hash=$(adb exec-out run-as "$package" cat files/backup-cache/index | sha256sum | cut -d ' ' -f 1)
+adb shell monkey -p "$package" -c android.intent.category.LAUNCHER 1
+adb shell bmgr backupnow "$package" | tr -d '\r' | tee "$RUNNER_TEMP/probe-backup.txt"
+grep -Fx "Package $package with result: Success" "$RUNNER_TEMP/probe-backup.txt"
+adb shell am force-stop "$package"
+adb shell pm clear "$package" | tr -d '\r' | grep -Fx Success
+for path in shared_prefs/session.xml files/fixture cache/fixture no_backup/session files/backup-cache; do
+	adb shell run-as "$package" sh -c "'test ! -e $path'"
+done
+adb shell bmgr list sets | tr -d '\r' > "$RUNNER_TEMP/probe-sets.txt"
+probe_token=$(awk '/^[[:space:]]*[0-9a-fA-F]+[[:space:]]*:/ {gsub(":", "", $1); print $1; exit}' "$RUNNER_TEMP/probe-sets.txt")
+test -n "$probe_token"
+if [ "$api" -eq 24 ]; then
+	adb shell bmgr restore "$package" | tr -d '\r' | tee "$RUNNER_TEMP/probe-restore.txt"
+else
+	adb shell bmgr restore "$probe_token" "$package" | tr -d '\r' | tee "$RUNNER_TEMP/probe-restore.txt"
+fi
+awk -v package="$package" '$1 == "onUpdate:" && $2 ~ /^[0-9]+$/ && $3 == "=" && $4 == package && NF == 4 { found = 1 } END { exit !found }' "$RUNNER_TEMP/probe-restore.txt"
+grep -Fx 'restoreFinished: 0' "$RUNNER_TEMP/probe-restore.txt"
+adb shell am force-stop "$package"
+test "$(adb exec-out run-as "$package" cat shared_prefs/session.xml)" = "<map><string name=\"fixture\">$nonce</string></map>"
+test "$(adb exec-out run-as "$package" cat files/fixture)" = "$nonce"
+test "$(adb exec-out run-as "$package" cat "files/backup-cache/$cache_file" | sha256sum | cut -d ' ' -f 1)" = "$cache_hash"
+test "$(adb exec-out run-as "$package" cat files/backup-cache/index | sha256sum | cut -d ' ' -f 1)" = "$index_hash"
+for path in cache/fixture no_backup/session; do
+	adb shell run-as "$package" sh -c "'test ! -e $path'"
+done
+printf '%s\n' 'STAGE: permissive app restored synthetic sensitive files and encrypted cache'
+package=org.materialclass
 run_fixture seed
 adb shell monkey -p "$package" -c android.intent.category.LAUNCHER 1
 adb shell run-as "$package" mkdir -p shared_prefs cache files
