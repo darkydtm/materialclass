@@ -150,9 +150,29 @@ internal fun MaterialClassApp(example: ExampleData? = null, nativeEnabled: Boole
 											diary.staleError?.let { Text(stringResource(R.string.stale_data, stringResource(errorMessage(it)))) }
 											Text(stringResource(R.string.last_updated, formatTimestamp(diary.snapshot.lastSuccessMillis, localized)))
 											if (screen == "homework") {
-												val records = diary.snapshot.diary.days.flatMap { day -> day.subjects.filter { !it.homeworkBody.isNullOrBlank() }.map { day.date to it } }
-												if (records.isEmpty()) Text(stringResource(R.string.homework_empty))
-												records.forEach { (date, subject) ->
+												val snapshot = diary.snapshot.diary
+												var selectedSubject by remember(snapshot) { mutableStateOf<String?>(null) }
+												var selectedDate by remember(snapshot) { mutableStateOf<String?>(null) }
+												val records = snapshot.days.flatMap { day -> day.subjects.filter { !it.homeworkBody.isNullOrBlank() }.map { day.date to it } }
+												if (records.isEmpty()) Text(stringResource(R.string.homework_empty)) else {
+													Text(stringResource(R.string.homework_filter_subject), style = MaterialTheme.typography.titleMedium)
+													Column(Modifier.selectableGroup()) {
+														Box(Modifier.selectable(selectedSubject == null, role = Role.RadioButton, onClick = { selectedSubject = null }).padding(12.dp)) { Text(stringResource(R.string.homework_all_subjects)) }
+														records.map { it.second.label }.distinct().forEach { label ->
+															Box(Modifier.selectable(selectedSubject == label, role = Role.RadioButton, onClick = { selectedSubject = label }).padding(12.dp)) { Text(stringResource(R.string.homework_subject_option, label)) }
+														}
+													}
+													Text(stringResource(R.string.homework_filter_date), style = MaterialTheme.typography.titleMedium)
+													Column(Modifier.selectableGroup()) {
+														Box(Modifier.selectable(selectedDate == null, role = Role.RadioButton, onClick = { selectedDate = null }).padding(12.dp)) { Text(stringResource(R.string.homework_all_dates)) }
+														records.map { it.first }.distinct().forEach { date ->
+															Box(Modifier.selectable(selectedDate == date, role = Role.RadioButton, onClick = { selectedDate = date }).padding(12.dp)) { Text(stringResource(R.string.homework_date_option, date)) }
+														}
+													}
+												}
+												val filtered = records.filter { (date, subject) -> (selectedSubject == null || subject.label == selectedSubject) && (selectedDate == null || date == selectedDate) }
+												if (records.isNotEmpty() && filtered.isEmpty()) Text(stringResource(R.string.homework_filter_empty))
+												filtered.forEach { (date, subject) ->
 													Text(stringResource(R.string.homework_record_date, date))
 													Text(subject.label)
 													Text(subject.homeworkBody.orEmpty())
