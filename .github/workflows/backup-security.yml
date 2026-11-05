@@ -12,6 +12,11 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Verify Gradle wrapper integrity
+        run: |
+          set -eu
+          printf '%s  %s\n' '497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7' gradle/wrapper/gradle-wrapper.jar | sha256sum --check
+          python3 .github/scripts/check-wrapper-properties.py gradle/wrapper/gradle-wrapper.properties
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
         with:
           distribution: temurin

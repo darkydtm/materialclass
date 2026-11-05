@@ -1,0 +1,20 @@
+name: Gradle wrapper integrity
+on:
+  push:
+    branches: [test/security-dependency-audit]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/test/security-dependency-audit'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Verify Gradle 9.5.0 wrapper against published checksums
+        run: |
+          set -eu
+          printf '%s  %s\n' '497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7' gradle/wrapper/gradle-wrapper.jar | sha256sum --check
+          python3 .github/scripts/check-wrapper-properties.py gradle/wrapper/gradle-wrapper.properties
+      - name: Test wrapper verification rejects tampering
+        run: python3 -m unittest discover -s .github/scripts -p 'test_wrapper_integrity.py' -v
