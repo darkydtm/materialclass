@@ -216,13 +216,14 @@ internal class SchoolRepository(
 		try {
 			val verification = try { verifier.verify(request.first, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { SessionVerification.Retry }
 			val outcome = coordinator.ifActive(active) {
-				if (lease.cancelled || session !== active || remote !== request.first || request.second != coordinator.requestRevision() || revision != profileRevision) null
+				if (lease.cancelled || session !== active || remote !== request.first || request.second != coordinator.requestRevision()) null
 				else if (verification == SessionVerification.Invalid || verification == SessionVerification.Expired ||
 					(verification is SessionVerification.Verified && (!verification.pupil || verification.account != active.account))) {
 					remote = null; scheduleSession = null; diarySession = null; profile = null; session = null
 					coordinator.revokeIfActive(active, expired = true)
 					null
-				} else {
+				} else if (revision != profileRevision) null
+				else {
 					val verified = verification as? SessionVerification.Verified
 					scheduleSession = verified?.scheduleSession?.takeIf { it.remote === request.first && it.account == active.account.value }
 					val lostVerifiedUuid = verifiedScheduleRemote === request.first && scheduleSession == null

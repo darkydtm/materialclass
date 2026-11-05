@@ -14,6 +14,7 @@ import org.materialclass.data.*
 import org.materialclass.session.*
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
 
 @RunWith(AndroidJUnit4::class)
 class NativeControllerIntegrationTest {
@@ -140,6 +141,73 @@ class NativeControllerIntegrationTest {
 			worker.join(10000)
 		}
 	}
+
+	@Test
+	fun expiryReservationSurvivesConcurrentCancellationAndSeparateAcknowledgements() {
+		val entered = CountDownLatch(1)
+		val release = CountDownLatch(1)
+		val expiryDelivered = CountDownLatch(1)
+		val logoutDelivered = CountDownLatch(1)
+		val expiryTicket = java.util.concurrent.atomic.AtomicReference<Any>()
+		val expiryAck = java.util.concurrent.atomic.AtomicReference<() -> Unit>()
+		val logoutAck = java.util.concurrent.atomic.AtomicReference<() -> Unit>()
+		val callbackLocked = java.util.concurrent.atomic.AtomicBoolean(false)
+		val first = SessionCoordinator({}, { entered.countDown(); check(release.await(10, TimeUnit.SECONDS)) })
+		val second = SessionCoordinator({}, {})
+		val old = first.activate(AccountId("synthetic-expiry-first"))
+		val expiryEpoch = first.revocationEpoch() + 1
+		val observer: (Long, () -> Unit) -> Unit = { epoch, ack ->
+			if (Thread.holdsLock(org.materialclass.security.StorageLock)) callbackLocked.set(true)
+			if (epoch == expiryEpoch) { expiryAck.set(ack); expiryDelivered.countDown() }
+			else if (epoch == expiryEpoch + 1) { logoutAck.set(ack); logoutDelivered.countDown() }
+		}
+		second.observeUiRevocations(observer)
+		val failure = java.util.concurrent.atomic.AtomicReference<Throwable>()
+		val expiry = thread {
+			try { check(first.revokeIfActive(old, expired = true) { expiryTicket.set(it) }) }
+			catch (error: Throwable) { failure.set(error) }
+		}
+		var logout: Thread? = null
+		try {
+			assertEquals(true, entered.await(10, TimeUnit.SECONDS))
+			val expired = expiryTicket.get()
+			assertNotNull(expired)
+			val cancelled = second.cancelInFlightNow()
+			assertEquals(true, logoutDelivered.await(10, TimeUnit.SECONDS))
+			assertEquals(true, first.isPendingLogout(expired))
+			assertEquals(true, first.isPendingLogout(cancelled))
+			release.countDown()
+			expiry.join(10000)
+			assertEquals(false, expiry.isAlive)
+			assertEquals(true, expiryDelivered.await(10, TimeUnit.SECONDS))
+			expiryAck.get().invoke()
+			assertEquals(false, first.isPendingLogout(expired))
+			assertEquals(true, first.isPendingLogout(cancelled))
+			assertNull(first.admit(first.beginLogin()))
+			val logoutWorker = thread { try { second.logout(cancelled) } catch (error: Throwable) { failure.set(error) } }
+			logout = logoutWorker
+			logoutAck.get().invoke()
+			logoutWorker.join(10000)
+			assertEquals(false, logoutWorker.isAlive)
+			assertNull(failure.get())
+			assertNull(first.pendingLogoutTicket())
+			assertEquals(false, callbackLocked.get())
+			val current = first.activate(AccountId("synthetic-after-expiry"))
+			second.logout(expired)
+			second.logout(cancelled)
+			assertEquals("current", first.ifActive(current) { "current" })
+		} finally {
+			release.countDown()
+			expiryAck.get()?.invoke()
+			logoutAck.get()?.invoke()
+			second.removeUiRevocationObserver(observer)
+			expiry.join(10000)
+			logout?.join(10000)
+			first.pendingLogoutTicket()?.let { second.logout(it) }
+			second.logout()
+		}
+	}
+
 
 	@Test fun expiryAndUnticketedLogoutKeepAdmissionClosedUntilUiAcknowledges() {
 		for (expiry in listOf(true, false)) {

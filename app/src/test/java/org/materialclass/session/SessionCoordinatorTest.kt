@@ -10,6 +10,39 @@ import kotlin.concurrent.thread
 
 class SessionCoordinatorTest {
 	@Test
+	fun immediateLogoutWinsAfterActiveCheckBeforeExpiry() {
+		val coordinator = SessionCoordinator { }
+		val session = coordinator.activate(AccountId("synthetic-logout-race"))
+		val checked = CountDownLatch(1)
+		val resume = CountDownLatch(1)
+		val revoked = java.util.concurrent.atomic.AtomicReference<Boolean>()
+		val worker = thread {
+			coordinator.ifActive(session) {
+				checked.countDown()
+				check(resume.await(10, TimeUnit.SECONDS))
+				revoked.set(coordinator.revokeIfActive(session, expired = true))
+			}
+		}
+		var ticket: Any? = null
+		try {
+			assertEquals(true, checked.await(10, TimeUnit.SECONDS))
+			ticket = coordinator.cancelInFlightNow()
+			assertEquals(SessionChange.LOGOUT, coordinator.event().change)
+			resume.countDown()
+			worker.join(10000)
+			assertEquals(false, worker.isAlive)
+			assertEquals(false, revoked.get())
+			assertEquals(SessionChange.LOGOUT, coordinator.event().change)
+			assertEquals(ticket, coordinator.pendingLogoutTicket())
+		} finally {
+			resume.countDown()
+			worker.join(10000)
+			ticket?.let { coordinator.logout(it) }
+			coordinator.logout()
+		}
+	}
+
+	@Test
 	fun failedExpiryKeepsCleanupTicketUntilRetry() {
 		var fail = false
 		val first = SessionCoordinator { if (fail) throw IllegalStateException("synthetic failure") }
