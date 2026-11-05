@@ -45,8 +45,8 @@ for attribute, name in (('fullBackupContent', 'backup_rules'), ('dataExtractionR
 	resource_id = applications[0][attribute]
 	value = app.get(android + attribute)
 	assert value is not None, attribute
-	if re.fullmatch(r'@0[xX][0-9a-fA-F]{1,8}', value):
-		assert int(value[1:], 16) == int(resource_id, 16), (attribute, value, resource_id)
+	if re.fullmatch(r'@(?:ref/)?0[xX][0-9a-fA-F]{1,8}', value):
+		assert int(value.removeprefix('@ref/').removeprefix('@'), 16) == int(resource_id, 16), (attribute, value, resource_id)
 	elif re.fullmatch(r'@[0-9]+', value):
 		assert int(value[1:], 10) == int(resource_id, 16), (attribute, value, resource_id)
 	else:

@@ -45,12 +45,16 @@ class BackupSecurityTest(unittest.TestCase):
 		result = self.run_check()
 		self.assertEqual(result.returncode, 0, result.stderr)
 
+	def test_apkanalyzer_ref_manifest_reference_passes(self):
+		(self.root / 'manifest.xml').write_text(self.manifest('@ref/0x7f150000', '@ref/0x7f150001'))
+		self.assertEqual(self.run_check().returncode, 0)
+
 	def test_named_manifest_references_pass(self):
 		(self.root / 'manifest.xml').write_text(self.manifest('@xml/backup_rules', '@xml/data_extraction_rules'))
 		self.assertEqual(self.run_check().returncode, 0)
 
 	def test_inconsistent_decoded_references_are_rejected(self):
-		for value in ('@xml/evil', '@0x7f150002', '@2132082690', '@garbage', '@xml/data_extraction_rules'):
+		for value in ('@xml/evil', '@0x7f150002', '@ref/0x7f150002', '@2132082690', '@garbage', '@xml/data_extraction_rules'):
 			with self.subTest(value=value):
 				(self.root / 'manifest.xml').write_text(self.manifest(value, '@0x7f150001'))
 				self.assertNotEqual(self.run_check().returncode, 0)
