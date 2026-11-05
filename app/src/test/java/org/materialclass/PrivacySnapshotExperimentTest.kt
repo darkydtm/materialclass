@@ -22,12 +22,13 @@ class PrivacySnapshotExperimentTest {
 		val cancellationLock = Any()
 		var cancelled = false
 		fun cancelIo() = synchronized(cancellationLock) { cancelled = true }
-		fun revoke(): SnapshotApplyResult {
+		fun revoke(beforeApply: () -> Unit = {}): SnapshotApplyResult {
 			cancelIo()
 			while (true) {
 				val snapshot = Snapshot.takeMutableSnapshot()
 				try {
 					snapshot.enter { state.value = Surface(state.value.epoch + 1, null, null, null) }
+					beforeApply()
 					val result = snapshot.apply()
 					if (result is SnapshotApplyResult.Success) return result
 				} finally { snapshot.dispose() }
@@ -160,16 +161,56 @@ class PrivacySnapshotExperimentTest {
 		assertEquals(0L, done.count)
 	}
 
+	@Test fun repeatedConflictsDelayRevokeUntilWriterStops() {
+		val store = Store()
+		var attempts = 0
+		val result = store.revoke {
+			attempts++
+			assertTrue("revoke exceeded retry bound", attempts <= 5)
+			if (attempts <= 4) {
+				val writer = Snapshot.takeMutableSnapshot()
+				try {
+					writer.enter { store.state.value = store.state.value.copy(profile = "writer $attempts") }
+					assertTrue(writer.apply() is SnapshotApplyResult.Success)
+				} finally { writer.dispose() }
+			}
+		}
+		assertEquals(5, attempts)
+		assertTrue(result is SnapshotApplyResult.Success)
+		assertEquals(Surface(1, null, null, null), store.state.value)
+	}
+
+	@Test fun equivalentWriterIsNoOpDuringRevoke() {
+		val store = Store()
+		var attempts = 0
+		val result = store.revoke {
+			attempts++
+			val writer = Snapshot.takeMutableSnapshot()
+			try {
+				writer.enter { store.state.value = store.state.value.copy() }
+				assertTrue(writer.apply() is SnapshotApplyResult.Success)
+			} finally { writer.dispose() }
+		}
+		assertEquals(1, attempts)
+		assertTrue(result is SnapshotApplyResult.Success)
+		assertEquals(Surface(1, null, null, null), store.state.value)
+	}
+
 	@Test fun observerFailureCanFollowCommittedApply() {
 		val store = Store()
+		val failure = IllegalStateException("observer")
 		val observer = Snapshot.registerApplyObserver { changed, _ ->
-			if (store.state in changed) throw IllegalStateException("observer")
+			if (store.state in changed) throw failure
 		}
 		try {
-			try { store.revoke(); fail("observer did not throw") } catch (expected: IllegalStateException) { assertEquals("observer", expected.message) }
-			assertTrue(store.cancelled)
-			assertEquals(Surface(1, null, null, null), store.state.value)
+			repeat(2) { index ->
+				try { store.revoke(); fail("observer did not throw") } catch (actual: IllegalStateException) { assertSame(failure, actual) }
+				assertTrue(store.cancelled)
+				assertEquals(Surface(index.toLong() + 1, null, null, null), store.state.value)
+			}
 		} finally { observer.dispose() }
+		assertTrue(store.revoke() is SnapshotApplyResult.Success)
+		assertEquals(Surface(3, null, null, null), store.state.value)
 	}
 
 	@Test fun cancellationPrecedesSnapshotApplyAndDoesNotItselfClearUi() {
