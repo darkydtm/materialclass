@@ -91,6 +91,7 @@ class NativeGatewayUiIntegrationTest {
 				"/api/v2/os/login" -> {
 					assertEquals("POST", request.method)
 					assertEquals("synthetic-user", JSONObject(String(request.body!!)).getString("login"))
+					assertEquals("synthetic-password", JSONObject(String(request.body!!)).getString("password"))
 					if (failLogin.get()) Response(503, "") else Response(200, """{"success":true,"access_token":"synthetic-token","user_info":$loginProfile}""")
 				}
 				"/api/v2/os/user-info" -> {
@@ -172,16 +173,26 @@ class NativeGatewayUiIntegrationTest {
 	private fun editables(node: AccessibilityNodeInfo): List<AccessibilityNodeInfo> =
 		(if (node.isEditable) listOf(node) else emptyList()) + (0 until node.childCount).flatMap { node.getChild(it)?.let(::editables) ?: emptyList() }
 
-	private fun enterText(node: AccessibilityNodeInfo, value: String) {
+	private fun enterText(password: Boolean, value: String) {
+		val deadline = SystemClock.uptimeMillis() + 15000
 		val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, value) }
-		assertTrue(node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args))
+		while (SystemClock.uptimeMillis() < deadline) {
+			val root = instrumentation.uiAutomation.rootInActiveWindow
+			val node = root?.let(::editables)?.firstOrNull { it.isPassword == password && it.isEnabled }
+			if (node != null && node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT }) {
+				node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+				if (node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) return
+			}
+			SystemClock.sleep(50)
+		}
+		throw AssertionError("Unable to enter text in ${if (password) "password" else "username"} field")
 	}
 
 	@Test fun studentJourneyUsesLoginFormAndVisibleModuleActions() = exercise { exchange, _ ->
 		exchange.selectableWeeks.set(true)
 		val fields = editables(instrumentation.uiAutomation.rootInActiveWindow)
 		assertEquals(2, fields.size)
-		enterText(fields.first { !it.isPassword }, "synthetic-user")
+		enterText(false, "synthetic-user")
 		val deadline = SystemClock.uptimeMillis() + 15000
 		while (true) {
 			val root = instrumentation.uiAutomation.rootInActiveWindow
@@ -190,7 +201,7 @@ class NativeGatewayUiIntegrationTest {
 			check(SystemClock.uptimeMillis() < deadline) { "Username was not retained in the login field: $username" }
 			SystemClock.sleep(50)
 		}
-		enterText(editables(instrumentation.uiAutomation.rootInActiveWindow).first { it.isPassword }, "synthetic-password")
+		enterText(true, "synthetic-password")
 		instrumentation.waitForIdleSync()
 		instrumentation.runOnMainSync { (context.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).hideSoftInputFromWindow(activity.window.decorView.windowToken, 0) }
 		instrumentation.waitForIdleSync()
