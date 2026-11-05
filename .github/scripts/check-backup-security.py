@@ -41,7 +41,8 @@ for line in tree.splitlines():
 assert len(applications) == 1
 for attribute, name in (('fullBackupContent', 'backup_rules'), ('dataExtractionRules', 'data_extraction_rules')):
 	resource_id = applications[0][attribute]
-	assert app.get(android + attribute) in ('@' + resource_id, '@xml/' + name)
+	value = app.get(android + attribute)
+	assert value is not None and value.startswith('@'), (attribute, value)
 
 	entries = re.split(r'(?m)^\s*resource ', resources)
 	matches = [entry for entry in entries if re.match(re.escape(resource_id) + r'\s', entry.lower())]

@@ -39,6 +39,12 @@ class BackupSecurityTest(unittest.TestCase):
 		result = self.run_check()
 		self.assertEqual(result.returncode, 0, result.stderr)
 
+	def test_decimal_manifest_reference_passes(self):
+		path = self.root / 'manifest.xml'
+		path.write_text(self.manifest('@2132082688', '@2132082689'))
+		result = self.run_check()
+		self.assertEqual(result.returncode, 0, result.stderr)
+
 	def test_namespace_indented_root_passes(self):
 		path = self.root / 'manifest-tree.txt'
 		path.write_text('N: android=http://schemas.android.com/apk/res/android (line=2)\n' + ''.join('  ' + line for line in path.read_text().splitlines(keepends=True)))
