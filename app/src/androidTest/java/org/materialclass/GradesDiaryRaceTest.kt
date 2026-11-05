@@ -155,6 +155,33 @@ class GradesDiaryRaceTest {
 		} finally { gate.release.countDown() }
 	}
 
+	@Test fun revokedStateIsClearedBeforeBlockedUiCommitResumes() {
+		val fixture = Fixture()
+		val gate = Gate()
+		val armed = java.util.concurrent.atomic.AtomicBoolean(false)
+		fun create(): NativeController = NativeController(
+			beforePrivateCommit = { name -> if (name == "profile" && armed.compareAndSet(true, false)) gate.waitHere() },
+		) { emit -> SchoolRepository(fixture.gateway, fixture.verifier, coordinator, fixture.cache, { 1L }, emit, SessionStore(context, coordinator)) }
+		main { controller = create(); controller!!.login("1", charArrayOf('x')) }
+		val first = controller!!
+		await { first.state.signedIn && first.state.profile != null && first.state.diary is DiaryState.Ready && first.state.schedule != null }
+		drain(first)
+		main { replacement = create() }
+		val second = replacement!!
+		armed.set(true)
+		try {
+			main { first.refresh() }
+			assertTrue("Did not reach profile commit", gate.entered.await(15, TimeUnit.SECONDS))
+			coordinator.cancelInFlightNow()
+			val firstAfterCancel = first.state
+			val secondAfterCancel = second.state
+			assertFalse("First controller retained signed-in state before the blocked commit resumed", firstAfterCancel.signedIn)
+			assertNull(firstAfterCancel.profile)
+			assertFalse("Second controller retained signed-in state before the blocked commit resumed", secondAfterCancel.signedIn)
+			assertNull(secondAfterCancel.profile)
+		} finally { gate.release.countDown() }
+	}
+
 	@Test fun revokedOnlineGradesAreNotPublished() = revokedPrivateCommitIsNotPublished("grades", false)
 
 	@Test fun revokedLoginPublication() = revokedPrivateCommitIsNotPublished("login", false)
