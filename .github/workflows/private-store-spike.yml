@@ -1,12 +1,12 @@
 name: Private store spike
 on:
   push:
-    branches: [test/ui-privacy-design]
+    branches: [test/ui-privacy-design, test/privacy-actor-spike]
 permissions:
   contents: read
 jobs:
   test:
-    if: github.ref == 'refs/heads/test/ui-privacy-design'
+    if: github.ref == 'refs/heads/test/ui-privacy-design' || github.ref == 'refs/heads/test/privacy-actor-spike'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -18,4 +18,7 @@ jobs:
       - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
         with:
           packages: platform-tools
-      - run: ./gradlew --no-daemon :app:testDebugUnitTest --tests org.materialclass.PrivateStoreSpikeTest
+      - if: github.ref == 'refs/heads/test/ui-privacy-design'
+        run: ./gradlew --no-daemon :app:testDebugUnitTest --tests org.materialclass.PrivateStoreSpikeTest
+      - if: github.ref == 'refs/heads/test/privacy-actor-spike'
+        run: ./gradlew --no-daemon :app:testDebugUnitTest --tests org.materialclass.PrivacyActorSpikeTest
