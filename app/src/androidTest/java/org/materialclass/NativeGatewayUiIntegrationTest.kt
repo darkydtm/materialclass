@@ -196,13 +196,13 @@ class NativeGatewayUiIntegrationTest {
 		while (SystemClock.uptimeMillis() < deadline) {
 			val root = loginRoot()
 			val nodes = root?.let(::editables).orEmpty()
-			diagnostic = nodes.joinToString { "protected:${it.isPassword}, enabled:${it.isEnabled}, focused:${it.isFocused}, textLength:${it.text?.length}, actions:${it.actionList.map { action -> action.id }}" }
+			diagnostic = "submitted:$submitted, " + nodes.joinToString { "protected:${it.isPassword}, enabled:${it.isEnabled}, focused:${it.isFocused}, textLength:${it.text?.length}, actions:${it.actionList.map { action -> action.id }}" }
 			val node = nodes.filter { it.isPassword == password }.singleOrNull()?.takeIf { it.isEnabled }
 			if (node != null) {
 				if (!node.isFocused) {
 					node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
 					instrumentation.waitForIdleSync()
-				} else if (submitted && node.text?.length == value.length) {
+				} else if (submitted && (password || node.text?.length == value.length)) {
 					return
 				} else if (!submitted && node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT }) {
 					submitted = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
