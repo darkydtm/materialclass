@@ -171,7 +171,7 @@ class NativeUiControllerTest {
 				click(show)
 				fun checkRadio(label: String, checked: Boolean) {
 					var node = waitFor(label)
-					while (!node.isClickable && node.parent != null) node = node.parent
+					while (!node.isCheckable && node.parent != null) node = node.parent
 					assertEquals("android.widget.RadioButton", node.className.toString())
 					assertTrue(node.isCheckable)
 					assertEquals(label, checked, node.isChecked)
