@@ -57,7 +57,9 @@ class NativeUiControllerTest {
 		}
 		fun structure(node: AccessibilityNodeInfo, depth: Int): String {
 			val bounds = android.graphics.Rect().also { node.getBoundsInScreen(it) }
-			val summary = "depth=$depth class=${node.className} visible=${node.isVisibleToUser} scrollable=${node.isScrollable} clickable=${node.isClickable} bounds=$bounds children=${node.childCount}"
+			val known = setOf("Homework", "Show filters", "Hide filters", "Subject: Math", "All subjects", "All dates", "Math task", "Art task", "Sign out")
+			val label = node.text?.toString()?.takeIf { it in known } ?: ""
+			val summary = "depth=$depth class=${node.className} visible=${node.isVisibleToUser} scrollable=${node.isScrollable} clickable=${node.isClickable} checkable=${node.isCheckable} checked=${node.isChecked} label=$label bounds=$bounds children=${node.childCount}"
 			return (listOf(summary) + (0 until node.childCount).mapNotNull { node.getChild(it)?.let { child -> structure(child, depth + 1) } }).joinToString("\n")
 		}
 		val tree = instrumentation.uiAutomation.rootInActiveWindow?.let { structure(it, 0) } ?: "no active root"
