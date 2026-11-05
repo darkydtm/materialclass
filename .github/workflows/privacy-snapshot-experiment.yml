@@ -27,7 +27,7 @@ jobs:
           paths = glob.glob('app/build/test-results/testDebugUnitTest/TEST-org.materialclass.PrivacySnapshotExperimentTest.xml')
           assert len(paths) == 1, paths
           suite = ET.parse(paths[0]).getroot()
-          expected = {'revokeWinsAgainstBothControllers', 'publishWinsThenRevokeRetriesWithoutRestoringPayload', 'accountAbaRejectsOldSnapshotAndEpoch', 'equivalentWritesDoNotConflictButChangedEpochDoes', 'cancellationCompletesWhileApplyObserverBlocks', 'observerFailureCanFollowCommittedApply', 'cancellationPrecedesSnapshotApplyAndDoesNotItselfClearUi'}
+          expected = {'concurrentPublishCannotApplyAfterCompletedRevoke', 'identicalConcurrentWritesAreEquivalentEvenWithoutMerge', 'revokeWinsAgainstBothControllers', 'publishWinsThenRevokeRetriesWithoutRestoringPayload', 'accountAbaRejectsOldSnapshotAndEpoch', 'equivalentWritesDoNotConflictButChangedEpochDoes', 'cancellationCompletesWhileApplyObserverBlocks', 'observerFailureCanFollowCommittedApply', 'cancellationPrecedesSnapshotApplyAndDoesNotItselfClearUi'}
           actual = {case.get('name') for case in suite.findall('testcase') if case.find('failure') is None and case.find('error') is None and case.find('skipped') is None}
           assert actual == expected, (actual, expected)
           print('All named snapshot experiment tests passed:', sorted(actual))

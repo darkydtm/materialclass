@@ -70,6 +70,47 @@ class PrivacySnapshotExperimentTest {
 		} finally { revoke.dispose(); profile.dispose() }
 	}
 
+	@Test fun concurrentPublishCannotApplyAfterCompletedRevoke() {
+		val store = Store()
+		val prepared = CountDownLatch(2)
+		val release = CountDownLatch(1)
+		val results = arrayOfNulls<SnapshotApplyResult>(2)
+		val errors = AtomicReference<Throwable?>()
+		val workers = (0..1).map { index ->
+			thread {
+				try {
+					val snapshot = privateSnapshot(store, 0, index == 1)
+					try {
+						prepared.countDown()
+						await(release)
+						results[index] = snapshot.apply()
+					} finally { snapshot.dispose() }
+				} catch (t: Throwable) { errors.compareAndSet(null, t) }
+			}
+		}
+		try {
+			await(prepared)
+			assertTrue(store.revoke() is SnapshotApplyResult.Success)
+		} finally {
+			release.countDown()
+			workers.forEach { it.join(10000) }
+		}
+		assertNull(errors.get())
+		assertTrue(results.all { it is SnapshotApplyResult.Failure })
+		assertEquals(Surface(1, null, null, null), store.state.value)
+	}
+
+	@Test fun identicalConcurrentWritesAreEquivalentEvenWithoutMerge() {
+		val store = Store()
+		val first = privateSnapshot(store, 0)
+		val second = privateSnapshot(store, 0)
+		try {
+			assertTrue(first.apply() is SnapshotApplyResult.Success)
+			assertTrue(second.apply() is SnapshotApplyResult.Success)
+			assertEquals("private profile", store.state.value.profile)
+		} finally { first.dispose(); second.dispose() }
+	}
+
 	@Test fun accountAbaRejectsOldSnapshotAndEpoch() {
 		val store = Store()
 		val old = privateSnapshot(store, 0)
