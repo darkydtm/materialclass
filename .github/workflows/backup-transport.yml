@@ -24,7 +24,7 @@ jobs:
       - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
         with:
           packages: platform-tools
-      - run: ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest
+      - run: ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest :backup-reference:assembleDebug
       - name: Enable virtualization
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules

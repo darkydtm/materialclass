@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "MaterialClass"
 include(":app")
+include(":backup-reference")

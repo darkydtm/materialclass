@@ -26,6 +26,34 @@ if ! grep -Fq "$transport" "$RUNNER_TEMP/transports.txt"; then
 fi
 adb shell bmgr transport "$transport" | tee "$RUNNER_TEMP/transport-selection.txt"
 adb shell bmgr list transports | tr -d '\r' | grep -F "* $transport"
+reference=org.materialclass.backupreference
+adb install backup-reference/build/outputs/apk/debug/backup-reference-debug.apk
+adb shell am start -n "$reference/android.app.Activity"
+adb shell run-as "$reference" mkdir -p shared_prefs files
+printf '%s' '<map><string name="fixture">forbidden-session</string></map>' | adb shell run-as "$reference" tee shared_prefs/session.xml > /dev/null
+printf '%s' forbidden-file | adb shell run-as "$reference" tee files/fixture > /dev/null
+adb shell bmgr backupnow "$reference" | tr -d '\r' | tee "$RUNNER_TEMP/reference-backup.txt"
+grep -F "Package $reference with result: Success" "$RUNNER_TEMP/reference-backup.txt"
+adb shell am force-stop "$reference"
+adb shell pm clear "$reference" | tr -d '\r' | grep -Fx Success
+for path in shared_prefs/session.xml files/fixture; do
+	adb shell run-as "$reference" sh -c "'test ! -e $path'"
+done
+adb shell bmgr list sets | tr -d '\r' | tee "$RUNNER_TEMP/reference-sets.txt"
+reference_token=$(awk '/^[[:space:]]*[0-9a-fA-F]+[[:space:]]*:/ {gsub(":", "", $1); print $1; exit}' "$RUNNER_TEMP/reference-sets.txt")
+test -n "$reference_token"
+api=$(adb shell getprop ro.build.version.sdk | tr -d '\r')
+if [ "$api" -eq 24 ]; then
+	adb shell bmgr restore "$reference" | tr -d '\r' | tee "$RUNNER_TEMP/reference-restore.txt"
+else
+	adb shell bmgr restore "$reference_token" "$reference" | tr -d '\r' | tee "$RUNNER_TEMP/reference-restore.txt"
+fi
+grep -E "^onUpdate: [0-9]+ = $reference$" "$RUNNER_TEMP/reference-restore.txt"
+grep -Fx 'restoreFinished: 0' "$RUNNER_TEMP/reference-restore.txt"
+adb shell am force-stop "$reference"
+adb exec-out run-as "$reference" cat shared_prefs/session.xml | grep -Fx '<map><string name="fixture">forbidden-session</string></map>'
+adb exec-out run-as "$reference" cat files/fixture | grep -Fx forbidden-file
+printf '%s\n' 'STAGE: permissive reference restored private fixtures'
 fixture=org.materialclass.security.BackupTransportFixtureTest
 run_fixture() {
 	adb shell am instrument -w -r -e class "$fixture#$1" "$package.test/androidx.test.runner.AndroidJUnitRunner" | tr -d '\r' | tee "$RUNNER_TEMP/fixture-$1.txt"
