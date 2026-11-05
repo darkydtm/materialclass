@@ -27,7 +27,18 @@ class AnnualGradesCacheTest {
 			SessionVerification.Verified(AccountId("1"), true, null, VerifiedDiarySession.compare(session, profile))
 		}
 		val diary = EncryptedDiaryCache(EncryptedCache(context, coordinator))
-		val grades = EncryptedDiaryCache(EncryptedCache(context, coordinator, "grades"))
+		val encryptedGrades = EncryptedDiaryCache(EncryptedCache(context, coordinator, "grades"))
+		var corrupt = false
+		var mismatch = false
+		val grades = object : DiaryCache {
+			override fun read(session: ActiveSession): ByteArray? {
+				val bytes = encryptedGrades.read(session) ?: return null
+				if (corrupt) return byteArrayOf(1, 2, 3)
+				if (mismatch) bytes[11] = (bytes[11].toInt() xor 1).toByte()
+				return bytes
+			}
+			override fun write(session: ActiveSession, bytes: ByteArray) = encryptedGrades.write(session, bytes)
+		}
 		val constructor = SchoolRepository::class.java.declaredConstructors.singleOrNull { it.parameterTypes.size == 10 && it.parameterTypes.last() == DiaryCache::class.java }
 		assertNotNull("Annual grades must accept a separate encrypted cache", constructor)
 		val repository = constructor!!.newInstance(gateway, verifier, coordinator, diary, { 1234L }, { _: DiaryState -> }, SessionStore(context, coordinator), null, {}, grades) as SchoolRepository
@@ -48,6 +59,11 @@ class AnnualGradesCacheTest {
 		assertNull(row.yearScore); assertEquals("", row.finalScore)
 		response = GatewayResult.Failure(AppError.TIMEOUT)
 		assertEquals(AppError.TIMEOUT, load().staleError)
+		corrupt = true
+		assertEquals(AppError.TIMEOUT, (load().result as GatewayResult.Failure).error)
+		corrupt = false; mismatch = true
+		assertEquals(AppError.TIMEOUT, (load().result as GatewayResult.Failure).error)
+		mismatch = false
 		for (error in listOf(AppError.FORBIDDEN, AppError.UNAVAILABLE, AppError.INCOMPATIBLE_RESPONSE, AppError.SERVER)) {
 			response = GatewayResult.Failure(error)
 			assertEquals(error, (load().result as GatewayResult.Failure).error)
