@@ -19,6 +19,8 @@ jobs:
       - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
         with:
           packages: platform-tools
+      - name: Test device script failure propagation
+        run: python3 .github/test-device-script.py
       - run: ./gradlew --no-daemon assembleDebug testDebugUnitTest lintDebug
       - name: Build opt-in integration APK
         if: github.ref == 'refs/heads/feat/debug-apk'
@@ -74,8 +76,17 @@ jobs:
             set -e
             adb shell input keyevent KEYCODE_WAKEUP
             adb shell wm dismiss-keyguard
-            if [ "${{ github.ref }}" = 'refs/heads/test/cleanup-restart' ]; then ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest && adb install app/build/outputs/apk/debug/app-debug.apk && adb install app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk && bash .github/cleanup-restart.sh; fi
-            if [ "${{ github.ref }}" != 'refs/heads/test/cleanup-restart' ]; then if [ "${{ github.ref }}" = 'refs/heads/feat/debug-apk' ]; then ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=org.materialclass.NativeUiWiringTest && ./gradlew --no-daemon -PintegrationTestNativeUi=true connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=org.materialclass.session.CleanupProcessRestartTest; else ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=org.materialclass.session.CleanupProcessRestartTest; fi; fi
+            if [ "${{ github.ref }}" = 'refs/heads/test/cleanup-restart' ]; then
+              ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest
+              adb install app/build/outputs/apk/debug/app-debug.apk
+              adb install app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+              bash .github/cleanup-restart.sh
+            elif [ "${{ github.ref }}" = 'refs/heads/feat/debug-apk' ]; then
+              ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=org.materialclass.NativeUiWiringTest
+              ./gradlew --no-daemon -PintegrationTestNativeUi=true connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=org.materialclass.session.CleanupProcessRestartTest
+            else
+              ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=org.materialclass.session.CleanupProcessRestartTest
+            fi
 
   test-apk:
     if: github.ref == 'refs/heads/feat/debug-apk'
