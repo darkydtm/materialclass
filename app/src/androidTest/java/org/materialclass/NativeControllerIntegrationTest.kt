@@ -324,18 +324,27 @@ class NativeControllerIntegrationTest {
 		val shared = SessionCoordinator { }
 		val session = shared.activate(AccountId("synthetic-expiry"))
 		val delivered = CountDownLatch(1)
+		val deliveriesFinished = CountDownLatch(1)
 		val observer: (Long, () -> Unit) -> Unit = { _, _ ->
 			delivered.countDown()
 			throw IllegalStateException("Synthetic observer failure")
 		}
+		val barrier: (Long, () -> Unit) -> Unit = { _, acknowledge ->
+			acknowledge()
+			deliveriesFinished.countDown()
+		}
 		shared.observeUiRevocations(observer)
+		shared.observeUiRevocations(barrier)
 		try {
 			assertTrue(shared.revokeIfActive(session, expired = true))
 			assertTrue(delivered.await(10, TimeUnit.SECONDS))
+			assertTrue(deliveriesFinished.await(10, TimeUnit.SECONDS))
+			main { }
 			assertNotNull(shared.pendingLogoutTicket())
 			assertNull(shared.admit(shared.beginLogin()))
 		} finally {
 			shared.removeUiRevocationObserver(observer)
+			shared.removeUiRevocationObserver(barrier)
 		}
 		assertNull(shared.pendingLogoutTicket())
 		val newer = shared.activate(AccountId("synthetic-new"))
