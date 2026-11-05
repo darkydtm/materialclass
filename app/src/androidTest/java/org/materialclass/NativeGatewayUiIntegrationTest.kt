@@ -193,18 +193,23 @@ class NativeGatewayUiIntegrationTest {
 		val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, value) }
 		var diagnostic = "no application window"
 		var submitted = false
+		var focusRequests = 0
+		var focusAccepted = 0
+		var textAttempts = 0
 		while (SystemClock.uptimeMillis() < deadline) {
 			val root = loginRoot()
 			val nodes = root?.let(::editables).orEmpty()
-			diagnostic = "submitted:$submitted, " + nodes.joinToString { "protected:${it.isPassword}, enabled:${it.isEnabled}, focused:${it.isFocused}, textLength:${it.text?.length}, actions:${it.actionList.map { action -> action.id }}" }
+			diagnostic = "submitted:$submitted, focusRequests:$focusRequests, focusAccepted:$focusAccepted, textAttempts:$textAttempts, " + nodes.joinToString { "protected:${it.isPassword}, enabled:${it.isEnabled}, focused:${it.isFocused}, textLength:${it.text?.length}, actions:${it.actionList.map { action -> action.id }}" }
 			val node = nodes.filter { it.isPassword == password }.singleOrNull()?.takeIf { it.isEnabled }
 			if (node != null) {
 				if (!node.isFocused) {
-					node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+					focusRequests++
+					if (node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)) focusAccepted++
 					instrumentation.waitForIdleSync()
 				} else if (submitted && (password || node.text?.length == value.length)) {
 					return
 				} else if (!submitted && node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT }) {
+					textAttempts++
 					submitted = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
 				}
 			} else if (root != null) {
