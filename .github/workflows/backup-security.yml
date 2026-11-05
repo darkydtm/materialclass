@@ -1,13 +1,13 @@
 name: Backup security audit
 on:
   push:
-    branches: [feat/integrate-backup-cleanup, feat/integrate-restart-ui]
+    branches: [feat/integrate-backup-cleanup, feat/integrate-restart-ui, feat/integrate-network-contract]
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   audit:
-    if: github.ref == 'refs/heads/feat/integrate-restart-ui' || github.ref == 'refs/heads/feat/integrate-backup-cleanup'
+    if: github.ref == 'refs/heads/feat/integrate-network-contract' || github.ref == 'refs/heads/feat/integrate-restart-ui' || github.ref == 'refs/heads/feat/integrate-backup-cleanup'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -46,7 +46,7 @@ jobs:
           if-no-files-found: error
           retention-days: 3
   artifact-device:
-    if: github.ref == 'refs/heads/feat/integrate-restart-ui' || github.ref == 'refs/heads/feat/integrate-backup-cleanup'
+    if: github.ref == 'refs/heads/feat/integrate-network-contract' || github.ref == 'refs/heads/feat/integrate-restart-ui' || github.ref == 'refs/heads/feat/integrate-backup-cleanup'
     needs: audit
     runs-on: ubuntu-latest
     timeout-minutes: 45
