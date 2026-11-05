@@ -6,7 +6,7 @@ def backup(lines, package):
 	state = 0
 	pm_seen = False
 	for line in lines:
-		if state == 0 and line == 'Running incremental backup for 1 requested packages.':
+		if state == 0 and line in ('Running incremental backup for 1 requested packages.', 'Running backup for 1 requested packages.'):
 			state = 1
 		elif state == 1 and line == 'Package @pm@ with result: Success' and not pm_seen:
 			pm_seen = True
@@ -23,7 +23,8 @@ def backup(lines, package):
 
 def restore(lines, package, api):
 	index = 0 if api == 24 else 1
-	return lines == ['restoreStarting: 1 packages', f'onUpdate: {index} = {package}', 'restoreFinished: 0', 'done']
+	prefix = [] if api == 24 else ['Scheduling restore: Local disk image']
+	return lines == prefix + ['restoreStarting: 1 packages', f'onUpdate: {index} = {package}', 'restoreFinished: 0', 'done']
 
 
 def main():

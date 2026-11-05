@@ -36,7 +36,11 @@ class BmgrOutputTest(unittest.TestCase):
 
 	def test_restore_actual_shapes(self):
 		for index in (0, 1):
-			self.check_output('restore', RESTORE.replace('onUpdate: 0', f'onUpdate: {index}'), True, 24 if index == 0 else 37)
+			prefix = '' if index == 0 else 'Scheduling restore: Local disk image\n'
+			self.check_output('restore', prefix + RESTORE.replace('onUpdate: 0', f'onUpdate: {index}'), True, 24 if index == 0 else 37)
+
+	def test_backup_legacy_shape(self):
+		self.check_output('backup', BACKUP.replace('Running incremental backup', 'Running backup'), True)
 
 	def test_restore_rejects_missing_duplicate_mismatched_and_replayed_events(self):
 		for output in (RESTORE.replace('onUpdate: 0 = org.materialclass\n', ''), RESTORE.replace('org.materialclass', 'other.app'), RESTORE + RESTORE, RESTORE.replace('restoreFinished: 0', 'restoreFinished: 1'), RESTORE.replace('done\n', 'onUpdate: 1 = other.app\ndone\n')):
