@@ -38,6 +38,41 @@ private class AtomicPrivateState<T>(private val empty: T) {
 
 class AtomicPrivateStateTest {
 	@Test
+	fun finishedLeaseCannotPublishAfterValidation() {
+		val coordinator = SessionCoordinator { }
+		val registry = SessionCoordinator.privateStates
+		val id = registry.register()
+		val entered = CountDownLatch(1)
+		val resume = CountDownLatch(1)
+		val executor = Executors.newSingleThreadExecutor()
+		try {
+			val active = coordinator.activate(AccountId("synthetic-finished-lease"))
+			val lease = coordinator.admit(active)!!
+			val method = registry.javaClass.declaredMethods.firstOrNull {
+				it.name.startsWith("commitLease") && it.parameterTypes.firstOrNull() == RequestLease::class.java
+			}
+			assertTrue("Registry must atomically authorize lease publication", method != null)
+			method!!.isAccessible = true
+			val reducer: (NativeUiState) -> NativeUiState = {
+				entered.countDown()
+				resume.awaitOrFail()
+				it.copy(signedIn = true)
+			}
+			val result = executor.submit<Boolean> { method.invoke(registry, lease, id, reducer) as Boolean }
+			entered.awaitOrFail()
+			coordinator.finish(lease)
+			resume.countDown()
+			assertFalse(result.get(5, TimeUnit.SECONDS))
+			assertEquals(NativeUiState(), registry.read().states[id])
+		} finally {
+			resume.countDown()
+			executor.shutdownNow()
+			registry.unregister(id)
+			coordinator.logout()
+		}
+	}
+
+	@Test
 	fun loginInvalidatesLeaseTokenWithoutClearingExistingState() {
 		val first = SessionCoordinator { }
 		val second = SessionCoordinator { }
