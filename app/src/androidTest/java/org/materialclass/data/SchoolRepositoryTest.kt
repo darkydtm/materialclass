@@ -141,6 +141,30 @@ class SchoolRepositoryTest {
 	}
 
 	@Test
+	fun invalidReturnedBeforeRetryMustNotBecomeSuccessfulReverification() {
+		val entered = CountDownLatch(1); val release = CountDownLatch(1)
+		val calls = java.util.concurrent.atomic.AtomicInteger()
+		val verifier = IdentityVerifier { session, _ ->
+			when (calls.incrementAndGet()) {
+				1 -> proof(session)
+				2 -> SessionVerification.Invalid
+				3 -> SessionVerification.Retry
+				else -> proof(session)
+			}
+		}
+		val repo = SchoolRepository(FakeGateway(), verifier, coordinator, FakeCache(), { 1L }, {}, store)
+		assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+		repo.beforeProfileReceipt = { result, _ -> if (result == SessionVerification.Invalid) { entered.countDown(); check(release.await(30, TimeUnit.SECONDS)) } }
+		val old = thread { repo.refreshProfile(repo.beginProfileRefresh()) { _, _ -> } }
+		try {
+			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			assertFalse(repo.refreshProfile(repo.beginProfileRefresh()) { _, _ -> })
+			release.countDown(); old.join(10000); assertFalse(old.isAlive)
+			assertFalse("A returned contradiction must prevent renewed access", repo.refreshProfile(repo.beginProfileRefresh()) { _, _ -> })
+		} finally { release.countDown(); old.join(10000); repo.logout() }
+	}
+
+	@Test
 	fun receivedInvalidBeforeRetryMustNotBecomeSuccessfulReverification() {
 		val entered = CountDownLatch(1)
 		val release = CountDownLatch(1)
