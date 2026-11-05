@@ -39,6 +39,12 @@ class BackupSecurityTest(unittest.TestCase):
 		result = self.run_check()
 		self.assertEqual(result.returncode, 0, result.stderr)
 
+	def test_namespace_indented_root_passes(self):
+		path = self.root / 'manifest-tree.txt'
+		path.write_text('N: android=http://schemas.android.com/apk/res/android (line=2)\n' + ''.join('  ' + line for line in path.read_text().splitlines(keepends=True)))
+		result = self.run_check()
+		self.assertEqual(result.returncode, 0, result.stderr)
+
 	def test_attributes_on_activity_are_rejected(self):
 		path = self.root / 'manifest-tree.txt'
 		path.write_text(path.read_text().replace('    A:', '    E: activity (line=3)\n      A:', 1).replace('\n    A:', '\n      A:'))

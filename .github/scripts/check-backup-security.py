@@ -26,7 +26,7 @@ for line in tree.splitlines():
 			stack.pop()
 		name = content.split(' ', 1)[0]
 		if not stack:
-			assert name == 'manifest' and depth == 0
+			assert name == 'manifest'
 		if name.split(':')[-1] == 'application':
 			assert name == 'application' and len(stack) == 1 and stack[0][1] == 'manifest'
 			applications.append({})
