@@ -22,3 +22,17 @@ jobs:
         run: ./gradlew --no-daemon :app:testDebugUnitTest --tests org.materialclass.PrivateStoreSpikeTest
       - if: github.ref == 'refs/heads/test/privacy-actor-spike'
         run: ./gradlew --no-daemon :app:testDebugUnitTest --tests org.materialclass.PrivacyActorSpikeTest
+      - if: github.ref == 'refs/heads/test/privacy-actor-spike'
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          paths = list(Path('app/build/test-results/testDebugUnitTest').glob('TEST-org.materialclass.PrivacyActorSpikeTest.xml'))
+          assert len(paths) == 1, paths
+          suite = ET.parse(paths[0]).getroot()
+          print('Actor spike:', suite.attrib)
+          assert int(suite.get('tests')) == 8
+          assert int(suite.get('failures')) == 0
+          assert int(suite.get('errors')) == 0
+          assert int(suite.get('skipped')) == 0
+          PY
