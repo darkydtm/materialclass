@@ -132,10 +132,12 @@ class AnnualGradesCacheTest {
 		val release = java.util.concurrent.CountDownLatch(1)
 		val written = java.util.concurrent.CountDownLatch(1)
 		val encrypted = EncryptedDiaryCache(EncryptedCache(context, coordinator, "grades"))
+		val storedId = java.util.concurrent.atomic.AtomicReference<String>()
 		val grades = object : DiaryCache {
 			override fun read(session: ActiveSession) = encrypted.read(session)
 			override fun write(session: ActiveSession, bytes: ByteArray): Boolean {
 				val result = encrypted.write(session, bytes)
+				storedId.set(KeystoreKeys().namespace(session.cacheNamespace.value + ":grades", false))
 				written.countDown()
 				entered.countDown()
 				check(release.await(30, java.util.concurrent.TimeUnit.SECONDS))
@@ -145,10 +147,6 @@ class AnnualGradesCacheTest {
 		val diary = EncryptedDiaryCache(EncryptedCache(context, coordinator))
 		val repository = SchoolRepository(gateway, verifier, coordinator, diary, { 1234L }, {}, SessionStore(context, coordinator), null, {}, grades)
 		assertTrue(repository.login("1", charArrayOf('x')) is GatewayResult.Success)
-		val active = coordinator.event().session!!
-		val id = KeystoreKeys().namespace(active.cacheNamespace.value + ":grades", false)
-		val file = File(context.filesDir, "backup-cache/$id")
-		val alias = "cache-$id"
 		val delivery = java.util.concurrent.atomic.AtomicReference<AnnualGradesDelivery>()
 		val failure = java.util.concurrent.atomic.AtomicReference<Throwable>()
 		val writer = Thread { try { repository.annualGrades { delivery.set(it) } } catch (error: Throwable) { failure.set(error) } }
@@ -157,7 +155,7 @@ class AnnualGradesCacheTest {
 		try {
 			assertTrue(entered.await(15, java.util.concurrent.TimeUnit.SECONDS))
 			assertTrue(written.await(1, java.util.concurrent.TimeUnit.SECONDS))
-			assertTrue(file.isFile)
+			assertTrue(File(context.filesDir, "backup-cache/${storedId.get()!!}").isFile)
 			changer.start()
 			val deadline = android.os.SystemClock.uptimeMillis() + 15000
 			while (changer.state != Thread.State.BLOCKED && changer.isAlive && android.os.SystemClock.uptimeMillis() < deadline) Thread.yield()
@@ -170,8 +168,8 @@ class AnnualGradesCacheTest {
 		assertFalse(writer.isAlive)
 		assertFalse(changer.isAlive)
 		assertNull(failure.get())
-		assertFalse(file.exists())
-		assertFalse(KeystoreKeys().contains(alias))
+		assertFalse(File(context.filesDir, "backup-cache/${storedId.get()!!}").exists())
+		assertFalse(KeystoreKeys().contains("cache-${storedId.get()!!}"))
 		delivery.get()?.let { assertFalse(repository.acceptsAnnualGrades(it)) }
 	}
 
