@@ -195,6 +195,18 @@ class GradesDiaryRaceTest {
 		} finally { gate.release.countDown() }
 	}
 
+	@Test fun refreshedProfileIsCommittedToRegistryAndVisible() {
+		val fixture = Fixture()
+		val first = fixture.login()
+		drain(first)
+		val field = NativeController::class.java.getDeclaredField("privateId").apply { isAccessible = true }
+		val id = field.get(first) as PrivateStateRegistry.ControllerId
+		main { first.refresh() }
+		drain(first)
+		assertEquals("Profile-1", SessionCoordinator.privateStates.read().states[id]?.profile?.surname)
+		main { assertEquals("Profile-1", first.state.profile?.surname) }
+	}
+
 	@Test fun revokedOnlineGradesAreNotPublished() = revokedPrivateCommitIsNotPublished("grades", false)
 
 	@Test fun concurrentLoginCancelsPendingGradesWithoutLeavingLoading() {
