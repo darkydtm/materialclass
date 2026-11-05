@@ -10,6 +10,24 @@ import kotlin.concurrent.thread
 
 class SessionCoordinatorTest {
 	@Test
+	fun verificationCompletesOnlyOnceEvenAfterCancellation() {
+		for (cancelFirst in listOf(false, true)) {
+			val coordinator = SessionCoordinator { }
+			val lease = coordinator.admit(coordinator.beginLogin())!!
+			try {
+				if (cancelFirst) coordinator.beginLogin()
+				assertEquals(SessionVerification.Invalid, lease.completeVerification(SessionVerification.Invalid))
+				assertEquals(if (cancelFirst) null else SessionVerification.Invalid, lease.trustedVerification())
+				try {
+					lease.completeVerification(SessionVerification.Retry)
+					throw AssertionError("Duplicate completion must fail")
+				} catch (_: IllegalStateException) { }
+				assertEquals(if (cancelFirst) null else SessionVerification.Invalid, lease.trustedVerification())
+			} finally { coordinator.finish(lease); coordinator.logout() }
+		}
+	}
+
+	@Test
 	fun immediateLogoutWinsAfterActiveCheckBeforeExpiry() {
 		val coordinator = SessionCoordinator { }
 		val session = coordinator.activate(AccountId("synthetic-logout-race"))
