@@ -88,20 +88,90 @@ class NetworkFailureRepositoryTest {
 	}
 
 	@Test
-	fun ambiguousAnnualGrades401MustNotRevokeActiveSession() {
+	fun annualGrades401DeliversFailureAndSessionRemainsUsable() = annualGradesFailureKeepsSessionUsable(401)
+
+	@Test
+	fun annualGrades403DeliversFailureAndSessionRemainsUsable() = annualGradesFailureKeepsSessionUsable(403)
+
+	private fun annualGradesFailureKeepsSessionUsable(status: Int) {
+		var gradesStatus = status
+		var gradesRequests = 0
 		val exchange = Exchange { request ->
 			when (request.url.path) {
 				"/api/v2/os/login" -> Response(200, login)
 				"/api/v2/os/user-info" -> Response(200, profile)
-				else -> Response(401, "")
+				"/api/v4/os/clientoffice/diary/year" -> {
+					gradesRequests++
+					Response(gradesStatus, if (gradesStatus == 200) """{"data":{"rows":[]}}""" else "")
+				}
+				else -> throw AssertionError("Unexpected path: ${request.url.path}")
 			}
 		}
 		val repository = SchoolRepository(NativeGateway(exchange), NativeIdentityVerifier(exchange), coordinator, cache, { 1L }, {}, store)
 		assertTrue(repository.login("synthetic", charArrayOf('x')) is GatewayResult.Success)
 		val epoch = repository.ownedEpoch()
 		assertNotNull(epoch)
-		repository.annualGrades { }
+		val deliveries = mutableListOf<AnnualGradesDelivery>()
+		repository.annualGrades { deliveries.add(it) }
+		assertEquals(1, deliveries.size)
+		assertEquals(AppError.UNAVAILABLE, (deliveries.single().result as GatewayResult.Failure).error)
+		assertTrue(repository.acceptsAnnualGrades(deliveries.single()))
 		assertEquals(epoch, repository.ownedEpoch())
 		assertTrue(File(context.noBackupFilesDir, "session").exists())
+		gradesStatus = 200
+		repository.annualGrades { deliveries.add(it) }
+		assertEquals(2, deliveries.size)
+		assertTrue(deliveries.last().result is GatewayResult.Success)
+		assertTrue(repository.acceptsAnnualGrades(deliveries.last()))
+		assertEquals(2, gradesRequests)
+		assertEquals(epoch, repository.ownedEpoch())
+	}
+
+	@Test
+	fun identity401RetryBlocksSchoolRequestsUntilReverified() = identityRetryFailsClosed(401)
+
+	@Test
+	fun identity403RetryBlocksSchoolRequestsUntilReverified() = identityRetryFailsClosed(403)
+
+	private fun identityRetryFailsClosed(status: Int) {
+		var identityStatus = 200
+		var weekRequests = 0
+		val exchange = Exchange { request ->
+			when (request.url.path) {
+				"/api/v2/os/login" -> Response(200, login)
+				"/api/v2/os/user-info" -> Response(identityStatus, if (identityStatus == 200) profile else "")
+				"/api/v4/os/clientoffice/diary/weeks" -> {
+					weekRequests++
+					Response(200, """{"data":{"week":"01.01.2026","weeks":[]}}""")
+				}
+				else -> throw AssertionError("Unexpected path: ${request.url.path}")
+			}
+		}
+		val repository = SchoolRepository(NativeGateway(exchange), NativeIdentityVerifier(exchange), coordinator, cache, { 1L }, {}, store)
+		assertTrue(repository.login("synthetic", charArrayOf('x')) is GatewayResult.Success)
+		val epoch = repository.ownedEpoch()
+		assertNotNull(epoch)
+		identityStatus = status
+		var profileCalls = 0
+		val refreshed = repository.refreshProfile(repository.beginProfileRefresh()) { value, usable ->
+			profileCalls++
+			assertNull(value)
+			assertFalse(usable)
+		}
+		assertFalse(refreshed)
+		assertEquals(1, profileCalls)
+		assertNull(repository.currentProfile())
+		assertEquals(epoch, repository.ownedEpoch())
+		var blocked: GatewayResult<String>? = null
+		repository.currentWeek { blocked = it }
+		assertEquals(AppError.UNAVAILABLE, (blocked as GatewayResult.Failure).error)
+		assertEquals(0, weekRequests)
+		identityStatus = 200
+		repository.refreshProfile(repository.beginProfileRefresh()) { _, _ -> }
+		var recovered: GatewayResult<String>? = null
+		repository.currentWeek { recovered = it }
+		assertEquals("01.01.2026", (recovered as GatewayResult.Success).value)
+		assertEquals(1, weekRequests)
+		assertEquals(epoch, repository.ownedEpoch())
 	}
 }
