@@ -92,7 +92,7 @@ class NativeGatewayUiIntegrationTest {
 				"/api/v2/os/login" -> {
 					assertEquals("POST", request.method)
 					assertEquals("synthetic-user", JSONObject(String(request.body!!)).getString("login"))
-					assertEquals("synthetic-password", JSONObject(String(request.body!!)).getString("password"))
+					assertTrue("Unexpected synthetic password payload", JSONObject(String(request.body!!)).getString("password") == "synthetic-password")
 					if (failLogin.get()) Response(503, "") else Response(200, """{"success":true,"access_token":"synthetic-token","user_info":$loginProfile}""")
 				}
 				"/api/v2/os/user-info" -> {
@@ -192,16 +192,21 @@ class NativeGatewayUiIntegrationTest {
 		val deadline = SystemClock.uptimeMillis() + 15000
 		val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, value) }
 		var diagnostic = "no application window"
+		var submitted = false
 		while (SystemClock.uptimeMillis() < deadline) {
 			val root = loginRoot()
 			val nodes = root?.let(::editables).orEmpty()
-			diagnostic = nodes.joinToString { "protected:${if (it.isPassword) 1 else 0}, enabled:${it.isEnabled}, focused:${it.isFocused}, actions:${it.actionList.map { action -> action.id }}" }
-			val node = nodes.getOrNull(if (password) 1 else 0)?.takeIf { it.isEnabled }
-			if (node != null && node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT }) {
+			diagnostic = nodes.joinToString { "protected:${it.isPassword}, enabled:${it.isEnabled}, focused:${it.isFocused}, textLength:${it.text?.length}, actions:${it.actionList.map { action -> action.id }}" }
+			val node = nodes.filter { it.isPassword == password }.singleOrNull()?.takeIf { it.isEnabled }
+			if (node != null) {
 				if (!node.isFocused) {
 					node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
 					instrumentation.waitForIdleSync()
-				} else if (node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) return
+				} else if (submitted && node.text?.length == value.length) {
+					return
+				} else if (!submitted && node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT }) {
+					submitted = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+				}
 			} else if (root != null) {
 				scrollForward(root)
 			}
