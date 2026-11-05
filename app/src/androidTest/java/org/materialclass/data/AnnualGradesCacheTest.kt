@@ -9,11 +9,59 @@ import org.junit.Test
 import org.materialclass.api.*
 import org.materialclass.cache.EncryptedCache
 import org.materialclass.session.*
+import org.materialclass.security.KeystoreKeys
+import java.io.File
 
 class AnnualGradesCacheTest {
 	private val context = ApplicationProvider.getApplicationContext<Context>()
 	private val coordinator = SessionCoordinator(context)
 	@After fun cleanup() { coordinator.logout(); EncryptedCache(context, coordinator).clearAll() }
+
+	@Test fun populatedGradesAreDeletedOnAccountSwitchAndLogout() {
+		var response: GatewayResult<AnnualGrades> = GatewayResult.Success(AnnualGrades(listOf(AnnualGradeRow("Synthetic subject", listOf("4", null, null, null), null, null))))
+		val gateway = object : TestSchoolGateway(), AnnualGradesGateway {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic", login, "student", SchoolContext(1, 2026, 2)))
+			override fun annualGrades(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<AnnualGrades> = response
+		}
+		val verifier = IdentityVerifier { session, _ ->
+			val profile = JSONObject("""{"userId":${session.identityCandidate},"role":"student","school_id":1,"group":{"id":2},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}""")
+			SessionVerification.Verified(AccountId(session.identityCandidate!!), true, null, VerifiedDiarySession.compare(session, profile))
+		}
+		val diary = EncryptedDiaryCache(EncryptedCache(context, coordinator))
+		val grades = EncryptedDiaryCache(EncryptedCache(context, coordinator, "grades"))
+		val repository = SchoolRepository(gateway, verifier, coordinator, diary, { 1234L }, {}, SessionStore(context, coordinator), null, {}, grades)
+		fun load(): AnnualGradesDelivery {
+			var result: AnnualGradesDelivery? = null
+			repository.annualGrades { result = it }
+			return result!!
+		}
+		fun storedGrade(): Pair<File, String> {
+			val keys = KeystoreKeys()
+			val active = load().active
+			val id = keys.namespace(active.cacheNamespace.value + ":grades", false)
+			val file = File(context.filesDir, "backup-cache/$id")
+			val alias = "cache-$id"
+			assertTrue(file.isFile)
+			assertTrue(keys.contains(alias))
+			return file to alias
+		}
+		assertTrue(repository.login("1", charArrayOf('x')) is GatewayResult.Success)
+		val (firstFile, firstAlias) = storedGrade()
+		response = GatewayResult.Failure(AppError.OFFLINE)
+		assertTrue(repository.login("2", charArrayOf('x')) is GatewayResult.Success)
+		assertFalse(firstFile.exists())
+		assertFalse(KeystoreKeys().contains(firstAlias))
+		assertEquals(AppError.OFFLINE, (load().result as GatewayResult.Failure).error)
+		response = GatewayResult.Success(AnnualGrades(listOf(AnnualGradeRow("Second synthetic subject", listOf("5", null, null, null), null, null))))
+		val (secondFile, secondAlias) = storedGrade()
+		assertNotEquals(firstAlias, secondAlias)
+		repository.logout()
+		assertFalse(secondFile.exists())
+		assertFalse(KeystoreKeys().contains(secondAlias))
+		response = GatewayResult.Failure(AppError.OFFLINE)
+		assertTrue(repository.login("2", charArrayOf('x')) is GatewayResult.Success)
+		assertEquals(AppError.OFFLINE, (load().result as GatewayResult.Failure).error)
+	}
 
 	@Test fun offlineReturnsLastConfirmedAnnualGrades() {
 		var response: GatewayResult<AnnualGrades> = GatewayResult.Success(AnnualGrades(listOf(AnnualGradeRow("Synthetic subject", listOf("4", null, null, null), null, ""))))
