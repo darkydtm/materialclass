@@ -45,12 +45,21 @@ internal class PrivateStateRegistry(initiallyActive: Boolean = true, private val
 		}
 	}
 
-	fun commitLease(lease: RequestLease, id: ControllerId, reduce: (NativeUiState) -> NativeUiState): Boolean {
-		val current = state.get()
-		val previous = current.states[id] ?: return false
-		val next = snapshot(current.token, current.states + (id to reduce(previous)), current.active)
-		beforeCommitCas()
-		return SessionCoordinator.commitPrivateState(this, lease, current, next)
+	enum class LeaseCommit { APPLIED, STALE, CONFLICT }
+
+	fun commitLease(lease: RequestLease, id: ControllerId, reduce: (NativeUiState) -> NativeUiState): LeaseCommit {
+		repeat(8) {
+			val current = SessionCoordinator.capturePrivateState(this, lease) ?: return LeaseCommit.STALE
+			val previous = current.states[id] ?: return LeaseCommit.STALE
+			val next = snapshot(current.token, current.states + (id to reduce(previous)), current.active)
+			beforeCommitCas()
+			when (SessionCoordinator.commitPrivateState(this, lease, current, next)) {
+				LeaseCommit.APPLIED -> return LeaseCommit.APPLIED
+				LeaseCommit.STALE -> return LeaseCommit.STALE
+				LeaseCommit.CONFLICT -> Unit
+			}
+		}
+		return LeaseCommit.CONFLICT
 	}
 
 	fun revokeAndClear() = transition(false)

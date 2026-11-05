@@ -68,8 +68,19 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 			pending.isEmpty() && !lease.cancelled && lease in leases && lease.owner === active && active?.account?.value == account
 		}
 
-		internal fun commitPrivateState(registry: PrivateStateRegistry, lease: RequestLease, expected: PrivateStateRegistry.Snapshot, next: PrivateStateRegistry.Snapshot): Boolean = synchronized(CancellationLock) {
-			registry === privateStates && pending.isEmpty() && !lease.cancelled && lease in leases && lease.owner != null && lease.owner === active && lease.privateToken === expected.token && expected.active && registry.compareAndSet(expected, next)
+		internal fun capturePrivateState(registry: PrivateStateRegistry, lease: RequestLease): PrivateStateRegistry.Snapshot? = synchronized(CancellationLock) {
+			val current = registry.read()
+			if (registry !== privateStates || pending.isNotEmpty() || lease.cancelled || lease !in leases || lease.owner == null || lease.owner !== active || lease.privateToken !== current.token || !current.active) null else current
+		}
+
+		internal fun commitPrivateState(registry: PrivateStateRegistry, lease: RequestLease, expected: PrivateStateRegistry.Snapshot, next: PrivateStateRegistry.Snapshot): PrivateStateRegistry.LeaseCommit = synchronized(CancellationLock) {
+			val current = capturePrivateState(registry, lease)
+			when {
+				current == null -> PrivateStateRegistry.LeaseCommit.STALE
+				current !== expected -> PrivateStateRegistry.LeaseCommit.CONFLICT
+				registry.compareAndSet(expected, next) -> PrivateStateRegistry.LeaseCommit.APPLIED
+				else -> PrivateStateRegistry.LeaseCommit.CONFLICT
+			}
 		}
 
 		private fun cancelRequests(owner: ActiveSession? = null) {

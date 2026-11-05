@@ -50,7 +50,7 @@ class AtomicPrivateStateTest {
 			val active = coordinator.activate(AccountId("synthetic-concurrent-lease"))
 			val first = coordinator.admit(active)!!
 			val second = coordinator.admit(active)!!
-			fun submit(lease: RequestLease, id: PrivateStateRegistry.ControllerId) = executor.submit<Boolean> {
+			fun submit(lease: RequestLease, id: PrivateStateRegistry.ControllerId) = executor.submit<PrivateStateRegistry.LeaseCommit> {
 				var initial = true
 				registry.commitLease(lease, id) {
 					if (initial) { initial = false; entered.countDown(); resume.awaitOrFail() }
@@ -61,8 +61,8 @@ class AtomicPrivateStateTest {
 			val secondResult = submit(second, two)
 			entered.awaitOrFail()
 			resume.countDown()
-			assertTrue(firstResult.get(5, TimeUnit.SECONDS))
-			assertTrue(secondResult.get(5, TimeUnit.SECONDS))
+			assertEquals(PrivateStateRegistry.LeaseCommit.APPLIED, firstResult.get(5, TimeUnit.SECONDS))
+			assertEquals(PrivateStateRegistry.LeaseCommit.APPLIED, secondResult.get(5, TimeUnit.SECONDS))
 			assertTrue(registry.read().states[one]!!.signedIn)
 			assertTrue(registry.read().states[two]!!.signedIn)
 		} finally {
@@ -70,6 +70,82 @@ class AtomicPrivateStateTest {
 			executor.shutdownNow()
 			registry.unregister(one)
 			registry.unregister(two)
+			coordinator.logout()
+		}
+	}
+
+	@Test
+	fun selectedLeaseRecomputesAfterSchoolInvalidation() {
+		val coordinator = SessionCoordinator { }
+		val registry = SessionCoordinator.privateStates
+		val id = registry.register()
+		val entered = CountDownLatch(1)
+		val resume = CountDownLatch(1)
+		val executor = Executors.newSingleThreadExecutor()
+		try {
+			val active = coordinator.activate(AccountId("synthetic-selected-retry"))
+			val selected = coordinator.admit(active)!!
+			val rejected = coordinator.admit(active)!!
+			val result = executor.submit<PrivateStateRegistry.LeaseCommit> {
+				var first = true
+				registry.commitLease(selected, id) {
+					if (first) { first = false; entered.countDown(); resume.awaitOrFail() }
+					it.copy(signedIn = true)
+				}
+			}
+			entered.awaitOrFail()
+			coordinator.invalidateSchoolRequests(active, selected)
+			resume.countDown()
+			assertEquals(PrivateStateRegistry.LeaseCommit.APPLIED, result.get(5, TimeUnit.SECONDS))
+			assertEquals(PrivateStateRegistry.LeaseCommit.STALE, registry.commitLease(rejected, id) { NativeUiState() })
+			assertTrue(registry.read().states[id]!!.signedIn)
+		} finally {
+			resume.countDown()
+			executor.shutdownNow()
+			registry.unregister(id)
+			coordinator.logout()
+		}
+	}
+
+	@Test
+	fun revocationDuringConflictRetryDoesNotRestoreState() {
+		val coordinator = SessionCoordinator { }
+		val registry = SessionCoordinator.privateStates
+		val id = registry.register()
+		val otherId = registry.register()
+		val firstEntered = CountDownLatch(1)
+		val firstResume = CountDownLatch(1)
+		val retryEntered = CountDownLatch(1)
+		val retryResume = CountDownLatch(1)
+		val executor = Executors.newSingleThreadExecutor()
+		try {
+			val active = coordinator.activate(AccountId("synthetic-revoke-retry"))
+			val lease = coordinator.admit(active)!!
+			val other = coordinator.admit(active)!!
+			val result = executor.submit<PrivateStateRegistry.LeaseCommit> {
+				var attempts = 0
+				registry.commitLease(lease, id) {
+					if (++attempts == 1) { firstEntered.countDown(); firstResume.awaitOrFail() }
+					else { retryEntered.countDown(); retryResume.awaitOrFail() }
+					it.copy(signedIn = true)
+				}
+			}
+			firstEntered.awaitOrFail()
+			assertEquals(PrivateStateRegistry.LeaseCommit.APPLIED, registry.commitLease(other, otherId) { it.copy(signedIn = true) })
+			firstResume.countDown()
+			retryEntered.awaitOrFail()
+			val ticket = coordinator.cancelInFlightNow()
+			retryResume.countDown()
+			assertEquals(PrivateStateRegistry.LeaseCommit.STALE, result.get(5, TimeUnit.SECONDS))
+			assertEquals(NativeUiState(), registry.read().states[id])
+			assertEquals(NativeUiState(), registry.read().states[otherId])
+			coordinator.logout(ticket)
+		} finally {
+			firstResume.countDown()
+			retryResume.countDown()
+			executor.shutdownNow()
+			registry.unregister(id)
+			registry.unregister(otherId)
 			coordinator.logout()
 		}
 	}
@@ -85,10 +161,10 @@ class AtomicPrivateStateTest {
 			coordinator.logout(ticket)
 			val replacement = coordinator.activate(AccountId("synthetic-ticket-b"))
 			val lease = coordinator.admit(replacement)!!
-			assertTrue(registry.commitLease(lease, id) { it.copy(signedIn = true) })
+			assertEquals(PrivateStateRegistry.LeaseCommit.APPLIED, registry.commitLease(lease, id) { it.copy(signedIn = true) })
 			coordinator.logout(ticket)
 			assertTrue(registry.read().states[id]!!.signedIn)
-			assertTrue(registry.commitLease(lease, id) { it.copy(signedIn = true) })
+			assertEquals(PrivateStateRegistry.LeaseCommit.APPLIED, registry.commitLease(lease, id) { it.copy(signedIn = true) })
 		} finally { registry.unregister(id); coordinator.logout() }
 	}
 
@@ -104,8 +180,8 @@ class AtomicPrivateStateTest {
 			val selected = first.admit(active)!!
 			val other = second.admit(active)!!
 			first.invalidateSchoolRequests(active, selected)
-			assertTrue(registry.commitLease(selected, one) { it.copy(signedIn = true) })
-			assertFalse(registry.commitLease(other, two) { it.copy(signedIn = true) })
+			assertEquals(PrivateStateRegistry.LeaseCommit.APPLIED, registry.commitLease(selected, one) { it.copy(signedIn = true) })
+			assertEquals(PrivateStateRegistry.LeaseCommit.STALE, registry.commitLease(other, two) { it.copy(signedIn = true) })
 			assertTrue(registry.read().states[one]!!.signedIn)
 			assertEquals(NativeUiState(), registry.read().states[two])
 		} finally { registry.unregister(one); registry.unregister(two); first.logout() }
@@ -120,12 +196,12 @@ class AtomicPrivateStateTest {
 		try {
 			val active = coordinator.activate(AccountId("synthetic-commit-first"))
 			val lease = coordinator.admit(active)!!
-			assertTrue(registry.commitLease(lease, one) { it.copy(signedIn = true) })
-			assertTrue(registry.commitLease(lease, two) { it.copy(signedIn = true) })
+			assertEquals(PrivateStateRegistry.LeaseCommit.APPLIED, registry.commitLease(lease, one) { it.copy(signedIn = true) })
+			assertEquals(PrivateStateRegistry.LeaseCommit.APPLIED, registry.commitLease(lease, two) { it.copy(signedIn = true) })
 			val ticket = coordinator.cancelInFlightNow()
 			assertEquals(NativeUiState(), registry.read().states[one])
 			assertEquals(NativeUiState(), registry.read().states[two])
-			assertFalse(registry.commitLease(lease, one) { it.copy(signedIn = true) })
+			assertEquals(PrivateStateRegistry.LeaseCommit.STALE, registry.commitLease(lease, one) { it.copy(signedIn = true) })
 			coordinator.logout(ticket)
 		} finally { registry.unregister(one); registry.unregister(two); coordinator.logout() }
 	}
@@ -141,14 +217,14 @@ class AtomicPrivateStateTest {
 		try {
 			val original = coordinator.activate(AccountId("synthetic-aba-a"))
 			val old = coordinator.admit(original)!!
-			val blocked = executor.submit<Boolean> { registry.commitLease(old, id) { entered.countDown(); resume.awaitOrFail(); NativeUiState() } }
+			val blocked = executor.submit<PrivateStateRegistry.LeaseCommit> { registry.commitLease(old, id) { entered.countDown(); resume.awaitOrFail(); NativeUiState() } }
 			entered.awaitOrFail()
 			coordinator.activate(AccountId("synthetic-aba-b"))
 			val returned = coordinator.activate(AccountId("synthetic-aba-a"))
 			val current = coordinator.admit(returned)!!
-			assertTrue(registry.commitLease(current, id) { it.copy(signedIn = true) })
+			assertEquals(PrivateStateRegistry.LeaseCommit.APPLIED, registry.commitLease(current, id) { it.copy(signedIn = true) })
 			resume.countDown()
-			assertFalse(blocked.get(5, TimeUnit.SECONDS))
+			assertEquals(PrivateStateRegistry.LeaseCommit.STALE, blocked.get(5, TimeUnit.SECONDS))
 			assertTrue(registry.read().states[id]!!.signedIn)
 		} finally { resume.countDown(); executor.shutdownNow(); registry.unregister(id); coordinator.logout() }
 	}
@@ -164,11 +240,11 @@ class AtomicPrivateStateTest {
 		try {
 			val active = coordinator.activate(AccountId("synthetic-revoke-first"))
 			val lease = coordinator.admit(active)!!
-			val blocked = executor.submit<Boolean> { registry.commitLease(lease, id) { entered.countDown(); resume.awaitOrFail(); it.copy(signedIn = true) } }
+			val blocked = executor.submit<PrivateStateRegistry.LeaseCommit> { registry.commitLease(lease, id) { entered.countDown(); resume.awaitOrFail(); it.copy(signedIn = true) } }
 			entered.awaitOrFail()
 			val ticket = coordinator.cancelInFlightNow()
 			resume.countDown()
-			assertFalse(blocked.get(5, TimeUnit.SECONDS))
+			assertEquals(PrivateStateRegistry.LeaseCommit.STALE, blocked.get(5, TimeUnit.SECONDS))
 			assertEquals(NativeUiState(), registry.read().states[id])
 			coordinator.logout(ticket)
 		} finally { resume.countDown(); executor.shutdownNow(); registry.unregister(id); coordinator.logout() }
@@ -190,11 +266,11 @@ class AtomicPrivateStateTest {
 				resume.awaitOrFail()
 				it.copy(signedIn = true)
 			}
-			val result = executor.submit<Boolean> { registry.commitLease(lease, id, reducer) }
+			val result = executor.submit<PrivateStateRegistry.LeaseCommit> { registry.commitLease(lease, id, reducer) }
 			entered.awaitOrFail()
 			coordinator.finish(lease)
 			resume.countDown()
-			assertFalse(result.get(5, TimeUnit.SECONDS))
+			assertEquals(PrivateStateRegistry.LeaseCommit.STALE, result.get(5, TimeUnit.SECONDS))
 			assertEquals(NativeUiState(), registry.read().states[id])
 		} finally {
 			resume.countDown()
