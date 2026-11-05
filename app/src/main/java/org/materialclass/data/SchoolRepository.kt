@@ -93,6 +93,7 @@ internal class SchoolRepository(
 	internal var afterRestoreActivation: () -> Unit = {}
 	internal var beforeRequestAdmission: () -> Unit = {}
 	internal var beforeIdentityAdmission: () -> Unit = {}
+	internal var afterProfileVerification: (SessionVerification, RequestLease) -> Unit = { _, _ -> }
 
 	fun login(username: String, password: CharArray): GatewayResult<Unit> {
 		var revision: Long? = null
@@ -215,6 +216,7 @@ internal class SchoolRepository(
 		val lease = coordinator.admit(active, request.second) ?: return false
 		try {
 			val verification = try { verifier.verify(request.first, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { SessionVerification.Retry }
+			afterProfileVerification(verification, lease)
 			val outcome = coordinator.ifActive(active) {
 				if (lease.cancelled || session !== active || remote !== request.first || request.second != coordinator.requestRevision()) null
 				else if (verification == SessionVerification.Invalid || verification == SessionVerification.Expired ||

@@ -141,6 +141,40 @@ class SchoolRepositoryTest {
 	}
 
 	@Test
+	fun receivedInvalidBeforeRetryMustNotBecomeSuccessfulReverification() {
+		val entered = CountDownLatch(1)
+		val release = CountDownLatch(1)
+		val calls = java.util.concurrent.atomic.AtomicInteger()
+		val good = """{"data":{"userId":1,"role":"student","school_id":1,"group":{"id":2},"studentInfo":{"studentSchoolUuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}}"""
+		val verifier = NativeIdentityVerifier(Exchange {
+			when (calls.incrementAndGet()) {
+				2 -> Response(200, good.replace("\"student\"", "\"teacher\""))
+				3 -> Response(503, "")
+				else -> Response(200, good)
+			}
+		})
+		val repo = SchoolRepository(FakeGateway(), verifier, coordinator, FakeCache(), { 1L }, {}, store)
+		assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+		val cancelled = java.util.concurrent.atomic.AtomicBoolean()
+		repo.afterProfileVerification = { verification, lease ->
+			if (verification == SessionVerification.Invalid) {
+				entered.countDown()
+				check(release.await(30, TimeUnit.SECONDS))
+				cancelled.set(lease.isCancelled())
+			}
+		}
+		val old = thread { repo.refreshProfile(repo.beginProfileRefresh()) { _, _ -> } }
+		try {
+			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			assertFalse(repo.refreshProfile(repo.beginProfileRefresh()) { _, _ -> })
+			release.countDown(); old.join(10000)
+			assertFalse(old.isAlive)
+			assertTrue(cancelled.get())
+			assertFalse("A received contradiction must prevent renewed access", repo.refreshProfile(repo.beginProfileRefresh()) { _, _ -> })
+		} finally { release.countDown(); old.join(10000); repo.logout() }
+	}
+
+	@Test
 	fun retryCancelsInvalidVerificationBeforeItReturns() {
 		val entered = CountDownLatch(1)
 		val release = CountDownLatch(1)
