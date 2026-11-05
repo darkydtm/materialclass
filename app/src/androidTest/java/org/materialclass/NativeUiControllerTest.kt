@@ -165,6 +165,8 @@ class NativeUiControllerTest {
 			val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
 			try {
 				instrumentation.runOnMainSync { activity.setContent { MaterialClassApp(nativeEnabled = true, controllerFactory = { fake }) } }
+				val logout = when (language) { "ru" -> "Выйти"; "kk" -> "Шығу"; else -> "Sign out" }
+				waitFor(logout)
 				click(navigation)
 				click(show)
 				fun checkRadio(label: String, checked: Boolean) {
