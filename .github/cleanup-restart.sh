@@ -23,10 +23,10 @@ for stage in write cache session clear; do
   fi
   pid=$(adb shell run-as "$package" cat files/../no_backup/restart-test-pid | tr -d '\r')
   test -n "$pid"
-  adb shell kill -0 "$pid"
+  adb shell run-as "$package" kill -0 "$pid"
   adb shell am force-stop "$package"
   wait "$instrumentation_pid" || true
-  if adb shell kill -0 "$pid" 2>/dev/null; then
+  if adb shell run-as "$package" kill -0 "$pid" 2>/dev/null; then
     echo "Process $pid survived force-stop" >&2
     exit 1
   fi
