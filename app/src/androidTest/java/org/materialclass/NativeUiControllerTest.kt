@@ -63,14 +63,16 @@ class NativeUiControllerTest {
 			return (listOf(summary) + (0 until node.childCount).mapNotNull { node.getChild(it)?.let { child -> structure(child, depth + 1) } }).joinToString("\n")
 		}
 		val tree = instrumentation.uiAutomation.rootInActiveWindow?.let { structure(it, 0) } ?: "no active root"
-		throw AssertionError("Missing node: $text; scroll forward=$forward backward=$backward failed=$failed missingRoot=$missingRoot\n$tree")
+		throw AssertionError("Missing node: $text; scroll forward=$forward backward=$backward failed=$failed missingRoot=$missingRoot trace=${HomeworkFilterTrace.snapshot()}\n$tree")
 	}
 	private fun click(text: String) {
 		val deadline = SystemClock.uptimeMillis() + 10000
 		while (SystemClock.uptimeMillis() < deadline) {
 			var node = waitFor(text)
 			while (!node.isClickable && node.parent != null) node = node.parent
-			if (node.isClickable && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+			val accepted = node.isClickable && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+			if (text == "Show filters" || text == "Hide filters") HomeworkFilterTrace.recordInput(text, accepted)
+			if (accepted) {
 				instrumentation.waitForIdleSync()
 				if (text.startsWith("Subject: ") || text.startsWith("Date: ") || text == "All subjects" || text == "All dates") {
 					var confirmed = false
@@ -97,6 +99,7 @@ class NativeUiControllerTest {
 	private fun editables(node: AccessibilityNodeInfo): List<AccessibilityNodeInfo> = (if (node.isEditable) listOf(node) else emptyList()) + (0 until node.childCount).flatMap { node.getChild(it)?.let(::editables) ?: emptyList() }
 
 	private fun filterNodeSnapshotExperiment(useSavedNode: Boolean) {
+		HomeworkFilterTrace.reset()
 		val context = ApplicationProvider.getApplicationContext<Context>()
 		context.getSharedPreferences("appearance", 0).edit().clear().putBoolean("warning_seen", true).putString("language", "en").commit()
 		fun snapshot(version: Long) = DiarySnapshot(Diary("week $version", listOf(DiaryDay("one", "day one", listOf(DiarySubject("Math", "lesson", "id", "text", "Task", null, false, false))))), version)
@@ -132,6 +135,7 @@ class NativeUiControllerTest {
 			var clicks = 0
 			clicks++
 			val accepted = (if (useSavedNode) saved else fresh).performAction(AccessibilityNodeInfo.ACTION_CLICK)
+			HomeworkFilterTrace.recordInput(if (useSavedNode) "saved" else "fresh", accepted)
 			assertEquals("Perform exactly one experiment click", 1, clicks)
 			if (accepted) {
 				waitFor("Hide filters")
@@ -146,7 +150,7 @@ class NativeUiControllerTest {
 			assertEquals("Toggle and radio state must agree", hide, radio)
 			assertTrue("Exactly one toggle label must exist", show != hide)
 			if (useSavedNode) {
-				assertFalse("Saved node must not activate after recomposition; accepted=$accepted show=$show hide=$hide radio=$radio", accepted)
+				assertFalse("Saved node must not activate after recomposition; accepted=$accepted show=$show hide=$hide radio=$radio trace=${HomeworkFilterTrace.snapshot()}", accepted)
 				assertTrue("Saved node must not change state", show)
 			} else {
 				assertTrue("Fresh node click must be accepted", accepted)
@@ -156,6 +160,7 @@ class NativeUiControllerTest {
 			instrumentation.runOnMainSync { activity.finish() }
 			instrumentation.waitForIdleSync()
 			context.getSharedPreferences("appearance", 0).edit().clear().commit()
+			HomeworkFilterTrace.stop()
 		}
 	}
 
@@ -307,6 +312,7 @@ class NativeUiControllerTest {
 	}
 
 	@Test fun homeworkFiltersOnlyTheCurrentSnapshotAndClearsOnSignOut() {
+		HomeworkFilterTrace.reset()
 		val context = ApplicationProvider.getApplicationContext<Context>()
 		context.getSharedPreferences("appearance", 0).edit().putBoolean("warning_seen", true).putString("language", "en").commit()
 		fun item(label: String, body: String) = DiarySubject(label, "lesson", "id", "text", body, null, false, false)
@@ -355,6 +361,7 @@ class NativeUiControllerTest {
 		} finally {
 			activity.finish()
 			context.getSharedPreferences("appearance", 0).edit().clear().commit()
+			HomeworkFilterTrace.stop()
 		}
 	}
 
