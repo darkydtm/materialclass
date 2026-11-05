@@ -48,8 +48,14 @@ printf '%s\n' 'STAGE: app storage cleared'
 adb shell bmgr list sets | tr -d '\r' | tee "$RUNNER_TEMP/restore-sets.txt"
 token=$(awk '/^[[:space:]]*[0-9a-fA-F]+[[:space:]]*:/ {gsub(":", "", $1); print $1; exit}' "$RUNNER_TEMP/restore-sets.txt")
 test -n "$token"
-adb shell bmgr restore "$token" "$package" | tr -d '\r' | tee "$RUNNER_TEMP/restore-result.txt"
-grep -F 'restoreFinished: 0' "$RUNNER_TEMP/restore-result.txt"
+api=$(adb shell getprop ro.build.version.sdk | tr -d '\r')
+if [ "$api" -eq 24 ]; then
+	adb shell bmgr restore "$package" | tr -d '\r' | tee "$RUNNER_TEMP/restore-result.txt"
+else
+	adb shell bmgr restore "$token" "$package" | tr -d '\r' | tee "$RUNNER_TEMP/restore-result.txt"
+fi
+grep -E "^onUpdate: [0-9]+ = $package$" "$RUNNER_TEMP/restore-result.txt"
+grep -Fx 'restoreFinished: 0' "$RUNNER_TEMP/restore-result.txt"
 adb shell am force-stop "$package"
 adb exec-out run-as "$package" cat shared_prefs/appearance.xml | grep -F allowed-appearance
 for path in shared_prefs/session.xml cache/fixture files/fixture; do
