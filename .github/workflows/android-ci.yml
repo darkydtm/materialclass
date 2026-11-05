@@ -103,6 +103,29 @@ jobs:
           "$APKANALYZER" manifest print "$APK" | grep -q 'android:debuggable="true"'
           printf 'commit=%s\nvariant=debug\nintegrationTestNativeUi=true\napplicationId=org.materialclass\nminSdk=24\ndebuggable=true\n' "$GITHUB_SHA" >> artifact/metadata.txt
           (cd artifact && sha256sum materialclass-integration-test-debug.apk > SHA256SUMS)
+      - name: Build instrumentation APK
+        run: ./gradlew --no-daemon -PintegrationTestNativeUi=true assembleDebugAndroidTest
+      - name: Enable virtualization
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Verify the exact artifact on an emulator
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        with:
+          api-level: '24'
+          target: default
+          arch: x86_64
+          script: |
+            set -euo pipefail
+            (cd artifact && sha256sum -c SHA256SUMS)
+            adb shell input keyevent KEYCODE_WAKEUP
+            adb shell wm dismiss-keyguard
+            adb install artifact/materialclass-integration-test-debug.apk
+            adb install app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb shell am instrument -w -r -e verifyIntegrationArtifact true -e class org.materialclass.IntegrationArtifactTest,org.materialclass.LauncherTest org.materialclass.test/androidx.test.runner.AndroidJUnitRunner | tee "$RUNNER_TEMP/artifact-instrumentation.txt"
+            grep -Eq '^OK \(3 tests\)' "$RUNNER_TEMP/artifact-instrumentation.txt"
+            (cd artifact && sha256sum -c SHA256SUMS)
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: materialclass-integration-test-debug
