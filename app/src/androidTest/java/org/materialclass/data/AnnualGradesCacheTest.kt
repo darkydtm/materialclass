@@ -17,6 +17,107 @@ class AnnualGradesCacheTest {
 	private val coordinator = SessionCoordinator(context)
 	@After fun cleanup() { coordinator.logout(); EncryptedCache(context, coordinator).clearAll() }
 
+	@Test fun storageFailuresDoNotPublishGradesOrStaleMetadata() {
+		var offline = false
+		var failRead = false
+		var failWrite = false
+		var rejectWrite = false
+		val gateway = object : TestSchoolGateway(), AnnualGradesGateway {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic", login, "student", SchoolContext(1, 2026, 2)))
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = error("Unexpected diary request")
+			override fun annualGrades(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<AnnualGrades> = if (offline) GatewayResult.Failure(AppError.OFFLINE) else GatewayResult.Success(AnnualGrades(listOf(AnnualGradeRow("Synthetic subject", listOf("4"), null, null))))
+		}
+		val verifier = IdentityVerifier { session, _ ->
+			val profile = JSONObject("""{"userId":1,"role":"student","school_id":1,"group":{"id":2},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}""")
+			SessionVerification.Verified(AccountId("1"), true, null, VerifiedDiarySession.compare(session, profile))
+		}
+		val encrypted = EncryptedDiaryCache(EncryptedCache(context, coordinator, "grades"))
+		val grades = object : DiaryCache {
+			override fun read(session: ActiveSession): ByteArray? {
+				if (failRead) throw java.io.IOException("Synthetic read failure")
+				return encrypted.read(session)
+			}
+			override fun write(session: ActiveSession, bytes: ByteArray): Boolean {
+				if (failWrite) throw java.io.IOException("Synthetic write failure")
+				return !rejectWrite && encrypted.write(session, bytes)
+			}
+		}
+		val diary = EncryptedDiaryCache(EncryptedCache(context, coordinator))
+		val repository = SchoolRepository(gateway, verifier, coordinator, diary, { 1234L }, {}, SessionStore(context, coordinator), null, {}, grades)
+		assertTrue(repository.login("1", charArrayOf('x')) is GatewayResult.Success)
+		fun load(): AnnualGradesDelivery {
+			var delivery: AnnualGradesDelivery? = null
+			repository.annualGrades { delivery = it }
+			return delivery!!
+		}
+		assertTrue(load().result is GatewayResult.Success)
+		failWrite = true
+		assertEquals(AppError.CACHE_UNREADABLE, (load().result as GatewayResult.Failure).error)
+		failWrite = false; rejectWrite = true
+		assertEquals(AppError.CACHE_UNREADABLE, (load().result as GatewayResult.Failure).error)
+		rejectWrite = false; offline = true; failRead = true
+		val failed = load()
+		assertEquals(AppError.CACHE_UNREADABLE, (failed.result as GatewayResult.Failure).error)
+		assertNull(failed.lastSuccessMillis)
+		assertNull(failed.staleError)
+		failRead = false
+		val recovered = load()
+		assertEquals("Synthetic subject", (recovered.result as GatewayResult.Success).value.rows.single().subjectName)
+		assertEquals(1234L, recovered.lastSuccessMillis)
+		assertEquals(AppError.OFFLINE, recovered.staleError)
+	}
+
+	private fun cleanupRejectsCompletedGradeWrite(switchAccount: Boolean) {
+		val gateway = object : TestSchoolGateway(), AnnualGradesGateway {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic", login, "student", SchoolContext(1, 2026, 2)))
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = error("Unexpected diary request")
+			override fun annualGrades(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<AnnualGrades> = GatewayResult.Success(AnnualGrades(listOf(AnnualGradeRow("Synthetic subject", listOf("4"), null, null))))
+		}
+		val verifier = IdentityVerifier { session, _ ->
+			val profile = JSONObject("""{"userId":${session.identityCandidate},"role":"student","school_id":1,"group":{"id":2},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}""")
+			SessionVerification.Verified(AccountId(session.identityCandidate!!), true, null, VerifiedDiarySession.compare(session, profile))
+		}
+		val diary = EncryptedDiaryCache(EncryptedCache(context, coordinator))
+		val grades = EncryptedDiaryCache(EncryptedCache(context, coordinator, "grades"))
+		val repository = SchoolRepository(gateway, verifier, coordinator, diary, { 1234L }, {}, SessionStore(context, coordinator), null, {}, grades)
+		assertTrue(repository.login("1", charArrayOf('x')) is GatewayResult.Success)
+		val entered = java.util.concurrent.CountDownLatch(1)
+		val release = java.util.concurrent.CountDownLatch(1)
+		val pending = java.util.concurrent.atomic.AtomicReference<AnnualGradesDelivery>()
+		val error = java.util.concurrent.atomic.AtomicReference<Throwable>()
+		val worker = Thread {
+			try {
+				repository.annualGrades { delivery ->
+					pending.set(delivery)
+					entered.countDown()
+					check(release.await(15, java.util.concurrent.TimeUnit.SECONDS))
+				}
+			} catch (failure: Throwable) { error.set(failure) }
+		}
+		worker.start()
+		try {
+			assertTrue(entered.await(15, java.util.concurrent.TimeUnit.SECONDS))
+			val delivery = pending.get()!!
+			val id = KeystoreKeys().namespace(delivery.active.cacheNamespace.value + ":grades", false)
+			val file = File(context.filesDir, "backup-cache/$id")
+			val alias = "cache-$id"
+			assertTrue(file.isFile)
+			assertTrue(KeystoreKeys().contains(alias))
+			if (switchAccount) assertTrue(repository.login("2", charArrayOf('x')) is GatewayResult.Success) else repository.logout()
+			assertFalse(repository.acceptsAnnualGrades(delivery))
+			assertFalse(file.exists())
+			assertFalse(KeystoreKeys().contains(alias))
+		} finally {
+			release.countDown()
+			worker.join(15000)
+		}
+		assertFalse(worker.isAlive)
+		assertNull(error.get())
+	}
+
+	@Test fun logoutRejectsGradeDeliveryAfterWrite() = cleanupRejectsCompletedGradeWrite(false)
+	@Test fun accountSwitchRejectsGradeDeliveryAfterWrite() = cleanupRejectsCompletedGradeWrite(true)
+
 	@Test fun populatedGradesAreDeletedOnAccountSwitchAndLogout() {
 		var response: GatewayResult<AnnualGrades> = GatewayResult.Success(AnnualGrades(listOf(AnnualGradeRow("Synthetic subject", listOf("4", null, null, null), null, null))))
 		val gateway = object : TestSchoolGateway(), AnnualGradesGateway {
