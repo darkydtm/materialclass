@@ -49,6 +49,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		private var active: ActiveSession? = null
 		private var restorationAllowed = true
 		private var revision = 0L
+		private var loginGeneration = 0L
 		private var revocationEpoch = 0L
 		private var lastEvent = SessionEvent(0L, SessionChange.LOGOUT, null)
 		private val observers = mutableSetOf<(Long) -> Unit>()
@@ -195,6 +196,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		if (active !== session || pending.isNotEmpty()) null else RequestLease(session).also { leases.add(it) }
 	}
 	internal fun requestRevision(): Long = synchronized(CancellationLock) { revision }
+	internal fun loginGeneration(): Long = synchronized(CancellationLock) { loginGeneration }
 	internal fun invalidateSchoolRequests(session: ActiveSession, except: RequestLease) {
 		val disconnects = synchronized(CancellationLock) {
 			if (active !== session || pending.isNotEmpty()) return
@@ -221,7 +223,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 	internal fun beginLogin(): Long = synchronized(StorageLock) {
 		recoverCleanup()
 		cancelRequests()
-		synchronized(CancellationLock) { ++revision }
+		synchronized(CancellationLock) { loginGeneration++; ++revision }
 	}
 	internal fun activateIfUnchanged(expected: Long, account: AccountId, beforeActivate: () -> Unit = {}): ActiveSession? = synchronized(StorageLock) {
 		if (!matches(expected)) return@synchronized null

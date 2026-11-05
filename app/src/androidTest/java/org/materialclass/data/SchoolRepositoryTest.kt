@@ -175,6 +175,31 @@ class SchoolRepositoryTest {
 	}
 
 	@Test
+	fun receivedInvalidCannotRevokeReplacementFromAnotherRepository() {
+		val entered = CountDownLatch(1); val release = CountDownLatch(1)
+		val gateway = object : TestSchoolGateway(), AnnualGradesGateway {
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = error("Unexpected diary request")
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic-token", login, "student", SchoolContext(1, 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
+			override fun annualGrades(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<AnnualGrades> = GatewayResult.Success(AnnualGrades(emptyList()))
+		}
+		val calls = java.util.concurrent.atomic.AtomicInteger()
+		val verifier = IdentityVerifier { session, _ -> if (calls.incrementAndGet() == 2) SessionVerification.Invalid else proof(session) }
+		val oldRepo = SchoolRepository(gateway, verifier, coordinator, FakeCache(), { 1L }, {}, store)
+		val newRepo = SchoolRepository(gateway, verifier, coordinator, FakeCache(), { 1L }, {}, store)
+		assertTrue(oldRepo.login("1", charArrayOf('x')) is GatewayResult.Success)
+		oldRepo.afterProfileVerification = { result, _ -> if (result == SessionVerification.Invalid) { entered.countDown(); check(release.await(30, TimeUnit.SECONDS)) } }
+		val worker = thread { oldRepo.refreshProfile(oldRepo.beginProfileRefresh()) { _, _ -> } }
+		try {
+			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			assertTrue(newRepo.login("2", charArrayOf('x')) is GatewayResult.Success)
+			release.countDown(); worker.join(10000); assertFalse(worker.isAlive)
+			var delivered = false
+			newRepo.annualGrades { delivered = it.result is GatewayResult.Success }
+			assertTrue(delivered)
+		} finally { release.countDown(); worker.join(10000); newRepo.logout() }
+	}
+
+	@Test
 	fun retryCancelsInvalidVerificationBeforeItReturns() {
 		val entered = CountDownLatch(1)
 		val release = CountDownLatch(1)
