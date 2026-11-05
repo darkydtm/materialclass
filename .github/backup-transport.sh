@@ -25,7 +25,7 @@ if ! grep -Fq "$transport" "$RUNNER_TEMP/transports.txt"; then
 fi
 adb shell bmgr transport "$transport" | tee "$RUNNER_TEMP/transport-selection.txt"
 adb shell bmgr list transports | tr -d '\r' | grep -F "* $transport"
-adb shell am force-stop "$package"
+adb shell monkey -p "$package" -c android.intent.category.LAUNCHER 1
 adb shell run-as "$package" mkdir -p shared_prefs cache files
 printf '%s' '<map><string name="fixture">allowed-appearance</string></map>' | adb shell run-as "$package" tee shared_prefs/appearance.xml > /dev/null
 printf '%s' '<map><string name="fixture">forbidden-session</string></map>' | adb shell run-as "$package" tee shared_prefs/session.xml > /dev/null
