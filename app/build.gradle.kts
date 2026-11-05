@@ -33,10 +33,6 @@ android {
 		sourceSets.getByName("debug").res.srcDir("src/backupProbe/res")
 	}
 
-	if (providers.gradleProperty("backupTransportFixture").orNull == "true") {
-		sourceSets.getByName("androidTest").java.srcDir("src/backupTransportTest/java")
-	}
-
 	buildFeatures {
 		buildConfig = true
 		compose = true
