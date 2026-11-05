@@ -164,7 +164,7 @@ class SchoolRepositoryTest {
 			assertEquals(SessionChange.ACTIVATED, coordinator.event().change)
 			var result: GatewayResult<AnnualGrades>? = null
 			repo.annualGrades { result = it.result }
-			assertEquals(GatewayResult.Failure(AppError.UNAVAILABLE), result)
+			assertEquals(AppError.UNAVAILABLE, (result as? GatewayResult.Failure)?.error)
 		} finally { release.countDown(); old.join(10000); repo.logout() }
 	}
 
