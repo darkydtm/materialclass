@@ -16,6 +16,9 @@ adb shell bmgr enabled | tr -d '\r' | grep -F 'Backup Manager currently enabled'
 adb shell bmgr list transports | tee "$RUNNER_TEMP/transports.txt"
 printf '%s\n' 'DIAGNOSTIC: backup manager state'
 adb shell dumpsys backup | grep -E -i 'enabled|provision|transport|eligible|setup|user|pending|backup is' || true
+if grep -Fq 'android/com.android.internal.backup.LocalTransport' "$RUNNER_TEMP/transports.txt"; then
+	transport=android/com.android.internal.backup.LocalTransport
+fi
 if ! grep -Fq "$transport" "$RUNNER_TEMP/transports.txt"; then
 	printf '%s\n' 'BLOCKER: Android local backup transport is unavailable' >&2
 	exit 1
