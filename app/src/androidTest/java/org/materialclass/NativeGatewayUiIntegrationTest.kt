@@ -181,7 +181,15 @@ class NativeGatewayUiIntegrationTest {
 			val node = root?.let(::editables)?.firstOrNull { it.isPassword == password && it.isEnabled }
 			if (node != null && node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT }) {
 				node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
-				if (node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) return
+				if (node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
+					if (password) return
+					val confirmationDeadline = SystemClock.uptimeMillis() + 500
+					while (SystemClock.uptimeMillis() < confirmationDeadline) {
+						val current = instrumentation.uiAutomation.rootInActiveWindow?.let(::editables)?.firstOrNull { !it.isPassword }
+						if (current?.text?.toString()?.contains(value) == true) return
+						SystemClock.sleep(50)
+					}
+				}
 			}
 			SystemClock.sleep(50)
 		}

@@ -28,18 +28,33 @@ class NativeUiControllerTest {
 		if (node.text?.toString() == text) return node
 		return (0 until node.childCount).firstNotNullOfOrNull { node.getChild(it)?.let { child -> find(child, text) } }
 	}
+	private fun scrollable(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+		if (node.isScrollable) return node
+		return (0 until node.childCount).firstNotNullOfOrNull { node.getChild(it)?.let(::scrollable) }
+	}
 	private fun waitFor(text: String): AccessibilityNodeInfo {
 		val deadline = SystemClock.uptimeMillis() + 10000
+		var direction = AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
 		while (SystemClock.uptimeMillis() < deadline) {
-			instrumentation.uiAutomation.rootInActiveWindow?.let { find(it, text) }?.let { return it }
+			val root = instrumentation.uiAutomation.rootInActiveWindow
+			root?.let { find(it, text) }?.let { return it }
+			val scroller = root?.let(::scrollable)
+			if (scroller != null && !scroller.performAction(direction)) {
+				direction = if (direction == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD else AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+			}
 			SystemClock.sleep(100)
 		}
 		throw AssertionError("Missing node: $text")
 	}
 	private fun click(text: String) {
-		var node = waitFor(text)
-		while (!node.isClickable && node.parent != null) node = node.parent
-		assertTrue(node.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+		val deadline = SystemClock.uptimeMillis() + 10000
+		while (SystemClock.uptimeMillis() < deadline) {
+			var node = waitFor(text)
+			while (!node.isClickable && node.parent != null) node = node.parent
+			if (node.isClickable && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return
+			SystemClock.sleep(100)
+		}
+		throw AssertionError("Unable to click: $text")
 	}
 	private fun edit(node: AccessibilityNodeInfo, value: String) {
 		val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, value) }
