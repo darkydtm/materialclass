@@ -27,7 +27,7 @@ class AnnualGradesTest {
 				assertEquals(AppError.INCOMPATIBLE_RESPONSE, (gateway.annualGrades(verified, lease) as GatewayResult.Failure).error)
 			}
 			response = Response(401, "")
-			assertEquals(AppError.SESSION_EXPIRED, (gateway.annualGrades(verified, lease) as GatewayResult.Failure).error)
+			assertEquals(AppError.UNAVAILABLE, (gateway.annualGrades(verified, lease) as GatewayResult.Failure).error)
 			val count = calls
 			coordinator.logout()
 			assertTrue(gateway.annualGrades(verified, lease) is GatewayResult.Failure)

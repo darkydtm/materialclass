@@ -131,8 +131,6 @@ class NativeGateway internal constructor(private val exchange: Exchange) : Schoo
 			val headers = mapOf("Authorization" to "Bearer ${remote.token}", "x-school-id" to context.schoolId.toString())
 			val response = exchange.execute(request("/api/v4/os/clientoffice/diary/year?$query", "GET", headers, null, lease))
 			if (lease.isCancelled()) return GatewayResult.Failure(AppError.UNAVAILABLE)
-			if (response.status == 401) return GatewayResult.Failure(AppError.SESSION_EXPIRED)
-			if (response.status == 403) return GatewayResult.Failure(AppError.FORBIDDEN)
 			if (response.status != 200) return GatewayResult.Failure(AppError.UNAVAILABLE)
 			val array = JSONObject(response.body).getJSONObject("data").getJSONArray("rows")
 			require(array.length() <= 10000)
