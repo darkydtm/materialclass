@@ -56,6 +56,7 @@ class GradesDiaryRaceTest {
 	private inner class Fixture {
 		val diaryGate = AtomicReference<Gate?>(null)
 		val gradesGate = AtomicReference<Gate?>(null)
+		val loginGate = AtomicReference<Gate?>(null)
 		val profileGate = AtomicReference<Gate?>(null)
 		val scheduleGate = AtomicReference<Gate?>(null)
 		val scheduleResult = AtomicReference(Schedule(emptyList()))
@@ -65,7 +66,10 @@ class GradesDiaryRaceTest {
 		val expired = java.util.concurrent.atomic.AtomicBoolean(false)
 		val schoolCalls = java.util.concurrent.atomic.AtomicInteger()
 		val gateway: SchoolGateway = object : SchoolGateway, DiaryWeeksGateway, AnnualGradesGateway {
-			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic", login, "student", SchoolContext(1, 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> {
+				loginGate.getAndSet(null)?.waitHere()
+				return GatewayResult.Success(UnverifiedSession("synthetic", login, "student", SchoolContext(1, 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
+			}
 			override fun diaryWeeks(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<DiaryWeeks> { schoolCalls.incrementAndGet(); return GatewayResult.Success(DiaryWeeks("01.01.2026", listOf(DiaryWeekOption("First", "01.01.2026"), DiaryWeekOption("Second", "08.01.2026")))) }
 			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> { schoolCalls.incrementAndGet(); return GatewayResult.Success("01.01.2026") }
 			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> {
@@ -192,6 +196,36 @@ class GradesDiaryRaceTest {
 	}
 
 	@Test fun revokedOnlineGradesAreNotPublished() = revokedPrivateCommitIsNotPublished("grades", false)
+
+	@Test fun concurrentLoginCancelsPendingGradesWithoutLeavingLoading() {
+		val fixture = Fixture()
+		val gradesCommit = Gate()
+		val login = Gate()
+		val armed = java.util.concurrent.atomic.AtomicBoolean(false)
+		main {
+			controller = NativeController(beforePrivateCommit = { name -> if (name == "grades" && armed.compareAndSet(true, false)) gradesCommit.waitHere() }) { emit ->
+				SchoolRepository(fixture.gateway, fixture.verifier, coordinator, fixture.cache, { 1L }, emit, SessionStore(context, coordinator))
+			}
+			controller!!.login("1", charArrayOf('x'))
+		}
+		val first = controller!!
+		await { first.state.signedIn && first.state.diary is DiaryState.Ready && first.state.schedule != null }
+		drain(first)
+		armed.set(true)
+		try {
+			main { first.refreshAnnualGrades() }
+			assertTrue(gradesCommit.entered.await(15, TimeUnit.SECONDS))
+			fixture.loginGate.set(login)
+			main {
+				replacement = NativeController { emit -> SchoolRepository(fixture.gateway, fixture.verifier, coordinator, fixture.cache, { 1L }, emit, SessionStore(context, coordinator)) }
+				replacement!!.login("2", charArrayOf('x'))
+			}
+			assertTrue(login.entered.await(15, TimeUnit.SECONDS))
+			gradesCommit.release.countDown()
+			drain(first)
+			main { assertFalse("Cancelled grades remain loading", first.state.gradesLoading); assertNull(first.state.annualGrades) }
+		} finally { gradesCommit.release.countDown(); login.release.countDown() }
+	}
 
 	@Test fun revokedLoginPublication() = revokedPrivateCommitIsNotPublished("login", false)
 	@Test fun revokedProfilePublication() = revokedPrivateCommitIsNotPublished("profile", false)
