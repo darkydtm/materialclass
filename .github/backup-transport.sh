@@ -21,7 +21,12 @@ if grep -Fq 'android/com.android.internal.backup.LocalTransport' "$RUNNER_TEMP/t
 	transport=android/com.android.internal.backup.LocalTransport
 fi
 if ! grep -Fq "$transport" "$RUNNER_TEMP/transports.txt"; then
-	printf '%s\n' 'BLOCKER: Android local backup transport is unavailable' >&2
+	if tr -d '\r' < "$RUNNER_TEMP/transports.txt" | grep -Fxq 'No transports available.'; then
+		api=$(adb shell getprop ro.build.version.sdk | tr -d '\r')
+		case "$api" in ''|*[!0-9]*) printf '%s\n' 'Invalid device API level' >&2; exit 1;; esac
+		printf '{"capability":"local_backup_transport","status":"TRANSPORT_UNAVAILABLE","api":%s}\n' "$api"
+	fi
+	printf '%s\n' 'BLOCKER: Android local backup transport is unavailable or could not be identified; backup and restore were not tested' >&2
 	exit 1
 fi
 adb shell bmgr transport "$transport" | tee "$RUNNER_TEMP/transport-selection.txt"
