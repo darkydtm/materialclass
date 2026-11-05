@@ -27,6 +27,13 @@ private val CancellationLock = Any()
 
 class RequestLease internal constructor(internal val owner: ActiveSession? = null) {
 	@Volatile internal var cancelled = false
+	private var completedVerification: SessionVerification? = null
+	internal fun completeVerification(result: SessionVerification): SessionVerification = synchronized(CancellationLock) {
+		check(completedVerification == null)
+		if (!cancelled) completedVerification = result
+		result
+	}
+	internal fun trustedVerification(): SessionVerification? = synchronized(CancellationLock) { completedVerification }
 	internal var disconnect: (() -> Unit)? = null
 	internal fun register(disconnect: () -> Unit): Boolean = synchronized(CancellationLock) {
 		if (cancelled) false else { this.disconnect = disconnect; true }

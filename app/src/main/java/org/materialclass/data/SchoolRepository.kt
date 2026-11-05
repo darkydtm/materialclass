@@ -33,6 +33,12 @@ internal fun interface IdentityVerifier {
 	fun verify(session: UnverifiedSession, lease: RequestLease): SessionVerification
 }
 
+// Linearize completion after parsing and before returning to the repository.
+private class CompletingIdentityVerifier(private val delegate: IdentityVerifier) : IdentityVerifier {
+	override fun verify(session: UnverifiedSession, lease: RequestLease): SessionVerification =
+		lease.completeVerification(delegate.verify(session, lease))
+}
+
 internal interface DiaryCache {
 	fun read(session: ActiveSession): ByteArray?
 	fun write(session: ActiveSession, bytes: ByteArray): Boolean
@@ -67,7 +73,7 @@ internal data class AnnualGradesDelivery(val result: GatewayResult<org.materialc
 
 internal class SchoolRepository(
 	private val gateway: SchoolGateway,
-	private val verifier: IdentityVerifier,
+	verifier: IdentityVerifier,
 	private val coordinator: SessionCoordinator,
 	private val cache: DiaryCache,
 	private val clock: () -> Long,
@@ -76,6 +82,7 @@ internal class SchoolRepository(
 	private val scheduleCache: DiaryCache? = null,
 	private val beforeSavedScheduleDelivery: () -> Unit = {},
 ) {
+	private val verifier = CompletingIdentityVerifier(verifier)
 	@Volatile private var session: ActiveSession? = null
 	private var remote: UnverifiedSession? = null
 	private var scheduleSession: VerifiedScheduleSession? = null
@@ -218,7 +225,7 @@ internal class SchoolRepository(
 		try {
 			val verification = try { verifier.verify(request.first, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { SessionVerification.Retry }
 			beforeProfileReceipt(verification, lease)
-			val received = !lease.cancelled
+			val received = lease.trustedVerification() === verification
 			afterProfileVerification(verification, lease)
 			val outcome = coordinator.ifActive(active) {
 				val contradiction = verification == SessionVerification.Invalid || verification == SessionVerification.Expired ||

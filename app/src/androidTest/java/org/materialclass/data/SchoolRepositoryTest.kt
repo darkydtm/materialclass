@@ -224,6 +224,45 @@ class SchoolRepositoryTest {
 	}
 
 	@Test
+	fun completedInvalidCannotRevokeSameAccountReplacement() {
+		val entered = CountDownLatch(1); val release = CountDownLatch(1)
+		val calls = java.util.concurrent.atomic.AtomicInteger()
+		val verifier = IdentityVerifier { session, _ -> if (calls.incrementAndGet() == 2) SessionVerification.Invalid else proof(session) }
+		val oldRepo = SchoolRepository(FakeGateway(), verifier, coordinator, FakeCache(), { 1L }, {}, store)
+		val newRepo = SchoolRepository(FakeGateway(), verifier, coordinator, FakeCache(), { 1L }, {}, store)
+		assertTrue(oldRepo.login("1", charArrayOf('x')) is GatewayResult.Success)
+		oldRepo.beforeProfileReceipt = { result, _ -> if (result == SessionVerification.Invalid) { entered.countDown(); check(release.await(30, TimeUnit.SECONDS)) } }
+		val worker = thread { oldRepo.refreshProfile(oldRepo.beginProfileRefresh()) { _, _ -> } }
+		try {
+			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			assertTrue(newRepo.login("1", charArrayOf('x')) is GatewayResult.Success)
+			val replacement = coordinator.event().session
+			release.countDown(); worker.join(10000); assertFalse(worker.isAlive)
+			assertSame(replacement, coordinator.event().session)
+			assertEquals(SessionChange.ACTIVATED, coordinator.event().change)
+		} finally { release.countDown(); worker.join(10000); newRepo.logout() }
+	}
+
+	@Test
+	fun completedInvalidDoesNotConsumePendingLogoutTicket() {
+		val entered = CountDownLatch(1); val release = CountDownLatch(1)
+		val calls = java.util.concurrent.atomic.AtomicInteger()
+		val verifier = IdentityVerifier { session, _ -> if (calls.incrementAndGet() == 2) SessionVerification.Invalid else proof(session) }
+		val repo = SchoolRepository(FakeGateway(), verifier, coordinator, FakeCache(), { 1L }, {}, store)
+		assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+		repo.beforeProfileReceipt = { result, _ -> if (result == SessionVerification.Invalid) { entered.countDown(); check(release.await(30, TimeUnit.SECONDS)) } }
+		val worker = thread { repo.refreshProfile(repo.beginProfileRefresh()) { _, _ -> } }
+		var ticket: Any? = null
+		try {
+			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			ticket = coordinator.cancelInFlightNow()
+			release.countDown(); worker.join(10000); assertFalse(worker.isAlive)
+			assertTrue(coordinator.isPendingLogout(ticket))
+			assertEquals(SessionChange.LOGOUT, coordinator.event().change)
+		} finally { release.countDown(); worker.join(10000); if (ticket != null) coordinator.logout(ticket); repo.logout() }
+	}
+
+	@Test
 	fun retryCancelsInvalidVerificationBeforeItReturns() {
 		val entered = CountDownLatch(1)
 		val release = CountDownLatch(1)
