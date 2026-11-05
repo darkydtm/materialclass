@@ -142,6 +142,7 @@ class NativeGatewayUiIntegrationTest {
 		activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
 		try {
 			instrumentation.runOnMainSync { controller.start(); activity.setContent { MaterialClassApp(nativeEnabled = true, controllerFactory = { controller }) } }
+			instrumentation.waitForIdleSync()
 			waitFor(context.getString(R.string.sign_in))
 			val deadline = SystemClock.uptimeMillis() + 15000
 			while (true) {
