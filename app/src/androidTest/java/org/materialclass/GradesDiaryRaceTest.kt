@@ -110,6 +110,66 @@ class GradesDiaryRaceTest {
 		}
 	}
 
+	private fun revokedPrivateCommitIsNotPublished(path: String, replacementAccount: Boolean) {
+		val fixture = Fixture()
+		val gate = Gate()
+		val armed = java.util.concurrent.atomic.AtomicBoolean(false)
+		val revoked = java.util.concurrent.atomic.AtomicBoolean(false)
+		val stale = java.util.concurrent.atomic.AtomicBoolean(false)
+		val trace = mutableListOf<NativeUiState>()
+		fun create(): NativeController = NativeController(
+			onState = { state ->
+				trace.add(state)
+				if (revoked.get() && state.signedIn) stale.set(true)
+			},
+			beforePrivateCommit = { name -> if (name == path && armed.compareAndSet(true, false)) gate.waitHere() },
+		) { emit -> SchoolRepository(fixture.gateway, fixture.verifier, coordinator, fixture.cache, { 1L }, emit, SessionStore(context, coordinator), saveSession = { _, _ -> true }) }
+		main { controller = create(); controller!!.login("1", charArrayOf('x')) }
+		val first = controller!!
+		await { first.state.signedIn && first.state.diary is DiaryState.Ready && first.state.schedule != null && first.state.diaryWeeks.isNotEmpty() && first.state.profile != null }
+		drain(first)
+		main { replacement = create(); replacement!!.login("1", charArrayOf('x')) }
+		val second = replacement!!
+		await { second.state.signedIn && second.state.diary is DiaryState.Ready && second.state.schedule != null && second.state.diaryWeeks.isNotEmpty() && second.state.profile != null }
+		drain(first)
+		drain(second)
+		// Seed a second private view without accessing persisted credentials.
+		val copied = second.state
+		val stateField = NativeController::class.java.getDeclaredField("stateValue$delegate").apply { isAccessible = true }
+		main {
+			@Suppress("UNCHECKED_CAST")
+			(stateField.get(first) as androidx.compose.runtime.MutableState<NativeUiState>).value = copied
+		}
+		main { assertTrue(first.state.signedIn); assertTrue(second.state.signedIn); assertNotNull(first.state.profile); assertNotNull(second.state.profile) }
+		armed.set(true)
+		try {
+			main {
+				when (path) {
+					"login" -> second.login("1", charArrayOf('x'))
+					"weeks" -> { second.login("1", charArrayOf('x')) }
+					else -> second.refresh()
+				}
+			}
+			assertTrue("Did not reach $path commit", gate.entered.await(15, TimeUnit.SECONDS))
+			val epoch = coordinator.revocationEpoch()
+			if (replacementAccount) coordinator.activate(AccountId("2")) else coordinator.cancelInFlightNow()
+			assertTrue(coordinator.revocationEpoch() > epoch)
+			revoked.set(true)
+			gate.release.countDown()
+			drain(second)
+			assertFalse("Revoked $path state was published after ${if (replacementAccount) "account replacement" else "logout admission closed"}", stale.get())
+		} finally { gate.release.countDown() }
+	}
+
+	@Test fun revokedLoginPublication() = revokedPrivateCommitIsNotPublished("login", false)
+	@Test fun revokedProfilePublication() = revokedPrivateCommitIsNotPublished("profile", false)
+	@Test fun revokedWeeksPublication() = revokedPrivateCommitIsNotPublished("weeks", false)
+	@Test fun revokedDiaryPublication() = revokedPrivateCommitIsNotPublished("diary", false)
+	@Test fun revokedSchedulePublication() = revokedPrivateCommitIsNotPublished("schedule", false)
+	@Test fun replacedAccountProfilePublication() = revokedPrivateCommitIsNotPublished("profile", true)
+	@Test fun replacedAccountDiaryPublication() = revokedPrivateCommitIsNotPublished("diary", true)
+	@Test fun replacedAccountSchedulePublication() = revokedPrivateCommitIsNotPublished("schedule", true)
+
 	@Test fun diaryRefreshDoesNotCancelBlockedGrades() {
 		val fixture = Fixture()
 		val c = fixture.login()

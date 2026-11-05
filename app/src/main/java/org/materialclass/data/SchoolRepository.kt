@@ -75,6 +75,7 @@ internal class SchoolRepository(
 	private val store: SessionStore,
 	private val scheduleCache: DiaryCache? = null,
 	private val beforeSavedScheduleDelivery: () -> Unit = {},
+	private val saveSession: (ActiveSession, ByteArray) -> Boolean = { active, material -> store.write(active, material) },
 ) {
 	@Volatile private var session: ActiveSession? = null
 	private var remote: UnverifiedSession? = null
@@ -136,7 +137,7 @@ internal class SchoolRepository(
 					synchronized(StorageLock) {
 						if (coordinator.ifActive(active) { session === active } != true) return@synchronized GatewayResult.Failure(AppError.UNAVAILABLE)
 						val material = encodeSession(candidate)
-						try { check(store.write(active, material)) } finally { material.fill(0) }
+						try { check(saveSession(active, material)) } finally { material.fill(0) }
 						GatewayResult.Success(Unit)
 					}
 				} catch (error: Exception) {

@@ -1,0 +1,36 @@
+name: UI revocation coverage
+on:
+  push:
+    branches: [test/ui-revocation-coverage]
+permissions:
+  contents: read
+jobs:
+  device:
+    if: github.ref == 'refs/heads/test/ui-revocation-coverage'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        api: ['24', '37.0']
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
+        with:
+          packages: platform-tools
+      - name: Enable virtualization
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: ${{ matrix.api }}
+          target: default
+          arch: x86_64
+          script: >-
+            ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class='org.materialclass.GradesDiaryRaceTest#revokedLoginPublication,org.materialclass.GradesDiaryRaceTest#revokedProfilePublication,org.materialclass.GradesDiaryRaceTest#revokedWeeksPublication,org.materialclass.GradesDiaryRaceTest#revokedDiaryPublication,org.materialclass.GradesDiaryRaceTest#revokedSchedulePublication,org.materialclass.GradesDiaryRaceTest#replacedAccountProfilePublication,org.materialclass.GradesDiaryRaceTest#replacedAccountDiaryPublication,org.materialclass.GradesDiaryRaceTest#replacedAccountSchedulePublication'
