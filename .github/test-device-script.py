@@ -71,6 +71,13 @@ printf 'EXIT 0 %s\\n' "$command" >> "$COMMAND_LOG"
 				path.write_text(fake)
 				path.chmod(0o755)
 			(root / '.github').mkdir()
+			(root / '.github/homework-diagnostic.sh').write_text('''printf 'DIAGNOSTIC ENTERED\\n' >> "$COMMAND_LOG"
+if [ "$FAIL_COMMAND" = 'bash .github/homework-diagnostic.sh' ]; then
+  printf 'INJECTED diagnostic-script\\n' >> "$COMMAND_LOG"
+  exit 23
+fi
+printf 'DIAGNOSTIC EXIT 0\\n' >> "$COMMAND_LOG"
+''')
 			(root / '.github/cleanup-restart.sh').write_text('''printf 'RESTART ENTERED\\n' >> "$COMMAND_LOG"
 if [ "$FAIL_COMMAND" = 'bash .github/cleanup-restart.sh' ]; then
   printf 'INJECTED restart-script\\n' >> "$COMMAND_LOG"
@@ -89,7 +96,13 @@ printf 'RESTART EXIT 0\\n' >> "$COMMAND_LOG"
 		log = []
 		for command in commands:
 			log.append(f'CALL {command}')
-			if command == 'bash .github/cleanup-restart.sh':
+			if command == 'bash .github/homework-diagnostic.sh':
+				log.append('DIAGNOSTIC ENTERED')
+				if command == failure:
+					log.append('INJECTED diagnostic-script')
+					break
+				log.append('DIAGNOSTIC EXIT 0')
+			elif command == 'bash .github/cleanup-restart.sh':
 				log.append('RESTART ENTERED')
 				if command == failure:
 					log.append('INJECTED restart-script')
@@ -108,7 +121,7 @@ printf 'RESTART EXIT 0\\n' >> "$COMMAND_LOG"
 		routes.extend((branch, DEFAULT) for branch in DEFAULT_BRANCHES)
 		routes.append(('unlisted-branch', DEFAULT))
 		for branch, commands in routes:
-			commands = WAKE + commands
+			commands = WAKE + (['bash .github/homework-diagnostic.sh'] if branch == 'test/homework-flake-review' else []) + commands
 			for failure in ['never', *commands]:
 				with self.subTest(branch=branch, failure=failure):
 					status, log = self.run_script(branch, failure)
