@@ -2,6 +2,7 @@ package org.materialclass
 
 import android.content.Context
 import android.content.Intent
+import android.os.Bundle
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.activity.compose.setContent
@@ -165,6 +166,41 @@ class NativeGatewayUiIntegrationTest {
 
 	private fun signIn(controller: NativeController) {
 		instrumentation.runOnMainSync { controller.login("synthetic-user", "synthetic-password".toCharArray()) }
+	}
+
+	private fun editables(node: AccessibilityNodeInfo): List<AccessibilityNodeInfo> =
+		(if (node.isEditable) listOf(node) else emptyList()) + (0 until node.childCount).flatMap { node.getChild(it)?.let(::editables) ?: emptyList() }
+
+	private fun enterText(node: AccessibilityNodeInfo, value: String) {
+		val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, value) }
+		assertTrue(node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args))
+	}
+
+	@Test fun studentJourneyUsesLoginFormAndVisibleModuleActions() = exercise { exchange, _ ->
+		exchange.selectableWeeks.set(true)
+		val fields = editables(instrumentation.uiAutomation.rootInActiveWindow)
+		assertEquals(2, fields.size)
+		enterText(fields[0], "synthetic-user")
+		enterText(fields[1], "synthetic-password")
+		click(context.getString(R.string.sign_in))
+		waitFor(context.getString(R.string.logout))
+		click(context.getString(R.string.diary))
+		waitFor("Homework for 01.01.2026")
+		click(context.getString(R.string.homework))
+		waitFor("Homework for 01.01.2026")
+		click(context.getString(R.string.schedule))
+		waitFor("Synthetic schedule lesson")
+		click(context.getString(R.string.login))
+		click(context.getString(R.string.profile))
+		waitFor("Synthetic Surname")
+		click(context.getString(R.string.login))
+		click(context.getString(R.string.grades))
+		click(context.getString(R.string.grades_load))
+		waitFor("Synthetic annual subject")
+		click(context.getString(R.string.login))
+		click(context.getString(R.string.logout))
+		waitFor(context.getString(R.string.sign_in))
+		assertTrue(exchange.paths.containsAll(listOf("/api/v2/os/login", "/api/v2/os/user-info", "/api/v4/os/clientoffice/diary/weeks", "/api/v4/os/clientoffice/diary", "/api/v4/os/clientoffice/schedule", "/api/v4/os/clientoffice/diary/year")))
 	}
 
 
