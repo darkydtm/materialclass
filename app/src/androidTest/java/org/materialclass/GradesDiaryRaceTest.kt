@@ -62,6 +62,7 @@ class GradesDiaryRaceTest {
 		val diaryError = AtomicReference<AppError?>(null)
 		val gradesError = AtomicReference<AppError?>(null)
 		val mismatch = java.util.concurrent.atomic.AtomicBoolean(false)
+		val expired = java.util.concurrent.atomic.AtomicBoolean(false)
 		val schoolCalls = java.util.concurrent.atomic.AtomicInteger()
 		val gateway: SchoolGateway = object : SchoolGateway, DiaryWeeksGateway, AnnualGradesGateway {
 			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> = GatewayResult.Success(UnverifiedSession("synthetic", login, "student", SchoolContext(1, 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
@@ -93,7 +94,7 @@ class GradesDiaryRaceTest {
 			gate?.waitHere()
 			val profile = JSONObject("""{"userId":${session.identityCandidate},"role":"student","school_id":1,"group":{"id":2},"studentInfo":{"studentSchoolUuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}""")
 			if (mismatch.get()) profile.put("school_id", 99)
-			val result = SessionVerification.Verified(AccountId(session.identityCandidate!!), true, VerifiedScheduleSession.compare(session, profile), VerifiedDiarySession.compare(session, profile), if (mismatch.get()) null else StudentProfile("Profile-${session.identityCandidate}", null, null, null))
+			val result = if (expired.get()) SessionVerification.Expired else SessionVerification.Verified(AccountId(session.identityCandidate!!), true, VerifiedScheduleSession.compare(session, profile), VerifiedDiarySession.compare(session, profile), if (mismatch.get()) null else StudentProfile("Profile-${session.identityCandidate}", null, null, null))
 			gate?.returned?.countDown()
 			result
 		}
@@ -243,6 +244,68 @@ class GradesDiaryRaceTest {
 			assertEquals(calls, fixture.schoolCalls.get())
 			main { assertTrue(trace.drop(clearedAt).none { it.profile?.surname == "Profile-1" || contents(it)?.contains("Subject-1") == true }) }
 		} finally { gate.release.countDown() }
+	}
+
+	@Test fun mismatchThenProfileExpiryKeepsAdmissionClosedUntilUiAcknowledges() {
+		val fixture = Fixture()
+		val trace = mutableListOf<NativeUiState>()
+		val events = mutableListOf<String>()
+		val held = AtomicReference<(() -> Unit)?>()
+		val delivered = CountDownLatch(1)
+		main {
+			controller = NativeController(onState = { trace.add(it) }) { emit -> SchoolRepository(fixture.gateway, fixture.verifier, coordinator, fixture.cache, { 1L }, emit, SessionStore(context, coordinator)) }
+			controller!!.login("1", charArrayOf('x'))
+		}
+		val first = controller!!
+		await { first.state.signedIn && first.state.profile?.surname == "Profile-1" && first.state.diary is DiaryState.Ready && first.state.schedule != null }
+		main { first.refreshAnnualGrades() }
+		await { contents(first.state)?.contains("Subject-1") == true }
+		drain(first)
+		val active = coordinator.event().session!!
+		main {
+			replacement = NativeController(uiDispatch = { action -> held.set(action); delivered.countDown(); true }) { emit -> SchoolRepository(fixture.gateway, fixture.verifier, coordinator, fixture.cache, { 1L }, emit, SessionStore(context, coordinator)) }
+			replacement!!.start()
+		}
+		val second = replacement!!
+		await { !second.state.busy }
+		main { assertFalse(second.state.signedIn); assertNull(second.state.profile); assertNull(second.state.annualGrades) }
+		assertSame(active, coordinator.event().session)
+		events.add("private data loaded")
+		try {
+			fixture.mismatch.set(true)
+			val calls = fixture.schoolCalls.get()
+			main { first.refresh() }
+			await { first.state.profile == null && first.state.annualGrades == null && first.state.error == AppError.UNAVAILABLE }
+			drain(first)
+			assertSame(active, coordinator.event().session)
+			assertEquals(calls, fixture.schoolCalls.get())
+			events.add("mismatch invalidated proof")
+			var clearedAt = 0
+			main { clearedAt = trace.size; first.refreshAnnualGrades() }
+			drain(first)
+			assertEquals(calls, fixture.schoolCalls.get())
+			fixture.expired.set(true)
+			main { first.refresh() }
+			assertTrue(delivered.await(15, TimeUnit.SECONDS))
+			await { !first.state.signedIn && first.state.error == AppError.SESSION_EXPIRED && first.state.profile == null && first.state.annualGrades == null }
+			assertEquals(SessionChange.EXPIRED, coordinator.event().change)
+			assertSame(active, coordinator.event().session)
+			assertNotNull(coordinator.pendingLogoutTicket())
+			assertNull(coordinator.admit(coordinator.beginLogin()))
+			events.add("expiry held for acknowledgement")
+			main { first.refresh(); first.refreshAnnualGrades(); second.refresh(); second.refreshAnnualGrades() }
+			drain(first)
+			drain(second)
+			assertEquals(calls, fixture.schoolCalls.get())
+			main {
+				assertTrue(trace.drop(clearedAt).none { it.profile?.surname == "Profile-1" || contents(it)?.contains("Subject-1") == true })
+				held.get()!!.invoke()
+			}
+			await { coordinator.pendingLogoutTicket() == null }
+			events.add("acknowledgement released admission")
+			assertEquals(listOf("private data loaded", "mismatch invalidated proof", "expiry held for acknowledgement", "acknowledgement released admission"), events)
+			assertEquals(calls, fixture.schoolCalls.get())
+		} finally { main { held.get()?.invoke(); second.close(); replacement = null } }
 	}
 
 	@Test fun contextMismatchFinishingDuringPendingRevocationCannotRestorePrivateData() {
