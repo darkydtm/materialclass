@@ -141,6 +141,34 @@ class SchoolRepositoryTest {
 	}
 
 	@Test
+	fun retryCancelsInvalidVerificationBeforeItReturns() {
+		val entered = CountDownLatch(1)
+		val release = CountDownLatch(1)
+		val calls = java.util.concurrent.atomic.AtomicInteger()
+		val verifier = IdentityVerifier { session, _ ->
+			when (calls.incrementAndGet()) {
+				1 -> proof(session)
+				2 -> { entered.countDown(); check(release.await(30, TimeUnit.SECONDS)); SessionVerification.Invalid }
+				else -> SessionVerification.Retry
+			}
+		}
+		val repo = SchoolRepository(FakeGateway(), verifier, coordinator, FakeCache(), { 1L }, {}, store)
+		assertTrue(repo.login("1", charArrayOf('x')) is GatewayResult.Success)
+		val old = thread { repo.refreshProfile(repo.beginProfileRefresh()) { _, _ -> } }
+		try {
+			assertTrue(entered.await(10, TimeUnit.SECONDS))
+			assertFalse(repo.refreshProfile(repo.beginProfileRefresh()) { _, _ -> })
+			release.countDown()
+			old.join(10000)
+			assertFalse(old.isAlive)
+			assertEquals(SessionChange.ACTIVATED, coordinator.event().change)
+			var result: GatewayResult<AnnualGrades>? = null
+			repo.annualGrades { result = it.result }
+			assertEquals(GatewayResult.Failure(AppError.UNAVAILABLE), result)
+		} finally { release.countDown(); old.join(10000); repo.logout() }
+	}
+
+	@Test
 	fun retryKeepsSchoolRequestsBlockedUntilSuccessfulReverification() {
 		val entered = CountDownLatch(1); val release = CountDownLatch(1)
 		val profiles = java.util.concurrent.atomic.AtomicInteger()
