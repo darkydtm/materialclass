@@ -1,13 +1,13 @@
 name: Gradle wrapper integrity
 on:
   push:
-    branches: [feat/integrate-wrapper]
+    branches: [feat/integrate-identity-completion, feat/integrate-wrapper]
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   verify:
-    if: github.ref == 'refs/heads/feat/integrate-wrapper'
+    if: github.ref == 'refs/heads/feat/integrate-identity-completion' || github.ref == 'refs/heads/feat/integrate-wrapper'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
