@@ -76,17 +76,7 @@ jobs:
             set -e
             adb shell input keyevent KEYCODE_WAKEUP
             adb shell wm dismiss-keyguard
-            if [ "${{ github.ref }}" = 'refs/heads/test/cleanup-restart' ]; then
-              ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest
-              adb install app/build/outputs/apk/debug/app-debug.apk
-              adb install app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-              bash .github/cleanup-restart.sh
-            elif [ "${{ github.ref }}" = 'refs/heads/feat/debug-apk' ]; then
-              ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=org.materialclass.NativeUiWiringTest
-              ./gradlew --no-daemon -PintegrationTestNativeUi=true connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=org.materialclass.session.CleanupProcessRestartTest
-            else
-              ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=org.materialclass.session.CleanupProcessRestartTest
-            fi
+            if [ "${{ github.ref }}" = 'refs/heads/test/cleanup-restart' ]; then set -e; ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest; adb install app/build/outputs/apk/debug/app-debug.apk; adb install app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk; bash .github/cleanup-restart.sh; elif [ "${{ github.ref }}" = 'refs/heads/feat/debug-apk' ]; then set -e; ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=org.materialclass.NativeUiWiringTest; ./gradlew --no-daemon -PintegrationTestNativeUi=true connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=org.materialclass.session.CleanupProcessRestartTest; else ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=org.materialclass.session.CleanupProcessRestartTest; fi
 
   test-apk:
     if: github.ref == 'refs/heads/feat/debug-apk'

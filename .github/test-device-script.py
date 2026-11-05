@@ -33,7 +33,10 @@ if [ "$(basename "$0") $*" = "$FAIL_COMMAND" ]; then exit 23; fi
 			(root / '.github').mkdir()
 			(root / '.github/cleanup-restart.sh').write_text('exit 99\n')
 			env = dict(os.environ, PATH=f'{root}:{os.environ["PATH"]}', COMMAND_LOG=str(log), FAIL_COMMAND=failure)
-			result = subprocess.run(['/bin/bash', '-e', '-c', device_script('refs/heads/test/cleanup-restart')], cwd=root, env=env, capture_output=True, text=True)
+			for line in device_script('refs/heads/test/cleanup-restart').splitlines():
+				result = subprocess.run(['/bin/sh', '-c', line], cwd=root, env=env, capture_output=True, text=True)
+				if result.returncode:
+					break
 			return result.returncode, log.read_text().splitlines()
 
 	def test_failures_stop_before_restart(self):
