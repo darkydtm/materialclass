@@ -123,9 +123,9 @@ class GradesDiaryRaceTest {
 		lateinit var first: NativeController
 		fun create(): NativeController = NativeController(
 			onState = {
-						val state = first.state
-						if (revoked.get() && if (path == "grades") contents(state)?.contains("Subject-1") == true else state.signedIn) stale.set(true)
-					},
+					val state = first.state
+					if (revoked.get() && if (path == "grades") contents(state)?.contains("Subject-1") == true else state.signedIn) stale.set(true)
+				},
 			beforePrivateCommit = { name -> if (name == path && armed.compareAndSet(true, false)) gate.waitHere() },
 		) { emit -> SchoolRepository(fixture.gateway, fixture.verifier, coordinator, fixture.cache, { 1L }, emit, SessionStore(context, coordinator)) }
 		main { first = create(); controller = first; first.login("1", charArrayOf('x')) }

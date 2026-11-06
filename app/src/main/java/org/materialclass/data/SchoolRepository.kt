@@ -93,6 +93,10 @@ internal class SchoolRepository(
 	internal var afterRestoreActivation: () -> Unit = {}
 	internal var beforeRequestAdmission: () -> Unit = {}
 	internal var beforeIdentityAdmission: () -> Unit = {}
+	internal var privateStateId: PrivateStateRegistry.ControllerId? = null
+	internal var publishSession: (ActiveSession, NativeUiState) -> Boolean = { active, value ->
+		privateStateId?.let { SessionCoordinator.privateStates.activateAndPublish(active, it, value) } ?: true
+	}
 
 	fun login(username: String, password: CharArray): GatewayResult<Unit> {
 		var revision: Long? = null
@@ -123,6 +127,7 @@ internal class SchoolRepository(
 						scheduleSession = null
 						diarySession = null; profile = null
 					} ?: return@synchronized null
+					if (!publishSession(activated, NativeUiState(signedIn = true, profile = verification.profile))) return@synchronized null
 					session = activated
 					remote = candidate
 					scheduleSession = verification.scheduleSession
@@ -171,36 +176,46 @@ internal class SchoolRepository(
 			val verification = verifier.verify(remote, lease)
 			if (verification is SessionVerification.Verified && verification.pupil) { candidate = remote; scheduleCandidate = verification.scheduleSession; diaryCandidate = verification.diarySession; profileCandidate = verification.profile }
 			verification
-		}) { active ->
+		}, onRestored = { active ->
 			try {
+				val published = privateStateId?.let { coordinator.activateRestoreState(active, it, NativeUiState(signedIn = true, profile = profileCandidate)) } ?: true
 				val installed = coordinator.ifActive(active) {
-					session = active
-					remote = candidate
-					scheduleSession = scheduleCandidate
-					verifiedScheduleRemote = if (scheduleCandidate != null) candidate else null
-					diarySession = diaryCandidate
-					profile = profileCandidate
-					true
-				} == true
-				if (installed) {
-					afterRestoreActivation()
-					val clear = coordinator.ifActive(active) {
-						if (session === active) coordinator.ownedEpoch(active)?.let { DiaryState.RestoreClear(active, it) } else null
-					}
-					if (clear != null) emit(clear)
-				}
+					if (!published) null else {
+						session = active
+							remote = candidate
+							scheduleSession = scheduleCandidate
+							verifiedScheduleRemote = if (scheduleCandidate != null) candidate else null
+							diarySession = diaryCandidate
+							profile = profileCandidate
+							true
+						}
+					} == true
+				installed
 			} catch (error: Exception) {
 				synchronized(StorageLock) {
 					if (session === active) { session = null; remote = null; scheduleSession = null; diarySession = null; profile = null }
 				}
 				throw error
 			}
-		}
+		}, afterRestored = { active ->
+			try {
+				afterRestoreActivation()
+				val clear = coordinator.ifActive(active) {
+					if (session === active) coordinator.ownedEpoch(active)?.let { DiaryState.RestoreClear(active, it) } else null
+				}
+				if (clear != null) emit(clear)
+			} catch (error: Exception) {
+				synchronized(StorageLock) {
+					if (session === active) { session = null; remote = null; scheduleSession = null; diarySession = null; profile = null }
+				}
+				throw error
+			}
+		})
 	}
 
 	internal fun currentProfile(): org.materialclass.api.StudentProfile? {
 		val active = session ?: return null
-		return coordinator.ifActive(active) { if (session === active) profile else null }
+		return coordinator.ifActive(active) { if (session === active && coordinator.ownedEpoch(active) != null) profile else null }
 	}
 
 	internal fun beginProfileRefresh(): Long = synchronized(StorageLock) { ++profileRevision }

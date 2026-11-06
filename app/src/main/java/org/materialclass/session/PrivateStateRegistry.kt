@@ -69,6 +69,15 @@ internal class PrivateStateRegistry(initiallyActive: Boolean = true, private val
 
 	fun revokeAndClear() = transition(false)
 	fun activateAndClear() = transition(true)
+
+	internal fun activateAndPublish(session: ActiveSession, id: ControllerId, value: NativeUiState): Boolean {
+		val current = state.get()
+		if (id !in current.states) return false
+		val cleared = current.states.mapValues { NativeUiState() }
+		val next = snapshot(Token(), cleared + (id to value), true)
+		return SessionCoordinator.activatePrivateState(this, session, current, next)
+	}
+
 	fun rotate() {
 		while (true) {
 			val current = state.get()
