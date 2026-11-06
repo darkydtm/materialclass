@@ -10,6 +10,7 @@ import org.materialclass.api.SchoolGateway
 import org.materialclass.api.UnverifiedSession
 import org.materialclass.api.VerifiedScheduleSession
 import org.materialclass.api.VerifiedDiarySession
+import org.materialclass.NativeUiState
 import org.materialclass.api.Schedule
 import org.materialclass.api.ScheduleDay
 import org.materialclass.api.ScheduleLesson
@@ -22,6 +23,7 @@ import org.materialclass.session.SessionStore
 import org.materialclass.session.SessionVerification
 import org.materialclass.session.RestoreResult
 import org.materialclass.session.RequestLease
+import org.materialclass.session.PrivateStateRegistry
 import org.materialclass.security.StorageLock
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
