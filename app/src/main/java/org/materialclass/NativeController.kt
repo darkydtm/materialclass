@@ -130,18 +130,25 @@ internal class NativeController(
 				profile = privateState?.profile,
 				annualGrades = privateState?.annualGrades,
 				gradesLoading = privateState?.gradesLoading ?: false,
-				diary = if (privateState?.profileIncomplete == true) DiaryState.Cleared else local.diary,
-				diaryWeeks = if (privateState?.profileIncomplete == true) emptyList() else local.diaryWeeks,
-				selectedDiaryDate = if (privateState?.profileIncomplete == true) null else local.selectedDiaryDate,
+				diary = if (privateState?.profileIncomplete == true) DiaryState.Cleared else privateState?.diary ?: local.diary,
+				diaryWeeks = if (privateState?.profileIncomplete == true) emptyList() else privateState?.diaryWeeks ?: local.diaryWeeks,
+				selectedDiaryDate = if (privateState?.profileIncomplete == true) null else privateState?.selectedDiaryDate ?: local.selectedDiaryDate,
 				schedule = if (privateState?.profileIncomplete == true) null else local.schedule,
 				scheduleSnapshot = if (privateState?.profileIncomplete == true) null else local.scheduleSnapshot,
 				error = if (privateState?.profileIncomplete == true) AppError.UNAVAILABLE else local.error,
 			)
 		}
 		private set(value) {
-			if (value.annualGrades == null) {
-				val token = privateStates.read().token
-				privateStates.commit(token, privateId) { it.copy(annualGrades = null, gradesLoading = value.gradesLoading) }
+			val token = privateStates.read().token
+			privateStates.commit(token, privateId) {
+				it.copy(
+					diary = value.diary,
+					diaryWeeks = value.diaryWeeks,
+					selectedDiaryDate = value.selectedDiaryDate,
+					error = value.error,
+					annualGrades = if (value.annualGrades == null) null else it.annualGrades,
+					gradesLoading = if (value.annualGrades == null) value.gradesLoading else it.gradesLoading,
+				)
 			}
 			stateValue = value.copy(annualGrades = null, gradesLoading = false)
 			notifyState()
@@ -159,12 +166,12 @@ internal class NativeController(
 		post(task) {
 			if (diaryRevision != revision) return@post
 			if (!repository.acceptsDiary(diary)) return@post
-			if (diary is DiaryState.Ready) beforePrivateCommit("diary")
 			state = if (diary is DiaryState.Error && diary.error == AppError.SESSION_EXPIRED) NativeUiState(error = diary.error)
 			else state.copy(diary = if (diary is DiaryState.RestoreClear) DiaryState.Cleared else diary, error = if (diary is DiaryState.Error) diary.error else state.error)
 		}
 	}
 	init { repository.privateStateId = privateId }
+	init { repository.beforePrivateCommit = beforePrivateCommit }
 
 	init {
 		val snapshot = repository.observeRevocations(observeLogout)
@@ -262,7 +269,7 @@ internal class NativeController(
 				if (profileRevision != profileRequest || !profileUsable) return@execute
 				if (diaryRevision == revision) {
 					if (selected != null) repository.refreshDate(selected) else repository.refreshCurrent { weeks ->
-						post(task) { if (diaryRevision != revision) return@post; beforePrivateCommit("weeks"); state = state.copy(diaryWeeks = weeks.options, selectedDiaryDate = weeks.currentWeek) }
+						post(task) { if (diaryRevision != revision) return@post; state = state.copy(diaryWeeks = weeks.options, selectedDiaryDate = weeks.currentWeek) }
 					}
 
 				}

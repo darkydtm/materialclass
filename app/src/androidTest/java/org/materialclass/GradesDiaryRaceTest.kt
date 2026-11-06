@@ -311,9 +311,23 @@ class GradesDiaryRaceTest {
 
 	@Test fun revokedLoginPublication() = revokedPrivateCommitIsNotPublished("login", false)
 	@Test fun revokedProfilePublication() = revokedPrivateCommitIsNotPublished("profile", false)
+
+	@Test fun diaryAndWeeksAreStoredInThePrivateRegistry() {
+		val fixture = Fixture()
+		val first = fixture.login()
+		val id = NativeController::class.java.getDeclaredField("privateId").apply { isAccessible = true }.get(first) as PrivateStateRegistry.ControllerId
+		val privateState = SessionCoordinator.privateStates.read().states[id]
+		assertTrue(privateState?.diary is DiaryState.Ready)
+		assertEquals("01.01.2026", privateState?.selectedDiaryDate)
+		assertEquals(2, privateState?.diaryWeeks?.size)
+		assertTrue(privateState?.diaryWeeks?.any { it.value == "08.01.2026" } == true)
+	}
+
+	@Test fun revokedOnlineGradesAreNotPublished() = revokedPrivateCommitIsNotPublished("grades", false)
 	@Test fun revokedWeeksPublication() = revokedPrivateCommitIsNotPublished("weeks", false)
 	@Test fun revokedDiaryPublication() = revokedPrivateCommitIsNotPublished("diary", false)
 	@Test fun revokedSchedulePublication() = revokedPrivateCommitIsNotPublished("schedule", false)
+	@Test fun revokedLoginPublication() = revokedPrivateCommitIsNotPublished("login", false)
 	@Test fun replacedAccountProfilePublication() = revokedPrivateCommitIsNotPublished("profile", true)
 	@Test fun replacedAccountDiaryPublication() = revokedPrivateCommitIsNotPublished("diary", true)
 	@Test fun replacedAccountSchedulePublication() = revokedPrivateCommitIsNotPublished("schedule", true)

@@ -1,5 +1,6 @@
 package org.materialclass.data
 
+import org.materialclass.NativeUiState
 import org.materialclass.api.AppError
 import org.materialclass.api.Diary
 import org.materialclass.api.DiaryContext
@@ -22,6 +23,7 @@ import org.materialclass.session.SessionStore
 import org.materialclass.session.SessionVerification
 import org.materialclass.session.RestoreResult
 import org.materialclass.session.RequestLease
+import org.materialclass.session.PrivateStateRegistry
 import org.materialclass.security.StorageLock
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -94,8 +96,21 @@ internal class SchoolRepository(
 	internal var beforeRequestAdmission: () -> Unit = {}
 	internal var beforeIdentityAdmission: () -> Unit = {}
 	internal var privateStateId: PrivateStateRegistry.ControllerId? = null
+	internal var beforePrivateCommit: (String) -> Unit = {}
 	internal var publishSession: (ActiveSession, NativeUiState) -> Boolean = { active, value ->
 		privateStateId?.let { SessionCoordinator.privateStates.activateAndPublish(active, it, value) } ?: true
+	}
+
+	private fun commitDiary(lease: RequestLease, value: DiaryState): Boolean {
+		val id = privateStateId ?: return true
+		return SessionCoordinator.privateStates.commitLease(lease, id, beforeCas = { beforePrivateCommit("diary") }) { it.copy(diary = value) } == PrivateStateRegistry.LeaseCommit.APPLIED
+	}
+
+	private fun commitWeeks(lease: RequestLease, value: org.materialclass.api.DiaryWeeks): Boolean {
+		val id = privateStateId ?: return true
+		return SessionCoordinator.privateStates.commitLease(lease, id, beforeCas = { beforePrivateCommit("weeks") }) {
+			it.copy(diaryWeeks = value.options, selectedDiaryDate = value.currentWeek)
+		} == PrivateStateRegistry.LeaseCommit.APPLIED
 	}
 
 	fun login(username: String, password: CharArray): GatewayResult<Unit> {
@@ -480,11 +495,12 @@ internal class SchoolRepository(
 			val date = weeks.currentWeek
 			val context = proof.remote.context?.diary(date) ?: return
 			if (coordinator.ifActive(active) { !lease.cancelled && request.second == refreshRevision && request.third == coordinator.requestRevision() } != true) return
+			if (!commitWeeks(lease, weeks)) return
 			onWeeks(weeks)
 			val result = try { gateway.diary(proof, context, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
 			val state = diaryResult(active, context, result, lease, request.second, request.third)
 			if (state is DiaryState.Ready) diaryPublished = true
-			if (state != null) emit(state)
+			if (state != null && commitDiary(lease, state)) emit(state)
 		} finally { coordinator.finish(lease) }
 	}
 
@@ -521,7 +537,7 @@ internal class SchoolRepository(
 			val result = try { gateway.diary(proof, context, lease) } catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) }
 			val state = diaryResult(active, context, result, lease, request.second, request.third)
 			if (state is DiaryState.Ready) diaryPublished = true
-			if (state != null) emit(state)
+			if (state != null && commitDiary(lease, state)) emit(state)
 		} finally { coordinator.finish(lease) }
 	}
 
