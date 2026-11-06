@@ -133,8 +133,8 @@ internal class NativeController(
 				diary = if (privateState?.profileIncomplete == true) DiaryState.Cleared else privateState?.diary ?: local.diary,
 				diaryWeeks = if (privateState?.profileIncomplete == true) emptyList() else privateState?.diaryWeeks ?: local.diaryWeeks,
 				selectedDiaryDate = if (privateState?.profileIncomplete == true) null else privateState?.selectedDiaryDate ?: local.selectedDiaryDate,
-				schedule = if (privateState?.profileIncomplete == true) null else local.schedule,
-				scheduleSnapshot = if (privateState?.profileIncomplete == true) null else local.scheduleSnapshot,
+				schedule = if (privateState?.profileIncomplete == true) null else privateState?.schedule,
+				scheduleSnapshot = if (privateState?.profileIncomplete == true) null else privateState?.scheduleSnapshot,
 				error = if (privateState?.profileIncomplete == true) AppError.UNAVAILABLE else local.error,
 			)
 		}
@@ -158,6 +158,19 @@ internal class NativeController(
 		beforeStateCallback()
 		stateSignal++
 		onState()
+	}
+
+	private fun commitSchedule(task: Long, request: Long, epoch: Long, result: GatewayResult<ScheduleSnapshot>, lease: org.materialclass.session.RequestLease) {
+		if (closed || generation != task || scheduleRevision != request || repository.revocationEpoch() != epoch) return
+		val commit = privateStates.commitLease(lease, privateId, beforeCas = { beforePrivateCommit("schedule") }) { current ->
+			when (result) {
+				is GatewayResult.Success -> current.copy(schedule = result.value.schedule, scheduleSnapshot = result.value)
+				is GatewayResult.Failure -> current.copy(schedule = null, scheduleSnapshot = null, error = result.error)
+			}
+		}
+		if (commit == PrivateStateRegistry.LeaseCommit.APPLIED) handler.post {
+			if (!closed && generation == task && scheduleRevision == request && repository.revocationEpoch() == epoch) notifyState()
+		}
 	}
 
 	private val repository: SchoolRepository = repositoryFactory { diary ->
@@ -279,18 +292,8 @@ internal class NativeController(
 				repository.currentWeekForSchedule { week, weekRevision ->
 					if (closed || generation != task || scheduleRevision != scheduleRequest || repository.revocationEpoch() != epoch) return@currentWeekForSchedule
 					when (week) {
-						is GatewayResult.Success -> repository.scheduleSnapshot(week.value) { result ->
-							post(task) { if (scheduleRevision != scheduleRequest) return@post; beforePrivateCommit("schedule"); state = when (result) {
-								is GatewayResult.Success -> state.copy(schedule = result.value.schedule, scheduleSnapshot = result.value)
-								is GatewayResult.Failure -> state.copy(schedule = null, scheduleSnapshot = null, error = result.error)
-							} }
-						}
-						is GatewayResult.Failure -> repository.savedSchedule(week.error, weekRevision) { result ->
-							post(task) { if (scheduleRevision != scheduleRequest) return@post; beforePrivateCommit("schedule"); state = when (result) {
-								is GatewayResult.Success -> state.copy(schedule = result.value.schedule, scheduleSnapshot = result.value)
-								is GatewayResult.Failure -> state.copy(schedule = null, scheduleSnapshot = null, error = result.error)
-							} }
-						}
+						is GatewayResult.Success -> repository.scheduleSnapshotLeased(week.value) { result, lease -> commitSchedule(task, scheduleRequest, epoch, result, lease) }
+						is GatewayResult.Failure -> repository.savedScheduleLeased(week.error, weekRevision) { result, lease -> commitSchedule(task, scheduleRequest, epoch, result, lease) }
 					}
 				}
 			} catch (_: Exception) { post(task) { if (scheduleRevision != scheduleRequest) return@post; if (state.error != AppError.SESSION_EXPIRED) state = state.copy(error = AppError.UNAVAILABLE) } }

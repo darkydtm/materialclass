@@ -347,7 +347,10 @@ internal class SchoolRepository(
 		})
 	}
 
-	fun scheduleSnapshot(date: String, deliver: (GatewayResult<ScheduleSnapshot>) -> Unit) {
+	fun scheduleSnapshot(date: String, deliver: (GatewayResult<ScheduleSnapshot>) -> Unit) =
+		scheduleSnapshotLeased(date) { result, _ -> deliver(result) }
+
+	internal fun scheduleSnapshotLeased(date: String, deliver: (GatewayResult<ScheduleSnapshot>, RequestLease) -> Unit) {
 		val active = session ?: return
 		val request = coordinator.ifActive(active) {
 			val requestRevision = coordinator.requestRevision()
@@ -392,15 +395,18 @@ internal class SchoolRepository(
 							}
 						} catch (error: CancellationException) { throw error } catch (_: Exception) { GatewayResult.Failure(AppError.CACHE_UNREADABLE) }
 					}
-					if (converted != null && !lease.cancelled && coordinator.ifActive(active) { request.second == scheduleRevision && request.third == coordinator.requestRevision() } == true) deliver(converted)
+					if (converted != null && !lease.cancelled && coordinator.ifActive(active) { request.second == scheduleRevision && request.third == coordinator.requestRevision() } == true) deliver(converted, lease)
 				}
 			}
 		} finally { coordinator.finish(lease) }
 	}
 
 
-	fun savedSchedule(error: AppError, expectedWeek: Long, deliver: (GatewayResult<ScheduleSnapshot>) -> Unit) {
-		if (error != AppError.OFFLINE && error != AppError.TIMEOUT) { deliver(GatewayResult.Failure(error)); return }
+	fun savedSchedule(error: AppError, expectedWeek: Long, deliver: (GatewayResult<ScheduleSnapshot>) -> Unit) =
+		if (error != AppError.OFFLINE && error != AppError.TIMEOUT) deliver(GatewayResult.Failure(error))
+		else savedScheduleLeased(error, expectedWeek) { result, _ -> deliver(result) }
+
+	internal fun savedScheduleLeased(error: AppError, expectedWeek: Long, deliver: (GatewayResult<ScheduleSnapshot>, RequestLease) -> Unit) {
 		val active = session ?: return
 		val request = coordinator.ifActive(active) {
 			if (weekRevision != expectedWeek) return@ifActive null
@@ -414,10 +420,13 @@ internal class SchoolRepository(
 		} ?: return
 		val saved = request.first
 		val result = if (saved == null) GatewayResult.Failure(error) else GatewayResult.Success(saved.withoutCurrentDay(error).copy(savedPeriod = true))
+		val lease = coordinator.admit(active, request.third.second) ?: return
+		try {
 		if (coordinator.ifActive(active) { request.second == scheduleRevision && request.third.first == weekRevision && request.third.second == coordinator.requestRevision() } == true) {
 			beforeSavedScheduleDelivery()
-			deliver(result)
+			deliver(result, lease)
 		}
+		} finally { coordinator.finish(lease) }
 	}
 
 	private fun guarded(state: DiaryState, active: ActiveSession, revision: Long, requestRevision: Long, expired: Boolean = false): DiaryState {

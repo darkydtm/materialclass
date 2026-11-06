@@ -246,6 +246,17 @@ class GradesDiaryRaceTest {
 		main { assertEquals("Profile-1", first.state.profile?.surname) }
 	}
 
+	@Test fun onlineScheduleIsCommittedToRegistryAndVisible() {
+		val fixture = Fixture()
+		val first = fixture.login()
+		val field = NativeController::class.java.getDeclaredField("privateId").apply { isAccessible = true }
+		val id = field.get(first) as PrivateStateRegistry.ControllerId
+		val registered = SessionCoordinator.privateStates.read().states[id]
+		assertNotNull(registered)
+		assertSame(first.state.schedule, registered!!.schedule)
+		assertSame(first.state.scheduleSnapshot, registered.scheduleSnapshot)
+	}
+
 	private fun profileCommitIsDiscardedAfterRevocation(replace: Boolean) {
 		val fixture = Fixture()
 		val gate = Gate()
