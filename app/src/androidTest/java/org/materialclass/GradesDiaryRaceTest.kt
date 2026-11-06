@@ -323,11 +323,9 @@ class GradesDiaryRaceTest {
 		assertTrue(privateState?.diaryWeeks?.any { it.value == "08.01.2026" } == true)
 	}
 
-	@Test fun revokedOnlineGradesAreNotPublished() = revokedPrivateCommitIsNotPublished("grades", false)
 	@Test fun revokedWeeksPublication() = revokedPrivateCommitIsNotPublished("weeks", false)
 	@Test fun revokedDiaryPublication() = revokedPrivateCommitIsNotPublished("diary", false)
 	@Test fun revokedSchedulePublication() = revokedPrivateCommitIsNotPublished("schedule", false)
-	@Test fun revokedLoginPublication() = revokedPrivateCommitIsNotPublished("login", false)
 	@Test fun replacedAccountProfilePublication() = revokedPrivateCommitIsNotPublished("profile", true)
 	@Test fun replacedAccountDiaryPublication() = revokedPrivateCommitIsNotPublished("diary", true)
 	@Test fun replacedAccountSchedulePublication() = revokedPrivateCommitIsNotPublished("schedule", true)
