@@ -14,6 +14,7 @@ import org.materialclass.data.*
 import org.materialclass.session.*
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 @RunWith(AndroidJUnit4::class)
@@ -106,8 +107,11 @@ class GradesDiaryRaceTest {
 			override fun read(session: ActiveSession): ByteArray? = null
 			override fun write(session: ActiveSession, bytes: ByteArray) = true
 		}
+		fun create(onState: () -> Unit = {}): NativeController = NativeController(onState = onState) { emit ->
+			SchoolRepository(gateway, verifier, coordinator, cache, { 1L }, emit, SessionStore(context, coordinator))
+		}
 		fun login(account: String = "1"): NativeController {
-			main { controller = NativeController { emit -> SchoolRepository(gateway, verifier, coordinator, cache, { 1L }, emit, SessionStore(context, coordinator)) }; controller!!.login(account, charArrayOf('x')) }
+			main { controller = create(); controller!!.login(account, charArrayOf('x')) }
 			val c = controller!!
 			await { c.state.signedIn && c.state.diary is DiaryState.Ready && c.state.schedule != null && c.state.diaryWeeks.isNotEmpty() }
 			return c
@@ -332,6 +336,65 @@ class GradesDiaryRaceTest {
 		assertEquals("01.01.2026", privateState?.selectedDiaryDate)
 		assertEquals(2, privateState?.diaryWeeks?.size)
 		assertTrue(privateState?.diaryWeeks?.any { it.value == "08.01.2026" } == true)
+	}
+
+	@Test fun twoControllersDoNotShareDiaryOrWeeksState() {
+		val fixture = Fixture()
+		val first = fixture.login()
+		main { replacement = fixture.create() }
+		val second = replacement!!
+		main {
+			assertTrue(first.state.signedIn)
+			assertTrue(first.state.diary is DiaryState.Ready)
+			assertEquals(2, first.state.diaryWeeks.size)
+			assertEquals("01.01.2026", first.state.selectedDiaryDate)
+			assertFalse(second.state.signedIn)
+			assertTrue(second.state.diary is DiaryState.Cleared)
+			assertTrue(second.state.diaryWeeks.isEmpty())
+			assertNull(second.state.selectedDiaryDate)
+		}
+	}
+
+	@Test fun accountSwitchClearsDiaryWeeksAndSelectedDateOnOldController() {
+		val fixture = Fixture()
+		val first = fixture.login()
+		main { first.selectDiaryWeek("08.01.2026") }
+		await { first.state.selectedDiaryDate == "08.01.2026" && first.state.diary is DiaryState.Ready }
+		main { replacement = fixture.create(); replacement!!.login("2", charArrayOf('x')) }
+		val second = replacement!!
+		await { second.state.signedIn && second.state.diary is DiaryState.Ready && second.state.diaryWeeks.isNotEmpty() }
+		main {
+			assertFalse(first.state.signedIn)
+			assertTrue(first.state.diary is DiaryState.Cleared)
+			assertTrue(first.state.diaryWeeks.isEmpty())
+			assertNull(first.state.selectedDiaryDate)
+			assertTrue(second.state.signedIn)
+			assertEquals("01.01.2026", second.state.selectedDiaryDate)
+		}
+	}
+
+	@Test fun invalidationOnlyCallbackGetterSeesUpdatedDiaryAndWeeks() {
+		val fixture = Fixture()
+		val callbackSawCompleteState = AtomicBoolean(false)
+		lateinit var observed: NativeController
+		main {
+			observed = fixture.create {
+				val state = observed.state
+				if (state.diary is DiaryState.Ready && state.diaryWeeks.size == 2 && state.selectedDiaryDate == "01.01.2026") {
+					callbackSawCompleteState.set(true)
+				}
+			}
+			controller = observed
+			observed.login("1", charArrayOf('x'))
+		}
+		await { observed.state.signedIn && observed.state.diary is DiaryState.Ready && observed.state.diaryWeeks.isNotEmpty() }
+		await { callbackSawCompleteState.get() }
+		main {
+			assertTrue(callbackSawCompleteState.get())
+			assertTrue(observed.state.diary is DiaryState.Ready)
+			assertEquals(2, observed.state.diaryWeeks.size)
+			assertEquals("01.01.2026", observed.state.selectedDiaryDate)
+		}
 	}
 
 	@Test fun revokedWeeksPublication() = revokedPrivateCommitIsNotPublished("weeks", false)
