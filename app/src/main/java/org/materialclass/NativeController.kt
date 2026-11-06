@@ -276,11 +276,20 @@ internal class NativeController(
 				val profileUsable = repository.refreshProfileLeased(repositoryProfileRequest) { profile, complete, lease ->
 					if (!closed && generation == task && profileRevision == profileRequest && repository.revocationEpoch() == epoch) {
 						val result = privateStates.commitLease(lease, privateId, beforeCas = { beforePrivateCommit("profile") }) {
-							if (it.profileRequest != profileRequest) it else it.copy(
+							if (it.profileRequest != profileRequest) it else if (!complete) it.copy(
+								profile = null,
+								profileIncomplete = true,
+								diary = DiaryState.Cleared,
+								diaryWeeks = emptyList(),
+								selectedDiaryDate = null,
+								schedule = null,
+								scheduleSnapshot = null,
+								annualGrades = null,
+								gradesLoading = false,
+								error = null,
+							) else it.copy(
 								profile = profile,
-								profileIncomplete = !complete,
-								annualGrades = if (complete) it.annualGrades else null,
-								gradesLoading = if (complete) it.gradesLoading else false,
+								profileIncomplete = false,
 							)
 						}
 						if (result == PrivateStateRegistry.LeaseCommit.APPLIED) handler.post {
