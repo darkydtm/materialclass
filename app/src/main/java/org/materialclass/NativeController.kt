@@ -115,9 +115,9 @@ internal class NativeController(
 		get() {
 			stateSignal
 			val local = stateValue
-			val privateState = privateStates.read().states[privateId]
 			val event = repository.sessionEvent()
 			val ownsCurrentSession = repository.ownedEpoch() == event.epoch
+			val privateState = privateStates.read().states[privateId]?.takeIf { ownsCurrentSession }
 			val invalidated = currentTaskEpoch != 0L && (!ownsCurrentSession || currentTaskEpoch != event.epoch)
 			if (invalidated) {
 				return NativeUiState(
@@ -164,6 +164,7 @@ internal class NativeController(
 			else state.copy(diary = if (diary is DiaryState.RestoreClear) DiaryState.Cleared else diary, error = if (diary is DiaryState.Error) diary.error else state.error)
 		}
 	}
+	init { repository.privateStateId = privateId }
 
 	init {
 		val snapshot = repository.observeRevocations(observeLogout)
@@ -253,8 +254,7 @@ internal class NativeController(
 						}
 						if (result == PrivateStateRegistry.LeaseCommit.APPLIED) handler.post {
 							if (!closed && generation == task && profileRevision == profileRequest && repository.revocationEpoch() == epoch) {
-								stateSignal++
-								onState(state)
+								notifyState()
 							}
 						}
 					}

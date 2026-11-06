@@ -83,6 +83,10 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 			}
 		}
 
+		internal fun activatePrivateState(registry: PrivateStateRegistry, session: ActiveSession, expected: PrivateStateRegistry.Snapshot, next: PrivateStateRegistry.Snapshot): Boolean = synchronized(CancellationLock) {
+			registry === privateStates && pending.isEmpty() && active === session && registry.compareAndSet(expected, next)
+		}
+
 		private fun cancelRequests(owner: ActiveSession? = null) {
 			val disconnects = synchronized(CancellationLock) {
 				val cancelled = leases.filter { owner == null || it.owner === owner }
@@ -240,7 +244,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 	internal fun beginLogin(): Long = synchronized(StorageLock) {
 		recoverCleanup()
 		val (next, disconnects) = synchronized(CancellationLock) {
-			privateStates.rotate()
+			privateStates.revokeAndClear()
 			leases.forEach { it.cancelled = true }
 			val disconnects = leases.mapNotNull { lease -> lease.disconnect.also { lease.disconnect = null } }
 			leases.clear()
@@ -355,7 +359,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 	internal fun acceptRestore(account: AccountId, namespace: CacheNamespace, notify: Boolean = true): ActiveSession? {
 		val result = synchronized(CancellationLock) {
 			if (pending.isNotEmpty() || active != null || !restorationAllowed) null else {
-				privateStates.activateAndClear()
+				privateStates.revokeAndClear()
 				restorationAllowed = false; revision++
 				val candidate = ActiveSession(account, namespace)
 				active = candidate
@@ -366,6 +370,9 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		if (notify) notifyAfterStorage(result.second, result.third)
 		return result.first
 	}
+
+	internal fun activateRestoreState(session: ActiveSession, id: PrivateStateRegistry.ControllerId, value: org.materialclass.NativeUiState): Boolean =
+		privateStates.activateAndPublish(session, id, value)
 	internal fun notifyRestore(session: ActiveSession) {
 		val event = synchronized(CancellationLock) {
 			if (active !== session || pending.isNotEmpty() || lastEvent.session !== session || lastEvent.change != SessionChange.ACTIVATED) null
