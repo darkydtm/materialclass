@@ -52,11 +52,11 @@ internal interface NativeUiController {
 }
 
 internal class NativeController(
-	private val onState: (NativeUiState) -> Unit = {},
+	private val onState: () -> Unit = {},
 	private val uiDispatch: ((() -> Unit) -> Boolean) = { action -> Handler(Looper.getMainLooper()).post(action) },
 	private val applyUiRevocation: ((() -> Unit) -> Unit) = { action -> action() },
 	private val beforePrivateCommit: (String) -> Unit = {},
-	private val beforeStateCallback: (NativeUiState) -> Unit = {},
+	private val beforeStateCallback: () -> Unit = {},
 	private val repositoryFactory: ((DiaryState) -> Unit) -> SchoolRepository,
 ) : NativeUiController {
 	private val executor = Executors.newSingleThreadExecutor()
@@ -122,12 +122,13 @@ internal class NativeController(
 				privateStates.commit(token, privateId) { it.copy(annualGrades = null, gradesLoading = value.gradesLoading) }
 			}
 			stateValue = value.copy(annualGrades = null, gradesLoading = false)
-			notifyState(state)
+			notifyState()
 		}
 
-	private fun notifyState(snapshot: NativeUiState) {
-		beforeStateCallback(snapshot)
-		onState(snapshot)
+	private fun notifyState() {
+		beforeStateCallback()
+		stateSignal++
+		onState()
 	}
 
 	private val repository: SchoolRepository = repositoryFactory { diary ->
@@ -279,8 +280,7 @@ internal class NativeController(
 		val epoch = observedEpoch
 		val token = privateStates.read().token
 		privateStates.commit(token, privateId) { it.copy(annualGrades = null, gradesLoading = true, gradesRequest = revision) }
-		stateSignal++
-		notifyState(state)
+		notifyState()
 		executor.execute {
 			if (closed || generation != task || gradesRevision != revision || repository.revocationEpoch() != epoch) return@execute
 			var delivered = false
@@ -294,7 +294,7 @@ internal class NativeController(
 						handler.post {
 							if (!closed && generation == task && gradesRevision == revision && repository.revocationEpoch() == epoch) {
 								when (result) {
-									PrivateStateRegistry.LeaseCommit.APPLIED -> { stateSignal++; notifyState(state) }
+									PrivateStateRegistry.LeaseCommit.APPLIED -> notifyState()
 									PrivateStateRegistry.LeaseCommit.CONFLICT -> state = state.copy(annualGrades = null, gradesLoading = false, error = AppError.UNAVAILABLE)
 									PrivateStateRegistry.LeaseCommit.STALE -> Unit
 								}
@@ -307,8 +307,7 @@ internal class NativeController(
 				if (!closed && generation == task && gradesRevision == revision && repository.revocationEpoch() == epoch) {
 					val current = privateStates.read().token
 					privateStates.commit(current, privateId) { if (it.gradesRequest == revision) it.copy(annualGrades = GatewayResult.Failure(AppError.UNAVAILABLE), gradesLoading = false) else it }
-					stateSignal++
-					notifyState(state)
+					notifyState()
 				}
 			}
 		}

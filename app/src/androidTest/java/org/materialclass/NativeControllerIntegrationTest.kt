@@ -605,7 +605,11 @@ class NativeControllerIntegrationTest {
 		}
 		val firstStates = mutableListOf<NativeUiState>()
 		val secondStates = mutableListOf<NativeUiState>()
-		fun create(states: MutableList<NativeUiState>) = NativeController({ states.add(it) }) { emit -> SchoolRepository(gateway, verifier, coordinator, cache, { 1L }, emit, SessionStore(context, coordinator)) }
+		fun create(states: MutableList<NativeUiState>): NativeController {
+			lateinit var target: NativeController
+			target = NativeController({ states.add(target.state) }) { emit -> SchoolRepository(gateway, verifier, coordinator, cache, { 1L }, emit, SessionStore(context, coordinator)) }
+			return target
+		}
 		main { controller = create(firstStates) }
 		val first = controller!!
 		val second = create(secondStates)

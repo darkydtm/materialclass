@@ -116,14 +116,15 @@ class GradesDiaryRaceTest {
 		val armed = java.util.concurrent.atomic.AtomicBoolean(false)
 		val revoked = java.util.concurrent.atomic.AtomicBoolean(false)
 		val stale = java.util.concurrent.atomic.AtomicBoolean(false)
+		lateinit var first: NativeController
 		fun create(): NativeController = NativeController(
-			onState = { state ->
-				if (revoked.get() && if (path == "grades") contents(state)?.contains("Subject-1") == true else state.signedIn) stale.set(true)
-			},
+			onState = {
+						val state = first.state
+						if (revoked.get() && if (path == "grades") contents(state)?.contains("Subject-1") == true else state.signedIn) stale.set(true)
+					},
 			beforePrivateCommit = { name -> if (name == path && armed.compareAndSet(true, false)) gate.waitHere() },
 		) { emit -> SchoolRepository(fixture.gateway, fixture.verifier, coordinator, fixture.cache, { 1L }, emit, SessionStore(context, coordinator)) }
-		main { controller = create(); controller!!.login("1", charArrayOf('x')) }
-		val first = controller!!
+		main { first = create(); controller = first; first.login("1", charArrayOf('x')) }
 		await { first.state.signedIn && first.state.diary is DiaryState.Ready && first.state.schedule != null && first.state.diaryWeeks.isNotEmpty() && first.state.profile != null }
 		drain(first)
 		main { replacement = create() }
@@ -162,17 +163,20 @@ class GradesDiaryRaceTest {
 		val revoked = java.util.concurrent.atomic.AtomicBoolean(false)
 		val stale = java.util.concurrent.atomic.AtomicBoolean(false)
 		val receivedBeforeRevocation = java.util.concurrent.atomic.AtomicBoolean(false)
+		lateinit var firstController: NativeController
+		fun observe() {
+			val snapshot = firstController.state
+			if (contents(snapshot)?.contains("Subject-1") == true) {
+				if (revoked.get()) stale.set(true) else receivedBeforeRevocation.set(true)
+			}
+		}
 		fun create() = NativeController(
-			onState = { snapshot ->
-				if (contents(snapshot)?.contains("Subject-1") == true) {
-					if (revoked.get()) stale.set(true) else receivedBeforeRevocation.set(true)
-				}
-			},
-			beforeStateCallback = { snapshot ->
-				if (contents(snapshot)?.contains("Subject-1") == true && armed.compareAndSet(true, false)) gate.waitHere()
+			onState = ::observe,
+			beforeStateCallback = {
+				if (contents(firstController.state)?.contains("Subject-1") == true && armed.compareAndSet(true, false)) gate.waitHere()
 			},
 		) { emit -> SchoolRepository(fixture.gateway, fixture.verifier, coordinator, fixture.cache, { 1L }, emit, SessionStore(context, coordinator)) }
-		main { controller = create(); replacement = create(); controller!!.login("1", charArrayOf('x')) }
+		main { firstController = create(); controller = firstController; replacement = create(); firstController.login("1", charArrayOf('x')) }
 		val first = controller!!
 		await { first.state.signedIn && first.state.diary is DiaryState.Ready && first.state.profile != null }
 		main { first.refreshAnnualGrades() }
@@ -299,11 +303,12 @@ class GradesDiaryRaceTest {
 		val gate = Gate()
 		val trace = mutableListOf<NativeUiState>()
 		fixture.gradesGate.set(gate)
+		lateinit var second: NativeController
 		try {
 			main { c.refreshAnnualGrades() }
 			assertTrue(gate.entered.await(10, TimeUnit.SECONDS))
-			main { replacement = NativeController(onState = { trace.add(it) }) { emit -> SchoolRepository(fixture.gateway, fixture.verifier, coordinator, fixture.cache, { 1L }, emit, SessionStore(context, coordinator)) }; replacement!!.login(newAccount, charArrayOf('x')) }
-			val b = replacement!!
+			main { second = NativeController(onState = { trace.add(second.state) }) { emit -> SchoolRepository(fixture.gateway, fixture.verifier, coordinator, fixture.cache, { 1L }, emit, SessionStore(context, coordinator)) }; replacement = second; second.login(newAccount, charArrayOf('x')) }
+			val b = second
 			await { b.state.signedIn && b.state.diary is DiaryState.Ready }
 			main { b.refreshAnnualGrades() }
 			val expected = contents(NativeUiState(annualGrades = GatewayResult.Success(grades(newAccount))))
@@ -348,7 +353,8 @@ class GradesDiaryRaceTest {
 	@Test fun contextMismatchClearsPrivateDataAndStopsSchoolCalls() {
 		val fixture = Fixture()
 		val trace = mutableListOf<NativeUiState>()
-		main { controller = NativeController(onState = { trace.add(it) }) { emit -> SchoolRepository(fixture.gateway, fixture.verifier, coordinator, fixture.cache, { 1L }, emit, SessionStore(context, coordinator)) }; controller!!.login("1", charArrayOf('x')) }
+		lateinit var observed: NativeController
+		main { observed = NativeController(onState = { trace.add(observed.state) }) { emit -> SchoolRepository(fixture.gateway, fixture.verifier, coordinator, fixture.cache, { 1L }, emit, SessionStore(context, coordinator)) }; controller = observed; observed.login("1", charArrayOf('x')) }
 		val first = controller!!
 		await { first.state.signedIn && first.state.profile?.surname == "Profile-1" && first.state.schedule != null }
 		main { first.refreshAnnualGrades() }
@@ -379,9 +385,11 @@ class GradesDiaryRaceTest {
 		val events = mutableListOf<String>()
 		val held = AtomicReference<(() -> Unit)?>()
 		val delivered = CountDownLatch(1)
+		lateinit var observed: NativeController
 		main {
-			controller = NativeController(onState = { trace.add(it) }) { emit -> SchoolRepository(fixture.gateway, fixture.verifier, coordinator, fixture.cache, { 1L }, emit, SessionStore(context, coordinator)) }
-			controller!!.login("1", charArrayOf('x'))
+			observed = NativeController(onState = { trace.add(observed.state) }) { emit -> SchoolRepository(fixture.gateway, fixture.verifier, coordinator, fixture.cache, { 1L }, emit, SessionStore(context, coordinator)) }
+			controller = observed
+			observed.login("1", charArrayOf('x'))
 		}
 		val first = controller!!
 		await { first.state.signedIn && first.state.profile?.surname == "Profile-1" && first.state.diary is DiaryState.Ready && first.state.schedule != null }
@@ -438,7 +446,8 @@ class GradesDiaryRaceTest {
 	@Test fun contextMismatchFinishingDuringPendingRevocationCannotRestorePrivateData() {
 		val fixture = Fixture()
 		val trace = mutableListOf<NativeUiState>()
-		main { controller = NativeController(onState = { trace.add(it) }) { emit -> SchoolRepository(fixture.gateway, fixture.verifier, coordinator, fixture.cache, { 1L }, emit, SessionStore(context, coordinator)) }; controller!!.login("1", charArrayOf('x')) }
+		lateinit var observed: NativeController
+		main { observed = NativeController(onState = { trace.add(observed.state) }) { emit -> SchoolRepository(fixture.gateway, fixture.verifier, coordinator, fixture.cache, { 1L }, emit, SessionStore(context, coordinator)) }; controller = observed; observed.login("1", charArrayOf('x')) }
 		val first = controller!!
 		await { first.state.signedIn && first.state.profile?.surname == "Profile-1" && first.state.schedule != null }
 		main { first.refreshAnnualGrades() }
@@ -483,7 +492,8 @@ class GradesDiaryRaceTest {
 		for (expiry in listOf(false, true)) for (profileRequest in listOf(false, true)) {
 			val fixture = Fixture()
 			val trace = mutableListOf<NativeUiState>()
-			main { controller = NativeController(onState = { trace.add(it) }) { emit -> SchoolRepository(fixture.gateway, fixture.verifier, coordinator, fixture.cache, { 1L }, emit, SessionStore(context, coordinator)) }; controller!!.login("1", charArrayOf('x')) }
+			lateinit var observed: NativeController
+			main { observed = NativeController(onState = { trace.add(observed.state) }) { emit -> SchoolRepository(fixture.gateway, fixture.verifier, coordinator, fixture.cache, { 1L }, emit, SessionStore(context, coordinator)) }; controller = observed; observed.login("1", charArrayOf('x')) }
 			val first = controller!!
 			await { first.state.signedIn && first.state.profile?.surname == "Profile-1" && first.state.diary is DiaryState.Ready }
 			main { first.refreshAnnualGrades() }
