@@ -7,6 +7,7 @@ import org.junit.After
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.materialclass.NativeUiState
 import org.materialclass.api.*
 import org.materialclass.session.*
 import java.io.File
@@ -194,6 +195,7 @@ class RepositorySessionTest {
 		val exactGateway = object : TestSchoolGateway() {
 			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> =
 				GatewayResult.Success(UnverifiedSession("exact-session-token", "424242424242", "student", SchoolContext(1, 2026, 2)))
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
 		}
 		val repo = SchoolRepository(exactGateway, IdentityVerifier { session, _ -> proof(session) }, coordinator, cache, { 1L }, {}, store)
 		assertTrue(repo.login("synthetic", charArrayOf('x')) is GatewayResult.Success)
@@ -219,7 +221,7 @@ class RepositorySessionTest {
 				AccountId("424242424242"),
 				true,
 				profile = StudentProfile("Verified", null, null, null),
-				VerifiedDiarySession.compare(session, profile),
+				diarySession = VerifiedDiarySession.compare(session, profile),
 			)
 		}
 		val repo = SchoolRepository(gateway, verifier, coordinator, cache, { 1L }, {}, store)
@@ -242,8 +244,8 @@ class RepositorySessionTest {
 			SessionVerification.Verified(
 				AccountId("424242424242"),
 				true,
-				StudentProfile("Restored", null, null, null),
-				VerifiedDiarySession.compare(session, profile),
+				profile = StudentProfile("Restored", null, null, null),
+				diarySession = VerifiedDiarySession.compare(session, profile),
 			)
 		}
 		assertTrue(SchoolRepository(gateway, verifier, coordinator, cache, { 1L }, {}, store).login("synthetic", charArrayOf('x')) is GatewayResult.Success)
