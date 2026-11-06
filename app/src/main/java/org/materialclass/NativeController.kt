@@ -146,8 +146,6 @@ internal class NativeController(
 					gradesLoading = value.gradesLoading,
 					diaryWeeks = value.diaryWeeks,
 					selectedDiaryDate = value.selectedDiaryDate,
-					schedule = value.schedule,
-					scheduleSnapshot = value.scheduleSnapshot,
 				) }
 			}
 			stateValue = value.copy(annualGrades = null, gradesLoading = false)
