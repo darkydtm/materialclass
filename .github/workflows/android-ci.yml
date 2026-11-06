@@ -104,30 +104,7 @@ jobs:
             printf 'STAGE targeted-login-restore-start api=%s expected=%s\n' '${{ matrix.api }}' "$TARGETED_TEST_COUNT"
             ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class="$TARGETED_TESTS"
             printf 'STAGE targeted-login-restore-gradle-complete api=%s\n' '${{ matrix.api }}'
-            cat > "$RUNNER_TEMP/reconcile_targeted.py" <<'PY'
-            import os
-            import xml.etree.ElementTree as ET
-            from pathlib import Path
-
-            result_dir = Path('app/build/outputs/androidTest-results/connected/debug')
-            reports = sorted(result_dir.glob('TEST-*.xml'))
-            if not reports:
-                raise SystemExit(f'No instrumentation reports found in {result_dir}')
-            executed = skipped = failures = errors = 0
-            for report in reports:
-                root = ET.parse(report).getroot()
-                for case in root.iter('testcase'):
-                    skipped += int(case.find('skipped') is not None)
-                    failures += int(case.find('failure') is not None)
-                    errors += int(case.find('error') is not None)
-                    executed += int(case.find('skipped') is None)
-            expected = int(os.environ['TARGETED_TEST_COUNT'])
-            print(f'STAGE targeted-results-reconciled reports={len(reports)} executed={executed} skipped={skipped} failures={failures} errors={errors}')
-            if (executed, skipped, failures, errors) != (expected, 0, 0, 0):
-                raise SystemExit(f'Unexpected targeted result: executed={executed}, skipped={skipped}, failures={failures}, errors={errors}, expected={expected}')
-            print(f'TARGETED_EXECUTED_TESTS={executed}')
-            PY
-            python3 "$RUNNER_TEMP/reconcile_targeted.py"
+            python3 -c 'import os, xml.etree.ElementTree as ET; from pathlib import Path; reports=sorted(Path("app/build/outputs/androidTest-results/connected/debug").glob("TEST-*.xml")); cases=[case for report in reports for case in ET.parse(report).getroot().iter("testcase")]; skipped=sum(case.find("skipped") is not None for case in cases); failures=sum(case.find("failure") is not None for case in cases); errors=sum(case.find("error") is not None for case in cases); executed=len(cases)-skipped; expected=int(os.environ["TARGETED_TEST_COUNT"]); print(f"STAGE targeted-results-reconciled reports={len(reports)} executed={executed} skipped={skipped} failures={failures} errors={errors}"); raise SystemExit(f"Unexpected targeted result: executed={executed}, skipped={skipped}, failures={failures}, errors={errors}, expected={expected}") if not reports or (executed, skipped, failures, errors) != (expected, 0, 0, 0) else print(f"TARGETED_EXECUTED_TESTS={executed}")'
 
   device:
     if: github.ref == 'refs/heads/feat/integrate-homework' || github.ref == 'refs/heads/feat/integrate-network-contract' || github.ref == 'refs/heads/feat/integrate-restart-ui' || github.ref == 'refs/heads/feat/integrate-backup-cleanup' || github.ref == 'refs/heads/feat/debug-apk' || github.ref == 'refs/heads/test/privacy-login-restore' || github.ref == 'refs/heads/feat/integrate-readiness' || github.ref == 'refs/heads/ci-android-toolchain' || github.ref == 'refs/heads/fix/verified-session-restore' || github.ref == 'refs/heads/feat/integrate-student-work' || github.ref == 'refs/heads/fix/schedule-stale-flags' || github.ref == 'refs/heads/feat/integrate-student-v2' || github.ref == 'refs/heads/feat/integrate-a11y' || github.ref == 'refs/heads/feat/integrate-schedule-races' || github.ref == 'refs/heads/feat/integrate-student-v3' || github.ref == 'refs/heads/feat/integrate-durable' || github.ref == 'refs/heads/feat/integrate-restore' || github.ref == 'refs/heads/feat/integrate-profile-grades' || github.ref == 'refs/heads/feat/integrate-security'
