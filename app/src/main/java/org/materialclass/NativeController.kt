@@ -204,7 +204,7 @@ internal class NativeController(
 		if (snapshot.second) state = NativeUiState(logoutPending = true)
 	}
 
-	private fun post(task: Long, action: () -> Unit, allowAnonymous: Boolean = false) {
+	private fun post(task: Long, allowAnonymous: Boolean = false, action: () -> Unit) {
 		val epoch = currentTaskEpoch
 		handler.post { if (!closed && generation == task && repository.revocationEpoch() == epoch && (allowAnonymous || epoch == 0L || repository.ownedEpoch() == epoch)) action() }
 	}
