@@ -190,6 +190,76 @@ class RepositorySessionTest {
 		assertFalse(bytes.contains("424242424242"))
 	}
 	@Test
+	fun persistsExactSessionToken() {
+		val exactGateway = object : TestSchoolGateway() {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> =
+				GatewayResult.Success(UnverifiedSession("exact-session-token", "424242424242", "student", SchoolContext(1, 2026, 2)))
+		}
+		val repo = SchoolRepository(exactGateway, IdentityVerifier { session, _ -> proof(session) }, coordinator, cache, { 1L }, {}, store)
+		assertTrue(repo.login("synthetic", charArrayOf('x')) is GatewayResult.Success)
+		val active = SessionCoordinator::class.java.getDeclaredField("active").apply { isAccessible = true }.get(null) as ActiveSession
+		val material = store.read(active)!!
+		try {
+			java.io.DataInputStream(java.io.ByteArrayInputStream(material)).use {
+				assertEquals(4, it.readInt())
+				assertEquals("424242424242", it.readUTF())
+				assertEquals("exact-session-token", it.readUTF())
+			}
+		} finally { material.fill(0) }
+	}
+
+	@Test
+	fun failedLoginClearsPreviousPrivateProfile() {
+		val id = SessionCoordinator.privateStates.register()
+		var allowVerification = true
+		val profile = org.json.JSONObject("""{"userId":424242424242,"role":"student","school_id":1,"group":{"id":2},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}""")
+		val verifier = IdentityVerifier { session, _ ->
+			if (!allowVerification) SessionVerification.Retry
+			else SessionVerification.Verified(
+				AccountId("424242424242"),
+				true,
+				profile = StudentProfile("Verified", null, null, null),
+				VerifiedDiarySession.compare(session, profile),
+			)
+		}
+		val repo = SchoolRepository(gateway, verifier, coordinator, cache, { 1L }, {}, store)
+		repo.privateStateId = id
+		try {
+			assertTrue(repo.login("synthetic", charArrayOf('x')) is GatewayResult.Success)
+			assertEquals("Verified", SessionCoordinator.privateStates.read().states[id]?.profile?.surname)
+			allowVerification = false
+			assertTrue(repo.login("synthetic", charArrayOf('x')) is GatewayResult.Failure)
+			assertEquals(NativeUiState(), SessionCoordinator.privateStates.read().states[id])
+		} finally {
+			SessionCoordinator.privateStates.unregister(id)
+		}
+	}
+
+	@Test
+	fun restorePublishesVerifiedProfileToPrivateRegistry() {
+		val profile = org.json.JSONObject("""{"userId":424242424242,"role":"student","school_id":1,"group":{"id":2},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}""")
+		val verifier = IdentityVerifier { session, _ ->
+			SessionVerification.Verified(
+				AccountId("424242424242"),
+				true,
+				StudentProfile("Restored", null, null, null),
+				VerifiedDiarySession.compare(session, profile),
+			)
+		}
+		assertTrue(SchoolRepository(gateway, verifier, coordinator, cache, { 1L }, {}, store).login("synthetic", charArrayOf('x')) is GatewayResult.Success)
+		restart()
+		val id = SessionCoordinator.privateStates.register()
+		val repo = SchoolRepository(gateway, verifier, coordinator, cache, { 1L }, {}, store)
+		repo.privateStateId = id
+		try {
+			assertTrue(repo.restore() is RestoreResult.Restored)
+			assertEquals("Restored", SessionCoordinator.privateStates.read().states[id]?.profile?.surname)
+		} finally {
+			SessionCoordinator.privateStates.unregister(id)
+		}
+	}
+
+	@Test
 	fun restoreRequiresVerifiedMatchingStudent() {
 		saved()
 		val repo = repository(IdentityVerifier { session, _ -> proof(session) })
