@@ -113,6 +113,19 @@ internal class SchoolRepository(
 		} == PrivateStateRegistry.LeaseCommit.APPLIED
 	}
 
+	internal fun selectDiaryWeek(date: String): Boolean {
+		val active = session ?: return false
+		val id = privateStateId ?: return false
+		val lease = coordinator.admit(active) ?: return false
+		return try {
+			SessionCoordinator.privateStates.commitLease(lease, id, beforeCas = { beforePrivateCommit("diary-selection") }) {
+				it.copy(selectedDiaryDate = date, diary = DiaryState.Loading, error = null)
+			} == PrivateStateRegistry.LeaseCommit.APPLIED
+		} finally {
+			coordinator.finish(lease)
+		}
+	}
+
 	fun login(username: String, password: CharArray): GatewayResult<Unit> {
 		var revision: Long? = null
 		try {

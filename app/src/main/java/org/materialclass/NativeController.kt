@@ -166,6 +166,11 @@ internal class NativeController(
 		onState()
 	}
 
+	private fun commitDiarySelection(task: Long, request: Long, epoch: Long, date: String): Boolean {
+		if (closed || generation != task || diaryRevision != request || repository.revocationEpoch() != epoch) return false
+		return repository.selectDiaryWeek(date)
+	}
+
 	private fun commitSchedule(task: Long, request: Long, epoch: Long, result: GatewayResult<ScheduleSnapshot>, lease: org.materialclass.session.RequestLease) {
 		if (closed || generation != task || scheduleRevision != request || repository.revocationEpoch() != epoch) return
 		val commit = privateStates.commitLease(lease, privateId, beforeCas = { beforePrivateCommit("schedule") }) { current ->
@@ -311,12 +316,12 @@ internal class NativeController(
 		val task = generation
 		val revision = ++diaryRevision
 		val epoch = observedEpoch
-		state = state.copy(selectedDiaryDate = date, diary = DiaryState.Loading, error = null)
 		executor.execute {
 			if (closed || generation != task || diaryRevision != revision || repository.revocationEpoch() != epoch) return@execute
 			currentTaskGeneration = task
 			currentDiaryRevision = revision
 			currentTaskEpoch = epoch
+			if (!commitDiarySelection(task, revision, epoch, date)) return@execute
 			repository.refreshDate(date)
 		}
 	}
