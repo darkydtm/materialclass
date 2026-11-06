@@ -173,6 +173,19 @@ class StorageSecurityTest {
 	}
 
 	@Test
+	fun incompleteVerifiedRestoreIsRejectedAndRevokesStoredSession() {
+		val coordinator = SessionCoordinator(context)
+		val store = SessionStore(context, coordinator)
+		val account = AccountId("synthetic-incomplete-profile")
+		val old = coordinator.activate(account)
+		assertTrue(store.write(old, byteArrayOf(1)))
+		resetProcessSession()
+		assertEquals(RestoreResult.Invalid, store.restore { _, _ -> SessionVerification.Verified(account, true) })
+		assertFalse(File(context.noBackupFilesDir, "session").exists())
+		coordinator.logout()
+	}
+
+	@Test
 	fun concurrentRetryCannotDiscardExpiredRestore() {
 		val coordinator = SessionCoordinator(context)
 		val store = SessionStore(context, coordinator)

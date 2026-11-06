@@ -21,7 +21,10 @@ fun interface SessionVerifier {
 }
 
 sealed class SessionVerification {
-	class Verified(val account: AccountId, val pupil: Boolean, val scheduleSession: org.materialclass.api.VerifiedScheduleSession? = null, val diarySession: org.materialclass.api.VerifiedDiarySession? = null, val profile: org.materialclass.api.StudentProfile? = null) : SessionVerification()
+	class Verified(val account: AccountId, val pupil: Boolean, val scheduleSession: org.materialclass.api.VerifiedScheduleSession? = null, val diarySession: org.materialclass.api.VerifiedDiarySession? = null, val profile: org.materialclass.api.StudentProfile? = null) : SessionVerification() {
+		internal val complete: Boolean
+			get() = pupil && diarySession != null && profile != null
+	}
 	data object Expired : SessionVerification()
 	data object Invalid : SessionVerification()
 	data object Retry : SessionVerification()
@@ -140,7 +143,7 @@ class SessionStore(context: Context, private val coordinator: SessionCoordinator
 				SessionVerification.Expired, SessionVerification.Invalid -> { coordinator.rejectRestore(candidate.namespace); RestoreResult.Invalid }
 				is SessionVerification.Verified -> {
 					val matching = MessageDigest.isEqual(candidate.account.value.toByteArray(Charsets.UTF_8), verification.account.value.toByteArray(Charsets.UTF_8))
-					if (!matching || !verification.pupil) {
+					if (!matching || !verification.complete) {
 						coordinator.rejectRestore(candidate.namespace)
 						RestoreResult.Invalid
 					} else {

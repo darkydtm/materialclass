@@ -144,7 +144,12 @@ internal class SchoolRepository(
 			beforeIdentityAdmission()
 			val profileLease = coordinator.admit(currentRevision) ?: return GatewayResult.Failure(AppError.UNAVAILABLE)
 			val verification = try { verifier.verify(candidate, profileLease) } catch (error: CancellationException) { throw error } catch (_: Exception) { SessionVerification.Retry } finally { coordinator.finish(profileLease) }
-			if (candidate.role != "student" || verification !is SessionVerification.Verified || !verification.pupil) return GatewayResult.Failure(AppError.UNAVAILABLE)
+			if (candidate.role != "student" || verification !is SessionVerification.Verified || !verification.complete) {
+				if (verification is SessionVerification.Verified && !verification.complete) {
+					try { coordinator.logoutIfNoActive() } catch (_: Exception) { }
+				}
+				return GatewayResult.Failure(AppError.UNAVAILABLE)
+			}
 			var prior: ActiveSession? = null
 			return try {
 				val active = synchronized(StorageLock) {
@@ -202,7 +207,7 @@ internal class SchoolRepository(
 		return store.restoreLeased({ beforeIdentityAdmission() }, { material, lease ->
 			val remote = decodeSession(material) ?: return@restoreLeased SessionVerification.Invalid
 			val verification = verifier.verify(remote, lease)
-			if (verification is SessionVerification.Verified && verification.pupil) { candidate = remote; scheduleCandidate = verification.scheduleSession; diaryCandidate = verification.diarySession; profileCandidate = verification.profile }
+			if (verification is SessionVerification.Verified && verification.complete) { candidate = remote; scheduleCandidate = verification.scheduleSession; diaryCandidate = verification.diarySession; profileCandidate = verification.profile }
 			verification
 		}, onRestored = { active ->
 			try {
