@@ -224,7 +224,7 @@ internal class NativeController(
 			currentTaskGeneration = task
 			currentTaskEpoch = epoch
 			val result = try { repository.restore() } catch (_: Exception) { RestoreResult.Retry }
-			if (result is RestoreResult.Restored) repository.ownedEpoch()?.let { currentTaskEpoch = it }
+			currentTaskEpoch = repository.ownedEpoch() ?: repository.revocationEpoch()
 			post(task) {
 				if (result is RestoreResult.Restored) observedEpoch = currentTaskEpoch
 				state = state.copy(busy = false, signedIn = result is RestoreResult.Restored, error = if (result is RestoreResult.Retry) AppError.UNAVAILABLE else null)

@@ -60,7 +60,7 @@ class SchoolRepositoryTest {
 	private fun proof(session: UnverifiedSession): SessionVerification.Verified {
 		val id = session.identityCandidate!!
 		val profile = org.json.JSONObject("""{"userId":$id,"role":"student","school_id":1,"group":{"id":2},"studentInfo":{"studentSchoolUuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}""")
-		return SessionVerification.Verified(AccountId(id), true, VerifiedScheduleSession.compare(session, profile), VerifiedDiarySession.compare(session, profile))
+		return SessionVerification.Verified(AccountId(id), true, VerifiedScheduleSession.compare(session, profile), VerifiedDiarySession.compare(session, profile), StudentProfile("Synthetic", null, null, null))
 	}
 
 	@Test

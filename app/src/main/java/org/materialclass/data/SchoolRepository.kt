@@ -144,12 +144,7 @@ internal class SchoolRepository(
 			beforeIdentityAdmission()
 			val profileLease = coordinator.admit(currentRevision) ?: return GatewayResult.Failure(AppError.UNAVAILABLE)
 			val verification = try { verifier.verify(candidate, profileLease) } catch (error: CancellationException) { throw error } catch (_: Exception) { SessionVerification.Retry } finally { coordinator.finish(profileLease) }
-			if (candidate.role != "student" || verification !is SessionVerification.Verified || !verification.complete) {
-				if (verification is SessionVerification.Verified && !verification.complete) {
-					try { coordinator.logoutIfNoActive() } catch (_: Exception) { }
-				}
-				return GatewayResult.Failure(AppError.UNAVAILABLE)
-			}
+			if (candidate.role != "student" || verification !is SessionVerification.Verified || !verification.complete) return GatewayResult.Failure(AppError.UNAVAILABLE)
 			var prior: ActiveSession? = null
 			return try {
 				val active = synchronized(StorageLock) {

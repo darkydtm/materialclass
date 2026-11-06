@@ -320,7 +320,9 @@ class StorageSecurityTest {
 		val restore = SessionStore::class.java.getMethod("restore")
 		val result = restoredStore.restore(SessionVerifier { material, _ ->
 			assertArrayEquals("synthetic-restored-token".toByteArray(), material)
-			SessionVerification.Verified(AccountId("synthetic-restored-account"), true)
+			val remote = org.materialclass.api.UnverifiedSession("synthetic-restored-token", "synthetic-restored-account", "student", org.materialclass.api.SchoolContext(1, 2026, 2))
+			val profile = org.json.JSONObject("""{"userId":"synthetic-restored-account","role":"student","school_id":1,"group":{"id":2},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}""")
+			SessionVerification.Verified(AccountId("synthetic-restored-account"), true, diarySession = org.materialclass.api.VerifiedDiarySession.compare(remote, profile), profile = org.materialclass.api.StudentProfile("Restored", null, null, null))
 		})
 		val restored = (result as RestoreResult.Restored).session
 		assertEquals(old.cacheNamespace.value, restored.cacheNamespace.value)

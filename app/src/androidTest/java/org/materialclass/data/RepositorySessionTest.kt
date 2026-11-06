@@ -37,7 +37,7 @@ class RepositorySessionTest {
 	}
 	private fun proof(session: UnverifiedSession): SessionVerification.Verified {
 		val profile = org.json.JSONObject("""{"userId":424242424242,"role":"student","school_id":1,"group":{"id":2},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}""")
-		return SessionVerification.Verified(AccountId("424242424242"), true, diarySession = VerifiedDiarySession.compare(session, profile))
+		return SessionVerification.Verified(AccountId("424242424242"), true, diarySession = VerifiedDiarySession.compare(session, profile), profile = StudentProfile("Synthetic", null, null, null))
 	}
 	private fun saved() {
 		assertTrue(repository(IdentityVerifier { session, _ -> proof(session) }).login("synthetic", charArrayOf('x')) is GatewayResult.Success)

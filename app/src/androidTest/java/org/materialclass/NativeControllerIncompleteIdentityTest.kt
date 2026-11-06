@@ -136,7 +136,7 @@ class NativeControllerIncompleteIdentityTest {
         verification = { session -> verified(session, complete = false) }
         val controller = createController()
         main { controller.start() }
-        await { !controller.state.busy }
+        await { !controller.state.busy || coordinator.pendingLogoutTicket() != null }
         main {
             assertFalse(controller.state.signedIn)
             assertNull(controller.state.profile)
