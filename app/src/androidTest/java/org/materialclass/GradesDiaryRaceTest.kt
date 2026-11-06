@@ -65,6 +65,7 @@ class GradesDiaryRaceTest {
 		val diaryError = AtomicReference<AppError?>(null)
 		val gradesError = AtomicReference<AppError?>(null)
 		val mismatch = java.util.concurrent.atomic.AtomicBoolean(false)
+		val incompleteProfile = java.util.concurrent.atomic.AtomicBoolean(false)
 		val expired = java.util.concurrent.atomic.AtomicBoolean(false)
 		val schoolCalls = java.util.concurrent.atomic.AtomicInteger()
 		val gateway: SchoolGateway = object : SchoolGateway, DiaryWeeksGateway, AnnualGradesGateway {
@@ -100,6 +101,7 @@ class GradesDiaryRaceTest {
 			gate?.waitHere()
 			val profile = JSONObject("""{"userId":${session.identityCandidate},"role":"student","school_id":1,"group":{"id":2},"studentInfo":{"studentSchoolUuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}""")
 			if (mismatch.get()) profile.put("school_id", 99)
+			if (incompleteProfile.get()) profile.remove("studentInfo")
 			val result = if (expired.get()) SessionVerification.Expired else SessionVerification.Verified(AccountId(session.identityCandidate!!), true, VerifiedScheduleSession.compare(session, profile), VerifiedDiarySession.compare(session, profile), if (mismatch.get()) null else StudentProfile("Profile-${session.identityCandidate}", null, null, null))
 			gate?.returned?.countDown()
 			result
@@ -630,6 +632,50 @@ class GradesDiaryRaceTest {
 			assertTrue(gate.returned.await(10, TimeUnit.SECONDS))
 			drain(c)
 			main { assertFalse(c.state.signedIn); assertFalse(c.state.gradesLoading); assertNull(c.state.annualGrades) }
+		} finally { gate.release.countDown() }
+	}
+
+	@Test fun incompleteProfileClearsPrivateSchoolPayload() {
+		val fixture = Fixture()
+		val first = fixture.login()
+		main { first.refreshAnnualGrades() }
+		await { contents(first.state)?.contains("Subject-1") == true && !first.state.gradesLoading }
+		drain(first)
+		val id = NativeController::class.java.getDeclaredField("privateId").apply { isAccessible = true }.get(first) as PrivateStateRegistry.ControllerId
+		val gate = Gate()
+		fixture.profileGate.set(gate)
+		fixture.incompleteProfile.set(true)
+		val calls = fixture.schoolCalls.get()
+		try {
+			main { first.refresh() }
+			assertTrue("Incomplete profile verification did not reach the barrier", gate.entered.await(15, TimeUnit.SECONDS))
+			main {
+				assertEquals("Profile-1", first.state.profile?.surname)
+				assertTrue(contents(first.state)?.contains("Subject-1") == true)
+			}
+			gate.release.countDown()
+			await {
+				first.state.profile == null && first.state.error == AppError.UNAVAILABLE &&
+					first.state.diary is DiaryState.Cleared && first.state.diaryWeeks.isEmpty() &&
+					first.state.selectedDiaryDate == null && first.state.schedule == null &&
+					first.state.scheduleSnapshot == null && first.state.annualGrades == null &&
+					!first.state.gradesLoading
+			}
+			drain(first)
+			main {
+				val privateState = SessionCoordinator.privateStates.read().states[id]
+				assertNotNull(privateState)
+				assertNull(privateState!!.profile)
+				assertTrue(privateState.profileIncomplete)
+				assertTrue(privateState.diary is DiaryState.Cleared)
+				assertTrue(privateState.diaryWeeks.isEmpty())
+				assertNull(privateState.selectedDiaryDate)
+				assertNull(privateState.schedule)
+				assertNull(privateState.scheduleSnapshot)
+				assertNull(privateState.annualGrades)
+				assertFalse(privateState.gradesLoading)
+			}
+			assertEquals("Incomplete profile must stop school requests", calls, fixture.schoolCalls.get())
 		} finally { gate.release.countDown() }
 	}
 
