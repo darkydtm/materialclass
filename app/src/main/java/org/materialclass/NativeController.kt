@@ -140,16 +140,18 @@ internal class NativeController(
 			)
 		}
 		private set(value) {
-			stateValue = value.copy(
-				profile = null,
-				annualGrades = null,
-				gradesLoading = false,
-				diary = DiaryState.Cleared,
-				diaryWeeks = emptyList(),
-				selectedDiaryDate = null,
-				schedule = null,
-				scheduleSnapshot = null,
-			)
+			val token = privateStates.read().token
+			privateStates.commit(token, privateId) {
+				it.copy(
+					diary = value.diary,
+					diaryWeeks = value.diaryWeeks,
+					selectedDiaryDate = value.selectedDiaryDate,
+					error = value.error,
+					annualGrades = if (value.annualGrades == null) null else it.annualGrades,
+					gradesLoading = if (value.annualGrades == null) value.gradesLoading else it.gradesLoading,
+				)
+			}
+			stateValue = value.copy(annualGrades = null, gradesLoading = false)
 			notifyState()
 		}
 
