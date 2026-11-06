@@ -115,9 +115,9 @@ class SessionStore(context: Context, private val coordinator: SessionCoordinator
 
 	fun restore(verifier: SessionVerifier): RestoreResult = restore(verifier) {}
 
-	internal fun restore(verifier: SessionVerifier, onRestored: (ActiveSession) -> Unit): RestoreResult = synchronized(restoreLock) { restoreLeased({}, { material, lease -> verifier.verify(material, lease) }, onRestored) }
+	internal fun restore(verifier: SessionVerifier, onRestored: (ActiveSession) -> Unit): RestoreResult = synchronized(restoreLock) { restoreLeased({}, { material, lease -> verifier.verify(material, lease) }, { session -> onRestored(session); true }) }
 
-	internal fun restoreLeased(beforeAdmission: () -> Unit, verifier: (ByteArray, RequestLease) -> SessionVerification, onRestored: (ActiveSession) -> Unit): RestoreResult {
+	internal fun restoreLeased(beforeAdmission: () -> Unit, verifier: (ByteArray, RequestLease) -> SessionVerification, onRestored: (ActiveSession) -> Boolean, afterRestored: (ActiveSession) -> Unit = {}): RestoreResult {
 		val revision = coordinator.beginRestore() ?: return RestoreResult.Cancelled
 		val candidate = coordinator.finishRestore(revision) {
 			if (marker.exists() || File(marker.path + ".bak").exists() || File(marker.path + ".new").exists()) null
@@ -145,6 +145,10 @@ class SessionStore(context: Context, private val coordinator: SessionCoordinator
 						RestoreResult.Invalid
 					} else {
 						val active = coordinator.acceptRestore(verification.account, candidate.namespace, notify = false) ?: return@finishRestore RestoreResult.Cancelled
+						if (!onRestored(active)) {
+							coordinator.revokeIfActive(active)
+							return@finishRestore RestoreResult.Cancelled
+						}
 						RestoreResult.Restored(active)
 					}
 				}
@@ -152,7 +156,7 @@ class SessionStore(context: Context, private val coordinator: SessionCoordinator
 		} ?: RestoreResult.Cancelled
 		if (result !is RestoreResult.Restored) return result
 		try {
-			onRestored(result.session)
+			afterRestored(result.session)
 		} catch (error: Exception) {
 			try { coordinator.revokeIfActive(result.session) } catch (cleanup: Exception) { error.addSuppressed(cleanup) }
 			throw error

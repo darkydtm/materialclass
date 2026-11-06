@@ -307,7 +307,7 @@ class AtomicPrivateStateTest {
 	}
 
 	@Test
-	fun loginInvalidatesLeaseTokenWithoutClearingExistingState() {
+	fun loginClearsPrivateStateBeforeNewSession() {
 		val first = SessionCoordinator { }
 		val second = SessionCoordinator { }
 		val registry = SessionCoordinator.privateStates
@@ -319,7 +319,7 @@ class AtomicPrivateStateTest {
 			assertTrue(registry.commit(token, id) { it.copy(signedIn = true) })
 			first.beginLogin()
 			assertFalse(registry.commit(token, id) { NativeUiState() })
-			assertTrue(registry.read().states[id]!!.signedIn)
+			assertEquals(NativeUiState(), registry.read().states[id])
 			assertTrue(lease.isCancelled())
 		} finally { registry.unregister(id); first.logout() }
 	}
