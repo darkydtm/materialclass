@@ -115,6 +115,16 @@ internal class NativeController(
 			stateSignal
 			val local = stateValue
 			val privateState = privateStates.read().states[privateId]
+			val event = repository.sessionEvent()
+			val ownsCurrentSession = repository.ownedEpoch() == event.epoch
+			val invalidated = currentTaskEpoch != 0L && (!ownsCurrentSession || currentTaskEpoch != event.epoch)
+			if (invalidated) {
+				return NativeUiState(
+					busy = logoutTicket != null,
+					logoutPending = logoutTicket != null || repository.pendingLogoutTicket() != null,
+					error = if (event.change == SessionChange.EXPIRED) AppError.SESSION_EXPIRED else null,
+				)
+			}
 			return local.copy(
 				profile = privateState?.profile,
 				annualGrades = privateState?.annualGrades,
@@ -157,7 +167,7 @@ internal class NativeController(
 
 	private fun post(task: Long, action: () -> Unit) {
 		val epoch = currentTaskEpoch
-		handler.post { if (!closed && generation == task && repository.revocationEpoch() == epoch) action() }
+		handler.post { if (!closed && generation == task && repository.revocationEpoch() == epoch && (epoch == 0L || repository.ownedEpoch() == epoch)) action() }
 	}
 
 	override fun start() {
@@ -178,7 +188,7 @@ internal class NativeController(
 			if (result is RestoreResult.Restored) repository.ownedEpoch()?.let { currentTaskEpoch = it }
 			post(task) {
 				if (result is RestoreResult.Restored) observedEpoch = currentTaskEpoch
-				state = state.copy(busy = false, signedIn = result is RestoreResult.Restored, profile = if (result is RestoreResult.Restored) repository.currentProfile() else null, error = if (result is RestoreResult.Retry) AppError.UNAVAILABLE else null)
+				state = state.copy(busy = false, signedIn = result is RestoreResult.Restored, error = if (result is RestoreResult.Retry) AppError.UNAVAILABLE else null)
 				if (result is RestoreResult.Restored) refresh()
 			}
 		}
@@ -199,7 +209,7 @@ internal class NativeController(
 				post(task) {
 					if (result is GatewayResult.Success) observedEpoch = currentTaskEpoch
 					if (result is GatewayResult.Success) beforePrivateCommit("login")
-					state = state.copy(busy = false, signedIn = result is GatewayResult.Success, profile = if (result is GatewayResult.Success) repository.currentProfile() else null, error = (result as? GatewayResult.Failure)?.error)
+					state = state.copy(busy = false, signedIn = result is GatewayResult.Success, error = (result as? GatewayResult.Failure)?.error)
 					if (result is GatewayResult.Success) refresh()
 				}
 			}
