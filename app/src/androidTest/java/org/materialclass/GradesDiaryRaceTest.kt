@@ -666,11 +666,12 @@ class GradesDiaryRaceTest {
 		}
 		fun create() = NativeController { emit -> SchoolRepository(gateway, verifier, shared, cache, { 1L }, emit, SessionStore(context, shared)) }
 		lateinit var observed: NativeController
+		var observedCreated = false
 		val privateIdField = NativeController::class.java.getDeclaredField("privateId").apply { isAccessible = true }
 		val observer: (Long) -> Unit = { assertOutsideCancellationLock() }
 		shared.observeRevocations(observer)
 		try {
-			main { observed = create(); controller = observed; observed.login("1", charArrayOf('x')) }
+			main { observed = create(); observedCreated = true; controller = observed; observed.login("1", charArrayOf('x')) }
 			await { observed.state.signedIn && observed.state.profile?.surname == "Profile-1" && observed.state.diary is DiaryState.Ready && observed.state.schedule != null }
 			failCleanup = true
 			main { observed.logout() }
@@ -710,7 +711,7 @@ class GradesDiaryRaceTest {
 			assertNotNull("The failed ticket must have existed before retry", ticket)
 		} finally {
 			failCleanup = false
-			main { if (::observed.isInitialized) observed.close() }
+			main { if (observedCreated) observed.close() }
 			shared.removeRevocationObserver(observer)
 			shared.pendingLogoutTicket()?.let { shared.logout(it) }
 			shared.logout()
