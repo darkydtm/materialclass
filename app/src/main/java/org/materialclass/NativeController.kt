@@ -204,9 +204,9 @@ internal class NativeController(
 		if (snapshot.second) state = NativeUiState(logoutPending = true)
 	}
 
-	private fun post(task: Long, action: () -> Unit) {
+	private fun post(task: Long, action: () -> Unit, allowAnonymous: Boolean = false) {
 		val epoch = currentTaskEpoch
-		handler.post { if (!closed && generation == task && repository.revocationEpoch() == epoch && (epoch == 0L || repository.ownedEpoch() == epoch)) action() }
+		handler.post { if (!closed && generation == task && repository.revocationEpoch() == epoch && (allowAnonymous || epoch == 0L || repository.ownedEpoch() == epoch)) action() }
 	}
 
 	override fun start() {
@@ -225,7 +225,7 @@ internal class NativeController(
 			currentTaskEpoch = epoch
 			val result = try { repository.restore() } catch (_: Exception) { RestoreResult.Retry }
 			currentTaskEpoch = repository.ownedEpoch() ?: repository.revocationEpoch()
-			post(task) {
+			post(task, allowAnonymous = result !is RestoreResult.Restored) {
 				if (result is RestoreResult.Restored) observedEpoch = currentTaskEpoch
 				state = state.copy(busy = false, signedIn = result is RestoreResult.Restored, error = if (result is RestoreResult.Retry) AppError.UNAVAILABLE else null)
 				if (result is RestoreResult.Restored) refresh()
@@ -245,7 +245,7 @@ internal class NativeController(
 			currentTaskEpoch = epoch
 				val result = try { repository.login(username, password) } catch (_: Exception) { GatewayResult.Failure(AppError.UNAVAILABLE) } finally { password.fill('\u0000') }
 				if (result is GatewayResult.Success) repository.ownedEpoch()?.let { currentTaskEpoch = it }
-				post(task) {
+				post(task, allowAnonymous = result !is GatewayResult.Success) {
 					if (result is GatewayResult.Success) observedEpoch = currentTaskEpoch
 					if (result is GatewayResult.Success) beforePrivateCommit("login")
 					state = state.copy(busy = false, signedIn = result is GatewayResult.Success, error = (result as? GatewayResult.Failure)?.error)

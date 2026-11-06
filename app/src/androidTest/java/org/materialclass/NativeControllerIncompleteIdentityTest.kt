@@ -55,9 +55,13 @@ class NativeControllerIncompleteIdentityTest {
         )
     }
 
-    private fun createController(gate: AtomicReference<CountDownLatch?> = AtomicReference(null)): NativeController {
+    private fun createController(
+        gate: AtomicReference<CountDownLatch?> = AtomicReference(null),
+        entered: CountDownLatch? = null,
+    ): NativeController {
         val gateway = object : SchoolGateway {
             override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> {
+                entered?.countDown()
                 gate.getAndSet(null)?.let { blocked -> check(blocked.await(15, TimeUnit.SECONDS)) }
                 return GatewayResult.Success(
                     UnverifiedSession(
@@ -167,11 +171,12 @@ class NativeControllerIncompleteIdentityTest {
     fun staleAccountAResultCannotRevokeLaterAccountAAfterB() {
         verification = ::completeVerification
         val firstGate = CountDownLatch(1)
-        val first = createController(AtomicReference<CountDownLatch?>(firstGate))
+        val firstEntered = CountDownLatch(1)
+        val first = createController(AtomicReference<CountDownLatch?>(firstGate), firstEntered)
         val second = createController()
         val third = createController()
         main { first.login("1", charArrayOf('x')) }
-        assertTrue(firstGate.await(10, TimeUnit.SECONDS))
+        assertTrue(firstEntered.await(10, TimeUnit.SECONDS))
         login(second, "2")
         login(third, "1")
         firstGate.countDown()
