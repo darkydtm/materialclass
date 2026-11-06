@@ -121,9 +121,13 @@ internal class NativeController(
 			val invalidated = closed || currentTaskEpoch != 0L && (!ownsCurrentSession || currentTaskEpoch != event.epoch)
 			if (invalidated || privateState == null) {
 				return NativeUiState(
-					busy = logoutTicket != null,
+					busy = local.busy,
 					logoutPending = logoutTicket != null || repository.pendingLogoutTicket() != null,
-					error = if (event.change == SessionChange.EXPIRED) AppError.SESSION_EXPIRED else local.error,
+					error = when {
+						event.change == SessionChange.EXPIRED -> AppError.SESSION_EXPIRED
+						invalidated && !closed -> null
+						else -> local.error
+					},
 				)
 			}
 			return local.copy(
@@ -136,7 +140,7 @@ internal class NativeController(
 				selectedDiaryDate = if (privateState.profileIncomplete) null else privateState.selectedDiaryDate,
 				schedule = if (privateState.profileIncomplete) null else privateState.schedule,
 				scheduleSnapshot = if (privateState.profileIncomplete) null else privateState.scheduleSnapshot,
-				error = if (privateState.profileIncomplete) AppError.UNAVAILABLE else local.error,
+				error = if (privateState.profileIncomplete) AppError.UNAVAILABLE else privateState.error,
 			)
 		}
 		private set(value) {

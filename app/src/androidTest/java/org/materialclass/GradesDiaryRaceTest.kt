@@ -61,6 +61,7 @@ class GradesDiaryRaceTest {
 		val profileGate = AtomicReference<Gate?>(null)
 		val scheduleGate = AtomicReference<Gate?>(null)
 		val scheduleResult = AtomicReference(Schedule(emptyList()))
+		val scheduleError = AtomicReference<AppError?>(null)
 		val diaryError = AtomicReference<AppError?>(null)
 		val gradesError = AtomicReference<AppError?>(null)
 		val mismatch = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -80,9 +81,9 @@ class GradesDiaryRaceTest {
 			}
 			override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> {
 				schoolCalls.incrementAndGet()
-				val result = scheduleResult.get()
+				val result = scheduleError.get()?.let { GatewayResult.Failure(it) } ?: GatewayResult.Success(scheduleResult.get())
 				scheduleGate.getAndSet(null)?.waitHere()
-				return GatewayResult.Success(result)
+				return result
 			}
 			override fun annualGrades(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<AnnualGrades> {
 				schoolCalls.incrementAndGet()
@@ -248,6 +249,84 @@ class GradesDiaryRaceTest {
 		drain(first)
 		assertEquals("Profile-1", SessionCoordinator.privateStates.read().states[id]?.profile?.surname)
 		main { assertEquals("Profile-1", first.state.profile?.surname) }
+	}
+
+	@Test fun onlineScheduleFailureIsVisibleThroughPrivateStateAndNotification() {
+		val fixture = Fixture()
+		val notifications = AtomicBoolean(false)
+		val c = fixture.create { notifications.set(true) }
+		main { controller = c; c.login("1", charArrayOf('x')) }
+		await { c.state.signedIn && c.state.schedule != null }
+		notifications.set(false)
+		fixture.scheduleError.set(AppError.OFFLINE)
+		main { c.refresh() }
+		await { c.state.error == AppError.OFFLINE && c.state.schedule == null && notifications.get() }
+		val id = NativeController::class.java.getDeclaredField("privateId").apply { isAccessible = true }.get(c) as PrivateStateRegistry.ControllerId
+		assertEquals(AppError.OFFLINE, SessionCoordinator.privateStates.read().states[id]?.error)
+	}
+
+	@Test fun missingRegistrySanitizesScheduleErrorWithoutStaleLocalError() {
+		val fixture = Fixture()
+		val c = fixture.login()
+		fixture.scheduleError.set(AppError.OFFLINE)
+		main { c.refresh() }
+		await { c.state.error == AppError.OFFLINE }
+		val id = NativeController::class.java.getDeclaredField("privateId").apply { isAccessible = true }.get(c) as PrivateStateRegistry.ControllerId
+		main {
+			SessionCoordinator.privateStates.unregister(id)
+			assertNull(c.state.error)
+			assertNoPrivateSnapshot(c.state)
+		}
+	}
+
+	@Test fun loginBusyRemainsVisibleWhilePrivateRegistryIsStillEmpty() {
+		val fixture = Fixture()
+		val gate = Gate()
+		fixture.loginGate.set(gate)
+		val c = fixture.create()
+		main { controller = c; c.login("1", charArrayOf('x')) }
+		assertTrue(gate.entered.await(15, TimeUnit.SECONDS))
+		main { assertTrue(c.state.busy); assertFalse(c.state.signedIn) }
+		gate.release.countDown()
+		await { c.state.signedIn }
+	}
+
+	@Test fun accountSwitchClearsScheduleErrorFromOldController() {
+		val fixture = Fixture()
+		val first = fixture.login("1")
+		fixture.scheduleError.set(AppError.OFFLINE)
+		main { first.refresh() }
+		await { first.state.error == AppError.OFFLINE }
+		main { replacement = fixture.create(); replacement!!.login("2", charArrayOf('x')) }
+		val second = replacement!!
+		await { second.state.signedIn && second.state.profile?.surname == "Profile-2" }
+		main {
+			assertNull(first.state.error)
+			assertNoPrivateSnapshot(first.state)
+			assertTrue(second.state.signedIn)
+		}
+	}
+
+	@Test fun invalidationCallbackReadsSanitizedStateAfterRegistryRevocation() {
+		val fixture = Fixture()
+		lateinit var observed: NativeController
+		val armed = AtomicBoolean(false)
+		val sawCleared = AtomicBoolean(false)
+		main {
+			observed = fixture.create {
+				if (armed.get()) {
+					val state = observed.state
+					if (!state.signedIn && state.profile == null && state.error == null) sawCleared.set(true)
+				}
+			}
+			controller = observed
+			observed.login("1", charArrayOf('x'))
+		}
+		await { observed.state.signedIn && observed.state.profile != null }
+		armed.set(true)
+		coordinator.cancelInFlightNow()
+		await { !observed.state.signedIn && observed.state.error == null }
+		assertTrue(sawCleared.get())
 	}
 
 	@Test fun onlineScheduleIsCommittedToRegistryAndVisible() {
