@@ -104,7 +104,7 @@ jobs:
             printf 'STAGE targeted-login-restore-start api=%s expected=%s\n' '${{ matrix.api }}' "$TARGETED_TEST_COUNT"
             ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class="$TARGETED_TESTS"
             printf 'STAGE targeted-login-restore-gradle-complete api=%s\n' '${{ matrix.api }}'
-            python3 - <<'PY'
+            cat > "$RUNNER_TEMP/reconcile_targeted.py" <<'PY'
             import os
             import xml.etree.ElementTree as ET
             from pathlib import Path
@@ -127,6 +127,7 @@ jobs:
                 raise SystemExit(f'Unexpected targeted result: executed={executed}, skipped={skipped}, failures={failures}, errors={errors}, expected={expected}')
             print(f'TARGETED_EXECUTED_TESTS={executed}')
             PY
+            python3 "$RUNNER_TEMP/reconcile_targeted.py"
 
   device:
     if: github.ref == 'refs/heads/feat/integrate-homework' || github.ref == 'refs/heads/feat/integrate-network-contract' || github.ref == 'refs/heads/feat/integrate-restart-ui' || github.ref == 'refs/heads/feat/integrate-backup-cleanup' || github.ref == 'refs/heads/feat/debug-apk' || github.ref == 'refs/heads/test/privacy-login-restore' || github.ref == 'refs/heads/feat/integrate-readiness' || github.ref == 'refs/heads/ci-android-toolchain' || github.ref == 'refs/heads/fix/verified-session-restore' || github.ref == 'refs/heads/feat/integrate-student-work' || github.ref == 'refs/heads/fix/schedule-stale-flags' || github.ref == 'refs/heads/feat/integrate-student-v2' || github.ref == 'refs/heads/feat/integrate-a11y' || github.ref == 'refs/heads/feat/integrate-schedule-races' || github.ref == 'refs/heads/feat/integrate-student-v3' || github.ref == 'refs/heads/feat/integrate-durable' || github.ref == 'refs/heads/feat/integrate-restore' || github.ref == 'refs/heads/feat/integrate-profile-grades' || github.ref == 'refs/heads/feat/integrate-security'
