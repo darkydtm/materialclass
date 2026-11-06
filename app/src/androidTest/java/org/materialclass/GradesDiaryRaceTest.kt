@@ -635,6 +635,88 @@ class GradesDiaryRaceTest {
 		} finally { gate.release.countDown() }
 	}
 
+	@Test fun logoutCleanupFailureKeepsRegistrySanitizedAndRetryVisible() {
+		var failCleanup = false
+		val callbackUnderCancellationLock = AtomicBoolean(false)
+		val cancellationLock = Class.forName("org.materialclass.session.SessionCoordinatorKt").getDeclaredField("CancellationLock").apply { isAccessible = true }.get(null)
+		fun assertOutsideCancellationLock() { if (Thread.holdsLock(cancellationLock)) callbackUnderCancellationLock.set(true) }
+		val shared = SessionCoordinator(
+			clearSession = { assertOutsideCancellationLock(); if (failCleanup) throw IllegalStateException("synthetic cleanup failure") },
+			clearCache = { assertOutsideCancellationLock() },
+		)
+		val gateway = object : SchoolGateway {
+			override fun login(login: String, password: CharArray, lease: RequestLease): GatewayResult<UnverifiedSession> =
+				GatewayResult.Success(UnverifiedSession("synthetic", login, "student", SchoolContext(1, 2026, 2, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")))
+			override fun currentWeek(session: VerifiedDiarySession, lease: RequestLease): GatewayResult<String> = GatewayResult.Success("01.01.2026")
+			override fun diary(session: VerifiedDiarySession, context: DiaryContext, lease: RequestLease): GatewayResult<Diary> = GatewayResult.Success(Diary(context.date, emptyList()))
+			override fun schedule(session: VerifiedScheduleSession, date: String, lease: RequestLease): GatewayResult<Schedule> = GatewayResult.Success(Schedule(emptyList()))
+		}
+		val verifier = IdentityVerifier { session, _ ->
+			val profile = StudentProfile("Profile-${session.identityCandidate}", null, null, null)
+			SessionVerification.Verified(
+				AccountId(session.identityCandidate!!), true,
+				VerifiedScheduleSession.compare(session, JSONObject("""{"userId":${session.identityCandidate},"role":"student","school_id":1,"group":{"id":2},"studentInfo":{"studentSchoolUuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}""")),
+				VerifiedDiarySession.compare(session, JSONObject("""{"userId":${session.identityCandidate},"role":"student","school_id":1,"group":{"id":2},"studentInfo":{"studentSchoolUuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}""")),
+				profile,
+			)
+		}
+		val cache = object : DiaryCache {
+			override fun read(session: ActiveSession): ByteArray? = null
+			override fun write(session: ActiveSession, bytes: ByteArray): Boolean = true
+		}
+		fun create() = NativeController { emit -> SchoolRepository(gateway, verifier, shared, cache, { 1L }, emit, SessionStore(context, shared)) }
+		lateinit var observed: NativeController
+		val privateIdField = NativeController::class.java.getDeclaredField("privateId").apply { isAccessible = true }
+		val observer: (Long) -> Unit = { assertOutsideCancellationLock() }
+		shared.observeRevocations(observer)
+		try {
+			main { observed = create(); controller = observed; observed.login("1", charArrayOf('x')) }
+			await { observed.state.signedIn && observed.state.profile?.surname == "Profile-1" && observed.state.diary is DiaryState.Ready && observed.state.schedule != null }
+			failCleanup = true
+			main { observed.logout() }
+			await { observed.state.logoutPending && !observed.state.busy && observed.state.error == AppError.UNAVAILABLE }
+			main {
+				assertFalse(observed.state.signedIn)
+				assertNull(observed.state.profile)
+				assertTrue(observed.state.diary is DiaryState.Cleared)
+				assertNull(observed.state.schedule)
+				assertNull(observed.state.scheduleSnapshot)
+			}
+			main {
+				val privateId = privateIdField.get(observed) as PrivateStateRegistry.ControllerId
+				val privateState = SessionCoordinator.privateStates.read().states[privateId]
+				assertNotNull(privateState)
+				assertNull(privateState!!.profile)
+				assertTrue(privateState.diary is DiaryState.Cleared)
+				assertNull(privateState.schedule)
+				assertNull(privateState.scheduleSnapshot)
+			}
+			val ticket = shared.pendingLogoutTicket()
+			assertNotNull(ticket)
+			val rejectedPassword = charArrayOf('x')
+			main { observed.login("2", rejectedPassword) }
+			assertEquals('\u0000', rejectedPassword[0])
+			failCleanup = false
+			main { observed.logout() }
+			await { shared.pendingLogoutTicket() == null && !observed.state.logoutPending && !observed.state.busy }
+			main { observed.login("2", charArrayOf('x')) }
+			await { observed.state.signedIn && observed.state.profile?.surname == "Profile-2" && observed.state.diary is DiaryState.Ready }
+			main {
+				assertEquals("Profile-2", observed.state.profile?.surname)
+				assertTrue(observed.state.diary is DiaryState.Ready)
+				assertNotNull(observed.state.schedule)
+			}
+			assertFalse("Callbacks or cleanup I/O ran under CancellationLock", callbackUnderCancellationLock.get())
+			assertNotNull("The failed ticket must have existed before retry", ticket)
+		} finally {
+			failCleanup = false
+			main { if (::observed.isInitialized) observed.close() }
+			shared.removeRevocationObserver(observer)
+			shared.pendingLogoutTicket()?.let { shared.logout(it) }
+			shared.logout()
+		}
+	}
+
 	@Test fun incompleteProfileClearsPrivateSchoolPayload() {
 		val fixture = Fixture()
 		val first = fixture.login()

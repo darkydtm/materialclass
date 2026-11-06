@@ -125,6 +125,7 @@ internal class NativeController(
 					logoutPending = logoutTicket != null || repository.pendingLogoutTicket() != null,
 					error = when {
 						event.change == SessionChange.EXPIRED -> AppError.SESSION_EXPIRED
+						local.logoutPending && local.error != null -> local.error
 						privateState == null -> null
 						invalidated && !closed -> null
 						else -> local.error
