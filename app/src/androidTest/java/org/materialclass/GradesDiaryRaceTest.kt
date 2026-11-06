@@ -294,6 +294,47 @@ class GradesDiaryRaceTest {
 
 	@Test fun revokedOnlineGradesAreNotPublished() = revokedPrivateCommitIsNotPublished("grades", false)
 
+	private fun assertNoPrivateSnapshot(state: NativeUiState) {
+		assertFalse(state.signedIn)
+		assertNull(state.profile)
+		assertNull(state.annualGrades)
+		assertFalse(state.gradesLoading)
+		assertTrue(state.diary is DiaryState.Cleared)
+		assertTrue(state.diaryWeeks.isEmpty())
+		assertNull(state.selectedDiaryDate)
+		assertNull(state.schedule)
+		assertNull(state.scheduleSnapshot)
+	}
+
+	@Test fun missingRegistryEntryCannotExposePrivateSnapshot() {
+		val fixture = Fixture()
+		val first = fixture.login()
+		main { first.refreshAnnualGrades() }
+		await { !first.state.gradesLoading && contents(first.state)?.contains("Subject-1") == true }
+		val id = NativeController::class.java.getDeclaredField("privateId").apply { isAccessible = true }.get(first) as PrivateStateRegistry.ControllerId
+		main { SessionCoordinator.privateStates.unregister(id); assertNoPrivateSnapshot(first.state) }
+	}
+
+	@Test fun closedControllerCannotExposePrivateSnapshotAfterUnregister() {
+		val fixture = Fixture()
+		val first = fixture.login()
+		main { first.refreshAnnualGrades() }
+		await { !first.state.gradesLoading && contents(first.state)?.contains("Subject-1") == true }
+		main { first.close(); assertNoPrivateSnapshot(first.state) }
+		controller = null
+	}
+
+	@Test fun privatePayloadIsClearedForBothControllersOnAccountSwitch() {
+		val fixture = Fixture()
+		val first = fixture.login("1")
+		main { first.refreshAnnualGrades() }
+		await { !first.state.gradesLoading && contents(first.state)?.contains("Subject-1") == true }
+		main { replacement = fixture.create(); replacement!!.login("2", charArrayOf('x')) }
+		val second = replacement!!
+		await { second.state.signedIn && second.state.diary is DiaryState.Ready && second.state.schedule != null }
+		main { assertNoPrivateSnapshot(first.state); assertTrue(second.state.signedIn); assertEquals("Profile-2", second.state.profile?.surname) }
+	}
+
 	@Test fun concurrentLoginCancelsPendingGradesWithoutLeavingLoading() {
 		val fixture = Fixture()
 		val gradesCommit = Gate()

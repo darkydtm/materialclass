@@ -118,39 +118,38 @@ internal class NativeController(
 			val event = repository.sessionEvent()
 			val ownsCurrentSession = repository.ownedEpoch() == event.epoch
 			val privateState = privateStates.read().states[privateId]?.takeIf { ownsCurrentSession }
-			val invalidated = currentTaskEpoch != 0L && (!ownsCurrentSession || currentTaskEpoch != event.epoch)
-			if (invalidated) {
+			val invalidated = closed || currentTaskEpoch != 0L && (!ownsCurrentSession || currentTaskEpoch != event.epoch)
+			if (invalidated || privateState == null) {
 				return NativeUiState(
 					busy = logoutTicket != null,
 					logoutPending = logoutTicket != null || repository.pendingLogoutTicket() != null,
-					error = if (event.change == SessionChange.EXPIRED) AppError.SESSION_EXPIRED else null,
+					error = if (event.change == SessionChange.EXPIRED) AppError.SESSION_EXPIRED else local.error,
 				)
 			}
 			return local.copy(
-				profile = privateState?.profile,
-				annualGrades = privateState?.annualGrades,
-				gradesLoading = privateState?.gradesLoading ?: false,
-				diary = if (privateState?.profileIncomplete == true) DiaryState.Cleared else privateState?.diary ?: local.diary,
-				diaryWeeks = if (privateState?.profileIncomplete == true) emptyList() else privateState?.diaryWeeks ?: local.diaryWeeks,
-				selectedDiaryDate = if (privateState?.profileIncomplete == true) null else privateState?.selectedDiaryDate ?: local.selectedDiaryDate,
-				schedule = if (privateState?.profileIncomplete == true) null else privateState?.schedule,
-				scheduleSnapshot = if (privateState?.profileIncomplete == true) null else privateState?.scheduleSnapshot,
-				error = if (privateState?.profileIncomplete == true) AppError.UNAVAILABLE else local.error,
+				signedIn = privateState.signedIn,
+				profile = privateState.profile,
+				annualGrades = privateState.annualGrades,
+				gradesLoading = privateState.gradesLoading,
+				diary = if (privateState.profileIncomplete) DiaryState.Cleared else privateState.diary,
+				diaryWeeks = if (privateState.profileIncomplete) emptyList() else privateState.diaryWeeks,
+				selectedDiaryDate = if (privateState.profileIncomplete) null else privateState.selectedDiaryDate,
+				schedule = if (privateState.profileIncomplete) null else privateState.schedule,
+				scheduleSnapshot = if (privateState.profileIncomplete) null else privateState.scheduleSnapshot,
+				error = if (privateState.profileIncomplete) AppError.UNAVAILABLE else local.error,
 			)
 		}
 		private set(value) {
-			val token = privateStates.read().token
-			privateStates.commit(token, privateId) {
-				it.copy(
-					diary = value.diary,
-					diaryWeeks = value.diaryWeeks,
-					selectedDiaryDate = value.selectedDiaryDate,
-					error = value.error,
-					annualGrades = if (value.annualGrades == null) null else it.annualGrades,
-					gradesLoading = if (value.annualGrades == null) value.gradesLoading else it.gradesLoading,
-				)
-			}
-			stateValue = value.copy(annualGrades = null, gradesLoading = false)
+			stateValue = value.copy(
+				profile = null,
+				annualGrades = null,
+				gradesLoading = false,
+				diary = DiaryState.Cleared,
+				diaryWeeks = emptyList(),
+				selectedDiaryDate = null,
+				schedule = null,
+				scheduleSnapshot = null,
+			)
 			notifyState()
 		}
 
