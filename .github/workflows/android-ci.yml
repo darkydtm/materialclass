@@ -1,13 +1,13 @@
 name: Android test only
 on:
   push:
-    branches: [ci-android-toolchain, fix/verified-session-restore, feat/integrate-student-work, fix/schedule-stale-flags, feat/integrate-student-v2, feat/integrate-a11y, feat/integrate-schedule-races, feat/integrate-student-v3, feat/integrate-durable, feat/integrate-restore, feat/integrate-profile-grades, feat/integrate-security, feat/integrate-readiness, feat/debug-apk, feat/integrate-backup-cleanup, feat/integrate-restart-ui, feat/integrate-network-contract, feat/integrate-homework]
+    branches: [ci-android-toolchain, fix/verified-session-restore, feat/integrate-student-work, fix/schedule-stale-flags, feat/integrate-student-v2, feat/integrate-a11y, feat/integrate-schedule-races, feat/integrate-student-v3, feat/integrate-durable, feat/integrate-restore, feat/integrate-profile-grades, feat/integrate-security, feat/integrate-readiness, feat/debug-apk, feat/integrate-backup-cleanup, feat/integrate-restart-ui, feat/integrate-network-contract, feat/integrate-homework, feat/privacy-integrate-login]
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   build:
-    if: github.ref == 'refs/heads/feat/integrate-homework' || github.ref == 'refs/heads/feat/integrate-network-contract' || github.ref == 'refs/heads/feat/integrate-restart-ui' || github.ref == 'refs/heads/feat/integrate-backup-cleanup' || github.ref == 'refs/heads/feat/debug-apk' || github.ref == 'refs/heads/feat/integrate-readiness' || github.ref == 'refs/heads/ci-android-toolchain' || github.ref == 'refs/heads/fix/verified-session-restore' || github.ref == 'refs/heads/feat/integrate-student-work' || github.ref == 'refs/heads/fix/schedule-stale-flags' || github.ref == 'refs/heads/feat/integrate-student-v2' || github.ref == 'refs/heads/feat/integrate-a11y' || github.ref == 'refs/heads/feat/integrate-schedule-races' || github.ref == 'refs/heads/feat/integrate-student-v3' || github.ref == 'refs/heads/feat/integrate-durable' || github.ref == 'refs/heads/feat/integrate-restore' || github.ref == 'refs/heads/feat/integrate-profile-grades' || github.ref == 'refs/heads/feat/integrate-security'
+    if: github.ref == 'refs/heads/feat/integrate-homework' || github.ref == 'refs/heads/feat/integrate-network-contract' || github.ref == 'refs/heads/feat/integrate-restart-ui' || github.ref == 'refs/heads/feat/integrate-backup-cleanup' || github.ref == 'refs/heads/feat/debug-apk' || github.ref == 'refs/heads/feat/privacy-integrate-login' || github.ref == 'refs/heads/feat/integrate-readiness' || github.ref == 'refs/heads/ci-android-toolchain' || github.ref == 'refs/heads/fix/verified-session-restore' || github.ref == 'refs/heads/feat/integrate-student-work' || github.ref == 'refs/heads/fix/schedule-stale-flags' || github.ref == 'refs/heads/feat/integrate-student-v2' || github.ref == 'refs/heads/feat/integrate-a11y' || github.ref == 'refs/heads/feat/integrate-schedule-races' || github.ref == 'refs/heads/feat/integrate-student-v3' || github.ref == 'refs/heads/feat/integrate-durable' || github.ref == 'refs/heads/feat/integrate-restore' || github.ref == 'refs/heads/feat/integrate-profile-grades' || github.ref == 'refs/heads/feat/integrate-security'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -45,8 +45,69 @@ jobs:
               raise SystemExit('Unexpected merged minSdkVersion')
           print('Merged debug manifest minSdkVersion=24')
           PY
+  targeted-login-restore:
+    if: github.ref == 'refs/heads/feat/privacy-integrate-login'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        api: ['24', '37.0']
+    env:
+      TARGETED_TEST_COUNT: '48'
+      TARGETED_TESTS: >-
+        org.materialclass.api.NativeGatewayTest#loginAndDiaryUseObservedContractWithVerifiedIdentity,org.materialclass.api.NativeGatewayTest#loginDoesNotTrustUnconfirmedScheduleContext,org.materialclass.api.NativeGatewayTest#rejectsMissingOrInvalidLoginIdentity,org.materialclass.api.NetworkFailureContractTest#loginKeepsAmbiguousResponsesUnknownAndClearsCredentials,org.materialclass.api.NetworkFailureContractTest#loginTransportErrorsClearCredentialsWithoutRetry,org.materialclass.data.NativeIdentityVerifierTest#missingLoginIdentityCannotBeVerified,org.materialclass.data.NativeIdentityVerifierTest#nativeVerificationRestoresMatchingAccountAndRejectsChangedAccount,org.materialclass.data.NativeIdentityVerifierTest#restoredSessionUsesPersistedSchoolAndCannotSurviveLogoutRace,org.materialclass.data.NativeIdentityVerifierTest#initialUuidMismatchBlocksAllSchoolGatewaysOnLoginAndRestore,org.materialclass.data.NativeIdentityVerifierTest#malformedProfileUuidBlocksSchoolAccessAfterLoginAndRestore,org.materialclass.data.NativeIdentityVerifierTest#encryptedRestoreRevalidatesScheduleCandidate,org.materialclass.data.RepositorySessionTest#reentrantLoginInvalidatesRestoreClearWithoutRevokingNewSession,org.materialclass.data.RepositorySessionTest#failedRestoreActivationCallbackRevokesSession,org.materialclass.data.RepositorySessionTest#failedRestoreEmissionRevokesAndClearsRepository,org.materialclass.data.RepositorySessionTest#logoutBeforeLoginAdmissionPreventsGatewayCall,org.materialclass.data.RepositorySessionTest#logoutBeforeRestoreProfileAdmissionPreventsVerification,org.materialclass.data.RepositorySessionTest#verifiedLoginPersistsEncryptedSession,org.materialclass.data.RepositorySessionTest#restoreRequiresVerifiedMatchingStudent,org.materialclass.data.RepositorySessionTest#offlineRestoreCannotOpenCache,org.materialclass.data.RepositorySessionTest#legacyTokenOnlySessionIsRevokedAndRequiresLogin,org.materialclass.data.RepositorySessionTest#versionOneSessionWithoutIdentityRequiresFreshLogin,org.materialclass.data.RepositorySessionTest#logoutCancelsRestoreAfterFailedLogin,org.materialclass.data.RepositorySessionTest#logoutAtRestoreActivationRevokesRestoredSession,org.materialclass.data.RepositorySessionTest#restoreCallbackFailureDoesNotRevokeNewLogin,org.materialclass.data.RepositorySessionTest#restoreCallbackCanLogoutReentrantly,org.materialclass.data.RepositorySessionTest#logoutCancelsPendingRestore,org.materialclass.data.RepositorySessionTest#newLoginSupersedesPendingLogin,org.materialclass.data.RepositorySessionTest#newLoginSupersedesPendingRestore,org.materialclass.data.ScheduleContextVerificationTest#missingLoginUuidRejectsMalformedProfileUuidButAcceptsAbsence,org.materialclass.data.SchoolRepositoryTest#loginClearsPasswordWhenRecoveryFails,org.materialclass.data.SchoolRepositoryTest#preparedAnnualRequestIsRejectedDuringPendingLogin,org.materialclass.data.SchoolRepositoryTest#loginAndLogoutCallbacksRunOutsideStorageLock,org.materialclass.data.SchoolRepositoryTest#startingLoginSuppressesCancelledDiaryAndScheduleResults,org.materialclass.data.SchoolRepositoryTest#olderLoginCannotPublishAfterNewerLoginStarts,org.materialclass.data.SchoolRepositoryTest#reentrantNewLoginSurvivesThrowingOlderCallback,org.materialclass.data.SchoolRepositoryTest#logoutOfStaleRepositoryDoesNotRevokeNewerLogin,org.materialclass.data.SchoolRepositoryTest#verifiedLoginCachesEmptySuccessAndOfflinePreservesTimestamp,org.materialclass.data.SchoolRepositoryTest#expiredOldSessionDoesNotCancelPendingNewLogin,org.materialclass.data.SchoolRepositoryTest#expiredResponseFromOldSessionCannotRevokeNewLogin,org.materialclass.security.StorageSecurityTest#blockedCacheWriteIsRemovedBeforeNewLogin,org.materialclass.security.StorageSecurityTest#legacyEncryptedSessionWithoutNamespaceCannotRestore,org.materialclass.security.StorageSecurityTest#concurrentRetryCannotDiscardExpiredRestore,org.materialclass.security.StorageSecurityTest#expiredRestoreCannotRevokeNewLoginWithSameAccount,org.materialclass.security.StorageSecurityTest#storedIdentityAloneCannotRestoreSession,org.materialclass.security.StorageSecurityTest#restoresEncryptedSessionAfterProcessRecreation,org.materialclass.security.StorageSecurityTest#durableRevocationMarkerPreventsRestoreAfterCrash,org.materialclass.security.StorageSecurityTest#restoredCacheWithoutNamespaceKeyIsPreservedUntilAnonymousReset,org.materialclass.security.StorageSecurityTest#freshLoginsWithSameRemoteIdentityCannotReadPriorCaches
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          packages: platform-tools
+      - name: Validate targeted test contract
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          tests = os.environ['TARGETED_TESTS'].split(',')
+          expected = int(os.environ['TARGETED_TEST_COUNT'])
+          if len(tests) != expected or len(set(tests)) != expected:
+              raise SystemExit(f'Expected {expected} unique targeted tests, found {len(tests)}')
+          for spec in tests:
+              class_name, method = spec.split('#', 1)
+              relative = Path('app/src/androidTest/java', class_name.replace('.', '/') + '.kt')
+              source = relative.read_text()
+              if not re.search(rf'\bclass\s+{re.escape(class_name.rsplit(".", 1)[-1])}\b', source):
+                  raise SystemExit(f'Missing test class: {spec}')
+              if not re.search(rf'@Test\s*(?:\([^\n]*\))?\s*\n\s*(?:public\s+|internal\s+|private\s+)?fun\s+{re.escape(method)}\s*\(', source):
+                  raise SystemExit(f'Missing @Test method: {spec}')
+          print(f'STAGE targeted-contract-validated expected={expected}')
+          PY
+      - name: Enable virtualization
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: default
+          arch: x86_64
+          script: |
+            set -eu
+            adb shell input keyevent KEYCODE_WAKEUP
+            adb shell wm dismiss-keyguard
+            printf 'STAGE targeted-login-restore-start api=%s expected=%s\n' '${{ matrix.api }}' "$TARGETED_TEST_COUNT"
+            ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class="$TARGETED_TESTS"
+            printf 'STAGE targeted-login-restore-gradle-complete api=%s\n' '${{ matrix.api }}'
+            python3 -c 'import os, sys, xml.etree.ElementTree as ET; from pathlib import Path; reports=sorted(Path("app/build/outputs/androidTest-results/connected/debug").glob("TEST-*.xml")); cases=[case for report in reports for case in ET.parse(report).getroot().iter("testcase")]; skipped=sum(case.find("skipped") is not None for case in cases); failures=sum(case.find("failure") is not None for case in cases); errors=sum(case.find("error") is not None for case in cases); executed=len(cases)-skipped; expected=int(os.environ["TARGETED_TEST_COUNT"]); print(f"STAGE targeted-results-reconciled reports={len(reports)} executed={executed} skipped={skipped} failures={failures} errors={errors}"); print(f"TARGETED_EXECUTED_TESTS={executed}") if reports and (executed, skipped, failures, errors) == (expected, 0, 0, 0) else print(f"Unexpected targeted result: executed={executed}, skipped={skipped}, failures={failures}, errors={errors}, expected={expected}"); sys.exit(0 if reports and (executed, skipped, failures, errors) == (expected, 0, 0, 0) else 1)'
+
   device:
-    if: github.ref == 'refs/heads/feat/integrate-homework' || github.ref == 'refs/heads/feat/integrate-network-contract' || github.ref == 'refs/heads/feat/integrate-restart-ui' || github.ref == 'refs/heads/feat/integrate-backup-cleanup' || github.ref == 'refs/heads/feat/debug-apk' || github.ref == 'refs/heads/feat/integrate-readiness' || github.ref == 'refs/heads/ci-android-toolchain' || github.ref == 'refs/heads/fix/verified-session-restore' || github.ref == 'refs/heads/feat/integrate-student-work' || github.ref == 'refs/heads/fix/schedule-stale-flags' || github.ref == 'refs/heads/feat/integrate-student-v2' || github.ref == 'refs/heads/feat/integrate-a11y' || github.ref == 'refs/heads/feat/integrate-schedule-races' || github.ref == 'refs/heads/feat/integrate-student-v3' || github.ref == 'refs/heads/feat/integrate-durable' || github.ref == 'refs/heads/feat/integrate-restore' || github.ref == 'refs/heads/feat/integrate-profile-grades' || github.ref == 'refs/heads/feat/integrate-security'
+    if: github.ref == 'refs/heads/feat/integrate-homework' || github.ref == 'refs/heads/feat/integrate-network-contract' || github.ref == 'refs/heads/feat/integrate-restart-ui' || github.ref == 'refs/heads/feat/integrate-backup-cleanup' || github.ref == 'refs/heads/feat/debug-apk' || github.ref == 'refs/heads/feat/privacy-integrate-login' || github.ref == 'refs/heads/feat/integrate-readiness' || github.ref == 'refs/heads/ci-android-toolchain' || github.ref == 'refs/heads/fix/verified-session-restore' || github.ref == 'refs/heads/feat/integrate-student-work' || github.ref == 'refs/heads/fix/schedule-stale-flags' || github.ref == 'refs/heads/feat/integrate-student-v2' || github.ref == 'refs/heads/feat/integrate-a11y' || github.ref == 'refs/heads/feat/integrate-schedule-races' || github.ref == 'refs/heads/feat/integrate-student-v3' || github.ref == 'refs/heads/feat/integrate-durable' || github.ref == 'refs/heads/feat/integrate-restore' || github.ref == 'refs/heads/feat/integrate-profile-grades' || github.ref == 'refs/heads/feat/integrate-security'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -77,6 +138,7 @@ jobs:
             adb shell input keyevent KEYCODE_WAKEUP
             adb shell wm dismiss-keyguard
             if [ "${{ github.ref }}" = 'refs/heads/feat/integrate-homework' ] || [ "${{ github.ref }}" = 'refs/heads/feat/integrate-network-contract' ] || [ "${{ github.ref }}" = 'refs/heads/feat/integrate-restart-ui' ]; then set -e; ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=org.materialclass.session.CleanupProcessRestartTest; ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest; adb install -r app/build/outputs/apk/debug/app-debug.apk; adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk; bash .github/cleanup-restart.sh; ./gradlew --no-daemon -PintegrationTestNativeUi=true connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=org.materialclass.session.CleanupProcessRestartTest; elif [ "${{ github.ref }}" = 'refs/heads/feat/integrate-backup-cleanup' ]; then set -e; ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=org.materialclass.session.CleanupProcessRestartTest; ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest; adb install -r app/build/outputs/apk/debug/app-debug.apk; adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk; bash .github/cleanup-restart.sh; elif [ "${{ github.ref }}" = 'refs/heads/feat/debug-apk' ]; then set -e; ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=org.materialclass.NativeUiWiringTest; ./gradlew --no-daemon -PintegrationTestNativeUi=true connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=org.materialclass.session.CleanupProcessRestartTest; else ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=org.materialclass.session.CleanupProcessRestartTest; fi
+
 
   test-apk:
     if: github.ref == 'refs/heads/feat/integrate-restart-ui' || github.ref == 'refs/heads/feat/debug-apk'

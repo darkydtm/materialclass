@@ -1,12 +1,12 @@
 name: Integrated privacy revocation regressions
 on:
   push:
-    branches: [test/privacy-integrated-red, fix/privacy-data-guard, fix/privacy-schedule-registry, feat/privacy-integrate-diary-schedule]
+    branches: [test/privacy-integrated-red, fix/privacy-data-guard, fix/privacy-schedule-registry, feat/privacy-integrate-diary-schedule, feat/privacy-integrate-login]
 permissions:
   contents: read
 jobs:
   atomic-state:
-    if: github.ref == 'refs/heads/fix/privacy-data-guard' || github.ref == 'refs/heads/fix/privacy-schedule-registry' || github.ref == 'refs/heads/feat/privacy-integrate-diary-schedule'
+    if: github.ref == 'refs/heads/fix/privacy-data-guard' || github.ref == 'refs/heads/fix/privacy-schedule-registry' || github.ref == 'refs/heads/feat/privacy-integrate-diary-schedule' || github.ref == 'refs/heads/feat/privacy-integrate-login'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -21,7 +21,7 @@ jobs:
       - run: ./gradlew --no-daemon testDebugUnitTest --tests org.materialclass.session.AtomicPrivateStateTest
       - run: ./gradlew --no-daemon testDebugUnitTest
   device:
-    if: github.ref == 'refs/heads/test/privacy-integrated-red' || github.ref == 'refs/heads/fix/privacy-data-guard' || github.ref == 'refs/heads/fix/privacy-schedule-registry' || github.ref == 'refs/heads/feat/privacy-integrate-diary-schedule'
+    if: github.ref == 'refs/heads/test/privacy-integrated-red' || github.ref == 'refs/heads/fix/privacy-data-guard' || github.ref == 'refs/heads/fix/privacy-schedule-registry' || github.ref == 'refs/heads/feat/privacy-integrate-diary-schedule' || github.ref == 'refs/heads/feat/privacy-integrate-login'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
