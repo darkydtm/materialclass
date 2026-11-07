@@ -164,7 +164,7 @@ jobs:
             set -eu
             adb shell input keyevent KEYCODE_WAKEUP
             adb shell wm dismiss-keyguard
-            .github/device-acceptance.sh "$RUNNER_TEMP/device-instrumentation.txt" device-apks/app-debug.apk device-apks/app-debug-androidTest.apk
+            bash .github/device-acceptance.sh "$RUNNER_TEMP/device-instrumentation.txt" device-apks/app-debug.apk device-apks/app-debug-androidTest.apk
             printf 'STAGE device-acceptance-complete api=%s\n' '${{ matrix.api }}'
 
 
