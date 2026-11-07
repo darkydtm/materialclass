@@ -227,7 +227,7 @@ internal class NativeController(
 			currentTaskEpoch = repository.ownedEpoch() ?: repository.revocationEpoch()
 			post(task, allowAnonymous = result !is RestoreResult.Restored) {
 				if (result is RestoreResult.Restored) observedEpoch = currentTaskEpoch
-				state = state.copy(busy = false, signedIn = result is RestoreResult.Restored, error = if (result is RestoreResult.Retry) AppError.UNAVAILABLE else null)
+				state = state.copy(busy = false, signedIn = result is RestoreResult.Restored, error = if (result is RestoreResult.Retry || result is RestoreResult.Invalid) AppError.UNAVAILABLE else null)
 				if (result is RestoreResult.Restored) refresh()
 			}
 		}
