@@ -109,7 +109,7 @@ jobs:
   device:
     if: github.ref == 'refs/heads/feat/integrate-homework' || github.ref == 'refs/heads/feat/integrate-network-contract' || github.ref == 'refs/heads/feat/integrate-restart-ui' || github.ref == 'refs/heads/feat/integrate-backup-cleanup' || github.ref == 'refs/heads/feat/debug-apk' || github.ref == 'refs/heads/feat/privacy-integrate-login' || github.ref == 'refs/heads/fix/privacy-incomplete-login-restore' || github.ref == 'refs/heads/feat/integrate-readiness' || github.ref == 'refs/heads/ci-android-toolchain' || github.ref == 'refs/heads/fix/verified-session-restore' || github.ref == 'refs/heads/feat/integrate-student-work' || github.ref == 'refs/heads/fix/schedule-stale-flags' || github.ref == 'refs/heads/feat/integrate-student-v2' || github.ref == 'refs/heads/feat/integrate-a11y' || github.ref == 'refs/heads/feat/integrate-schedule-races' || github.ref == 'refs/heads/feat/integrate-student-v3' || github.ref == 'refs/heads/feat/integrate-durable' || github.ref == 'refs/heads/feat/integrate-restore' || github.ref == 'refs/heads/feat/integrate-profile-grades' || github.ref == 'refs/heads/feat/integrate-security'
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
