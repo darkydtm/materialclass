@@ -20,7 +20,7 @@ class NativeIdentityVerifierTest {
 	private val coordinator = SessionCoordinator(context)
 	private val store = SessionStore(context, coordinator)
 	private val session = UnverifiedSession("synthetic-token", "42", "student", SchoolContext(7, 2026, 2))
-	private val success = """{"data":{"role":"student","userId":42,"school_id":7,"group":{"id":2},"school":{"eduYears":[{"isCurrent":true,"eduYear":2026}]}}}"""
+	private val success = """{"data":{"role":"student","userId":42,"school_id":7,"group":{"id":2,"name":"Synthetic Group"},"surname":"Synthetic Surname","firstname":"Synthetic Firstname","school":{"name":"Synthetic School","eduYears":[{"isCurrent":true,"eduYear":2026}]}}}"""
 
 	@After
 	fun cleanup() { coordinator.logout() }
@@ -327,9 +327,9 @@ class NativeIdentityVerifierTest {
 		restart()
 		response = profile.replace("\"school_id\":7", "\"school_id\":8")
 		val mismatch = repo()
-		assertTrue(mismatch.restore() is RestoreResult.Restored)
+		assertTrue(mismatch.restore() is RestoreResult.Invalid)
 		mismatch.schedule("01.01.2026") {}
 		assertEquals(1, schedules)
-		assertEquals(3, profiles)
+		assertEquals(2, profiles)
 	}
 }
