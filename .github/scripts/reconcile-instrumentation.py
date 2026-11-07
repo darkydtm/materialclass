@@ -47,16 +47,25 @@ def main() -> int:
 	seen: set[str] = set()
 	executed = skipped = failures = errors = 0
 	status_codes = re.compile(r'^INSTRUMENTATION_STATUS_CODE: (-?\d+)\s*$')
+	terminal_failure = False
 	for line in text.splitlines():
+		if line.startswith('INSTRUMENTATION_CODE:'):
+			terminal_failure = line.strip() != 'INSTRUMENTATION_CODE: -1'
+			continue
 		if line.startswith('INSTRUMENTATION_STATUS: class='):
 			current = line.split('=', 1)[1]
 		elif line.startswith('INSTRUMENTATION_STATUS: test=') and current:
 			current = f'{current}#{line.split("=", 1)[1]}'
+		elif line.startswith('INSTRUMENTATION_STATUS_CODE:') and current and current.endswith('Test'):
+			continue
 		else:
 			match = status_codes.match(line)
 			if match is None:
 				continue
 			code = int(match.group(1))
+			if current is None or '#' not in current:
+				current = None
+				continue
 			if code not in (0, -1, -2, -3, -4):
 				continue
 			if current is None:
@@ -83,7 +92,9 @@ def main() -> int:
 	)
 	if missing:
 		print(f'MISSING_INSTRUMENTATION_TESTS={len(missing)}')
-	if missing or (executed, skipped, failures, errors) != (len(expected), 0, 0, 0):
+	if terminal_failure:
+		print('INSTRUMENTATION_TERMINAL_FAILURE=1')
+	if missing or terminal_failure or (executed, skipped, failures, errors) != (len(expected), 0, 0, 0):
 		return 1
 	print(f'INSTRUMENTATION_EXECUTED_TESTS={executed}')
 	return 0
