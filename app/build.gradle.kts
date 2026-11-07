@@ -14,7 +14,7 @@ android {
 		versionCode = 1
 		versionName = "0.1"
 		testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-		buildConfigField("boolean", "NATIVE_UI_ENABLED", "false")
+		buildConfigField("boolean", "NATIVE_UI_ENABLED", "true")
 	}
 
 	buildTypes {
