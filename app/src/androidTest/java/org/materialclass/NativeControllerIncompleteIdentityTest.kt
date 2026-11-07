@@ -147,7 +147,7 @@ class NativeControllerIncompleteIdentityTest {
             assertFalse(SessionCoordinator.privateStates.read().states.values.any { it.signedIn })
         }
         assertFalse(File(context.noBackupFilesDir, "session").exists())
-        assertTrue(coordinator.event().session == null || coordinator.pendingLogoutTicket() != null)
+        assertNull(coordinator.event().session)
     }
 
     @Test
