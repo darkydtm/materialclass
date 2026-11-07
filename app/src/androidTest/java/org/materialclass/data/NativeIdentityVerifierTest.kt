@@ -27,7 +27,10 @@ class NativeIdentityVerifierTest {
 
 	@Test
 	fun profileRequiresMatchingContextAndTreatsMissingFieldsAsUnknown() {
-		val named = success.replace("\"role\":\"student\"", "\"surname\":\"Synthetic Surname\",\"firstname\":\"Synthetic Firstname\",\"role\":\"student\"")
+		val named = success
+			.replace(",\"name\":\"Synthetic Group\"", "")
+			.replace("\"school\":{\"name\":\"Synthetic School\",\"eduYears\"", "\"school\":{\"eduYears\"")
+			.replace("\"role\":\"student\"", "\"surname\":\"Synthetic Surname\",\"firstname\":\"Synthetic Firstname\",\"role\":\"student\"")
 		val verified = NativeIdentityVerifier(Exchange { Response(200, named) }).verify(session) as SessionVerification.Verified
 		assertEquals("Synthetic Surname", verified.profile?.surname)
 		assertEquals("Synthetic Firstname", verified.profile?.firstname)
@@ -175,7 +178,7 @@ class NativeIdentityVerifierTest {
 	}
 
 	@Test
-	fun diaryRequiresMatchingProfileContextWithoutScheduleUuid() {
+	fun mismatchedProfileContextRejectsLoginBeforeDiaryAccess() {
 		var response = success
 		var calls = 0
 		val gateway = object : TestSchoolGateway() {
@@ -198,9 +201,7 @@ class NativeIdentityVerifierTest {
 		listOf(success.replace("\"school_id\":7", "\"school_id\":8"), success.replace("\"id\":2", "\"id\":3"), success.replace("\"eduYear\":2026", "\"eduYear\":2027"), """{"data":{"role":"student","userId":42}}""").forEach {
 			response = it
 			val next = repo()
-			assertTrue(next.login("synthetic", charArrayOf('x')) is GatewayResult.Success)
-			next.refresh(DiaryContext(7, 2026, 2, date))
-			assertTrue(events.last() is DiaryState.Error)
+			assertTrue(next.login("synthetic", charArrayOf('x')) is GatewayResult.Failure)
 			assertEquals(1, calls)
 		}
 	}

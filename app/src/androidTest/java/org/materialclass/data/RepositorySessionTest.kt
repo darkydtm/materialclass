@@ -341,7 +341,10 @@ class RepositorySessionTest {
 	fun failedSessionWriteClearsPreviouslyEmittedDiary() {
 		val events = mutableListOf<DiaryState>()
 		var account = "424242424242"
-		val repo = SchoolRepository(gateway, IdentityVerifier { session, _ -> if (account == "424242424242") proof(session) else SessionVerification.Verified(AccountId(account), true) }, coordinator, cache, { 1L }, { events.add(it) }, store)
+		val repo = SchoolRepository(gateway, IdentityVerifier { session, _ ->
+			if (account == "424242424242") proof(session)
+			else SessionVerification.Verified(AccountId(account), true, diarySession = proof(session).diarySession, profile = StudentProfile("Synthetic", null, null, null))
+		}, coordinator, cache, { 1L }, { events.add(it) }, store)
 		assertTrue(repo.login("synthetic", charArrayOf('x')) is GatewayResult.Success)
 		repo.refresh(diaryContext)
 		assertTrue(events.last() is DiaryState.Ready)
