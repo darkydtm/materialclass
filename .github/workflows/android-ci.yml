@@ -58,7 +58,7 @@ jobs:
           if-no-files-found: error
           retention-days: 3
   targeted-login-restore:
-    if: github.ref == 'refs/heads/feat/mvp-production-wiring' || github.ref == 'refs/heads/feat/privacy-integrate-login' || github.ref == 'refs/heads/fix/privacy-incomplete-login-restore'
+    if: github.ref == 'refs/heads/feat/mvp-production-wiring' || github.ref == 'refs/heads/fix/mvp-device-ci' || github.ref == 'refs/heads/feat/privacy-integrate-login' || github.ref == 'refs/heads/fix/privacy-incomplete-login-restore'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
