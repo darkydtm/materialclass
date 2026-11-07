@@ -237,13 +237,8 @@ class NativeIdentityVerifierTest {
 			assertTrue(events.any { it is DiaryState.Error })
 		}
 		val login = repo()
-		assertTrue(login.login("synthetic", charArrayOf('x')) is GatewayResult.Success)
-		exercise(login)
-		SessionCoordinator::class.java.getDeclaredField("active").apply { isAccessible = true }.set(null, null)
-		SessionCoordinator::class.java.getDeclaredField("restorationAllowed").apply { isAccessible = true }.setBoolean(null, true)
-		val restored = repo()
-		assertTrue(restored.restore() is RestoreResult.Restored)
-		exercise(restored)
+		assertFalse(login.login("synthetic", charArrayOf('x')) is GatewayResult.Success)
+		assertEquals(0, calls)
 	}
 
 	@Test
@@ -284,14 +279,8 @@ class NativeIdentityVerifierTest {
 			assertEquals(0, calls)
 		}
 		val login = repo()
-		assertTrue(login.login("synthetic", charArrayOf('x')) is GatewayResult.Success)
-		exercise(login)
-		SessionCoordinator::class.java.getDeclaredField("active").apply { isAccessible = true }.set(null, null)
-		SessionCoordinator::class.java.getDeclaredField("restorationAllowed").apply { isAccessible = true }.setBoolean(null, true)
-		events.clear()
-		val restored = repo()
-		assertTrue(restored.restore() is RestoreResult.Restored)
-		exercise(restored)
+		assertFalse(login.login("synthetic", charArrayOf('x')) is GatewayResult.Success)
+		assertEquals(0, calls)
 	}
 
 	@Test

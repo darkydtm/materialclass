@@ -384,6 +384,7 @@ class SessionCoordinator internal constructor(private val clearSession: () -> Un
 		val token = synchronized(CancellationLock) {
 			privateStates.revokeAndClear()
 			restorationAllowed = false; revision++
+			lastEvent = SessionEvent(++revocationEpoch, SessionChange.LOGOUT, null)
 			Any().also { pending.add(it); revoked[it] = namespace; ownPending.addLast(it) }
 		}
 		cleanup(namespace)
