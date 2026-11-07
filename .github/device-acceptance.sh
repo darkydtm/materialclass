@@ -13,6 +13,7 @@ printf 'STAGE device-install-complete\n'
 printf 'STAGE device-instrumentation-start\n'
 adb shell am instrument -w -r -e class "$DEVICE_SMOKE_CLASSES" "$runner" > "$output"
 printf 'STAGE device-instrumentation-complete output=%s\n' "$output"
+cat "$output"
 python3 .github/scripts/reconcile-instrumentation.py "$output" \
 	--source-root app/src/androidTest/java \
 	--include-class org.materialclass.LauncherTest \

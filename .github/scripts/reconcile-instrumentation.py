@@ -56,14 +56,14 @@ def main() -> int:
 			current = line.split('=', 1)[1]
 		elif line.startswith('INSTRUMENTATION_STATUS: test=') and current:
 			current = f'{current}#{line.split("=", 1)[1]}'
-		elif line.startswith('INSTRUMENTATION_STATUS_CODE:') and current and current.endswith('Test'):
-			continue
 		else:
 			match = status_codes.match(line)
 			if match is None:
 				continue
 			code = int(match.group(1))
-			if current is None or '#' not in current:
+			if current is None:
+				continue
+			if '#' not in current:
 				current = None
 				continue
 			if code not in (0, -1, -2, -3, -4):
