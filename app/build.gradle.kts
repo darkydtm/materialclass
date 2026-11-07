@@ -20,7 +20,6 @@ android {
 	buildTypes {
 		getByName("debug") {
 			val integrationUi = providers.gradleProperty("integrationTestNativeUi").map { it == "true" }.getOrElse(false)
-			buildConfigField("boolean", "NATIVE_UI_ENABLED", integrationUi.toString())
 			buildConfigField("boolean", "INTEGRATION_TEST_NATIVE_UI", integrationUi.toString())
 		}
 	}
