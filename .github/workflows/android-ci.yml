@@ -1,7 +1,7 @@
 name: Android test only
 on:
   push:
-    branches: [ci-android-toolchain, feat/mvp-production-wiring, fix/verified-session-restore, fix/privacy-incomplete-login-restore, feat/integrate-student-work, fix/schedule-stale-flags, feat/integrate-student-v2, feat/integrate-a11y, feat/integrate-schedule-races, feat/integrate-student-v3, feat/integrate-durable, feat/integrate-restore, feat/integrate-profile-grades, feat/integrate-security, feat/integrate-readiness, feat/debug-apk, feat/integrate-backup-cleanup, feat/integrate-restart-ui, feat/integrate-network-contract, feat/integrate-homework, feat/privacy-integrate-login]
+    branches: [ci-android-toolchain, feat/mvp-production-wiring, fix/mvp-device-ci, fix/verified-session-restore, fix/privacy-incomplete-login-restore, feat/integrate-student-work, fix/schedule-stale-flags, feat/integrate-student-v2, feat/integrate-a11y, feat/integrate-schedule-races, feat/integrate-student-v3, feat/integrate-durable, feat/integrate-restore, feat/integrate-profile-grades, feat/integrate-security, feat/integrate-readiness, feat/debug-apk, feat/integrate-backup-cleanup, feat/integrate-restart-ui, feat/integrate-network-contract, feat/integrate-homework, feat/privacy-integrate-login]
   workflow_dispatch:
 permissions:
   contents: read
