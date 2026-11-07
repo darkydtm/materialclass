@@ -319,6 +319,6 @@ class NativeIdentityVerifierTest {
 		assertTrue(mismatch.restore() is RestoreResult.Invalid)
 		mismatch.schedule("01.01.2026") {}
 		assertEquals(1, schedules)
-		assertEquals(2, profiles)
+		assertEquals(3, profiles)
 	}
 }
