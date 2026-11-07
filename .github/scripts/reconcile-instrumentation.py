@@ -43,7 +43,8 @@ def main() -> int:
 		raise SystemExit('No expected instrumentation tests remain after filtering')
 
 	text = args.output.read_text(errors='replace').replace('\r', '')
-	current: str | None = None
+	current_class: str | None = None
+	current_test: str | None = None
 	seen: set[str] = set()
 	executed = skipped = failures = errors = 0
 	status_codes = re.compile(r'^INSTRUMENTATION_STATUS_CODE: (-?\d+)\s*$')
@@ -53,23 +54,20 @@ def main() -> int:
 			terminal_failure = line.strip() != 'INSTRUMENTATION_CODE: -1'
 			continue
 		if line.startswith('INSTRUMENTATION_STATUS: class='):
-			current = line.split('=', 1)[1]
-		elif line.startswith('INSTRUMENTATION_STATUS: test=') and current:
-			current = f'{current}#{line.split("=", 1)[1]}'
+			current_class = line.split('=', 1)[1]
+		elif line.startswith('INSTRUMENTATION_STATUS: test='):
+			current_test = line.split('=', 1)[1]
 		else:
 			match = status_codes.match(line)
 			if match is None:
 				continue
 			code = int(match.group(1))
-			if current is None:
-				continue
-			if '#' not in current:
-				current = None
+			if current_class is None or current_test is None:
+				current_class = current_test = None
 				continue
 			if code not in (0, -1, -2, -3, -4):
 				continue
-			if current is None:
-				raise SystemExit(f'Instrumentation result has no test identity: code={code}')
+			current = f'{current_class}#{current_test}'
 			if current in seen:
 				raise SystemExit(f'Duplicate instrumentation result: {current}')
 			seen.add(current)
@@ -83,7 +81,7 @@ def main() -> int:
 				failures += 1
 			else:
 				errors += 1
-			current = None
+			current_class = current_test = None
 
 	missing = expected - seen
 	print(
