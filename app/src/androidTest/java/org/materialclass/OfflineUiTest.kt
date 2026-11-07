@@ -29,7 +29,7 @@ class OfflineUiTest {
 			var observed = false
 			while (!observed && SystemClock.uptimeMillis() < deadline) {
 				val root = instrumentation.uiAutomation.rootInActiveWindow
-				observed = root != null && contains(root, context.getString(R.string.warning_text)) && if (BuildConfig.INTEGRATION_TEST_NATIVE_UI) {
+				observed = root != null && contains(root, context.getString(R.string.warning_text)) && if (BuildConfig.NATIVE_UI_ENABLED) {
 					!contains(root, context.getString(R.string.backend_unavailable)) && contains(root, context.getString(R.string.sign_in))
 				} else contains(root, context.getString(R.string.backend_unavailable))
 				if (!observed) SystemClock.sleep(100)
