@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="notification_channel_name">Обновления школы</string>
+	<string name="notification_new_grade">Новая оценка</string>
+	<string name="notification_homework">Домашнее задание</string>
+</resources>
