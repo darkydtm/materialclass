@@ -33,6 +33,9 @@ jobs:
       - name: Run unit tests, lint, and debug build
         run: ./gradlew --no-daemon assembleDebug testDebugUnitTest lintDebug
 
+      - name: Run connected debug tests
+        run: ./gradlew --no-daemon connectedDebugAndroidTest
+
       - name: Upload verification reports
         if: always()
         uses: actions/upload-artifact@v6
@@ -41,6 +44,7 @@ jobs:
           path: |
             app/build/reports/**
             app/build/test-results/**
+            app/build/outputs/androidTest-results/**
           if-no-files-found: error
 
       - name: Upload debug APK
