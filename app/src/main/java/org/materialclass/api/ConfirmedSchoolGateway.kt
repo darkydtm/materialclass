@@ -123,5 +123,9 @@ class ConfirmedSchoolGateway(
 
 	fun subjectDetails(subjectId: String): GatewayReadResult<org.materialclass.data.SubjectDetailsModel> = unsupported()
 
+	fun profile(): GatewayReadResult<org.materialclass.data.ProfileModel> = unsupported()
+
+	fun studentContext(): GatewayReadResult<org.materialclass.data.ProfileModel> = unsupported()
+
 	private fun <T> unsupported(): GatewayReadResult<T> = GatewayReadResult.Failure(AppError.UnsupportedContract)
 }
