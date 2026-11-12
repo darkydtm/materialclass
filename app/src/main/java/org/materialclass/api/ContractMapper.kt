@@ -1,8 +1,11 @@
 package org.materialclass.api
 
 import java.time.Instant
+import org.materialclass.data.DiaryModel
+import org.materialclass.data.DiaryWeeksModel
+import org.materialclass.data.ScheduleModel
 
-/** Map only fields observed in the confirmed login response. */
+/** Map only fields observed in the confirmed responses. */
 object ContractMapper {
 	fun mapLoginResponse(body: String): GatewayLoginResult = try {
 		val root = JsonParser(body).parseObject()
@@ -17,6 +20,35 @@ object ContractMapper {
 		GatewayLoginResult.Success(LoginResponse(accessToken, refreshToken, expiresAt, UserInfo(userId)))
 	} catch (_: Exception) {
 		GatewayLoginResult.Failure(AppError.InvalidResponse)
+	}
+
+	fun mapDiaryWeeks(body: String): GatewayReadResult<DiaryWeeksModel> = try {
+		val data = JsonParser(body).parseObject().requiredObject("data")
+		val weeks = data.requiredArray("weeks")
+		val periods = data.requiredArray("periods")
+		if (weeks.any { it !is JsonValue.ObjectValue || !it.values.containsKey("label") || !it.values.containsKey("value") }) {
+			throw IllegalArgumentException("unsupported week shape")
+		}
+		GatewayReadResult.Success(DiaryWeeksModel(weeks.size, periods.size))
+	} catch (_: Exception) {
+		GatewayReadResult.Failure(AppError.InvalidResponse)
+	}
+
+	fun mapDiary(body: String): GatewayReadResult<DiaryModel> = try {
+		val days = JsonParser(body).parseObject().requiredObject("data").requiredArray("days")
+		if (days.any { it !is JsonValue.ObjectValue }) throw IllegalArgumentException("unsupported day shape")
+		if (days.isEmpty()) GatewayReadResult.Empty else GatewayReadResult.Success(DiaryModel(days.size))
+	} catch (_: Exception) {
+		GatewayReadResult.Failure(AppError.InvalidResponse)
+	}
+
+	fun mapSchedule(body: String): GatewayReadResult<ScheduleModel> = try {
+		val days = JsonParser(body).parseObject().requiredObject("data").requiredArray("days")
+		if (days.any { it !is JsonValue.ObjectValue }) throw IllegalArgumentException("unsupported schedule day shape")
+		val scheduledDays = days.count { it is JsonValue.ObjectValue && it.values["schedule"] is JsonValue.ArrayValue }
+		if (days.isEmpty()) GatewayReadResult.Empty else GatewayReadResult.Success(ScheduleModel(days.size, scheduledDays))
+	} catch (_: Exception) {
+		GatewayReadResult.Failure(AppError.InvalidResponse)
 	}
 }
 
@@ -47,9 +79,16 @@ private fun Map<String, JsonValue>.requiredObject(name: String): Map<String, Jso
 		else -> throw IllegalArgumentException("unsupported $name shape")
 	}
 
+private fun Map<String, JsonValue>.requiredArray(name: String): List<JsonValue> =
+	when (val value = get(name)) {
+		is JsonValue.ArrayValue -> value.values
+		else -> throw IllegalArgumentException("unsupported $name shape")
+	}
+
 private sealed interface JsonValue {
 	data class StringValue(val value: String) : JsonValue
 	data class ObjectValue(val values: Map<String, JsonValue>) : JsonValue
+	data class ArrayValue(val values: List<JsonValue>) : JsonValue
 	data class NumberValue(val value: String) : JsonValue
 	data object BooleanValue : JsonValue
 	data object NullValue : JsonValue
@@ -82,10 +121,24 @@ private class JsonParser(private val source: String) {
 		}
 	}
 
+	private fun parseArrayValue(): JsonValue.ArrayValue {
+		expect('[')
+		val values = mutableListOf<JsonValue>()
+		skipWhitespace()
+		if (consume(']')) return JsonValue.ArrayValue(values)
+		while (true) {
+			values += parseValue()
+			skipWhitespace()
+			if (consume(']')) return JsonValue.ArrayValue(values)
+			expect(',')
+		}
+	}
+
 	private fun parseValue(): JsonValue {
 		skipWhitespace()
 		return when {
 			peek('{') -> parseObjectValue()
+			peek('[') -> parseArrayValue()
 			peek('"') -> JsonValue.StringValue(parseString())
 			source.startsWith("true", position) -> { position += 4; JsonValue.BooleanValue }
 			source.startsWith("false", position) -> { position += 5; JsonValue.BooleanValue }
@@ -128,7 +181,7 @@ private class JsonParser(private val source: String) {
 
 	private fun parseNumber(): String {
 		val start = position
-		while (position < source.length && !source[position].isWhitespace() && source[position] !in ",}") position++
+		while (position < source.length && !source[position].isWhitespace() && source[position] !in ",}]") position++
 		if (start == position) throw IllegalArgumentException("value expected")
 		return source.substring(start, position)
 	}

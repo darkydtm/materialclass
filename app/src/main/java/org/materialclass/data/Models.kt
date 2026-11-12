@@ -80,13 +80,27 @@ data class DiaryModel(
 	}
 }
 
+data class DiaryWeeksModel(
+	val weekCount: Int,
+	val periodCount: Int,
+) {
+	init {
+		require(weekCount >= 0) { "Diary week count must not be negative" }
+		require(periodCount >= 0) { "Diary period count must not be negative" }
+	}
+}
+
 data class ScheduleModel(
 	val dayCount: Int,
+	val daysWithSchedule: Int = 0,
 ) {
 	init {
 		require(dayCount >= 0) { "Schedule day count must not be negative" }
+		require(daysWithSchedule in 0..dayCount) { "Scheduled day count must fit the day count" }
 	}
 }
+
+data object LessonDetailModel
 
 data class GradesModel(
 	val subjectCount: Int,

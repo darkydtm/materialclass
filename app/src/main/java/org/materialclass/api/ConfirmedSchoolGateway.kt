@@ -3,6 +3,9 @@ package org.materialclass.api
 import java.time.Instant
 import org.materialclass.data.AccountId
 import org.materialclass.data.ActiveSession
+import org.materialclass.data.DiaryModel
+import org.materialclass.data.DiaryWeeksModel
+import org.materialclass.data.ScheduleModel
 
 interface SessionController {
 	fun activate(accountId: AccountId, token: String, expiresAt: Instant): ActiveSession
@@ -93,4 +96,18 @@ class ConfirmedSchoolGateway(
 	}
 
 	fun startTwoFactor(): TwoFactorResult = TwoFactorResult.Unsupported
+
+	fun diaryWeeks(context: ReadContext): GatewayReadResult<DiaryWeeksModel> = gateway.diaryWeeks(context)
+
+	fun diary(context: ReadContext): GatewayReadResult<DiaryModel> = gateway.diary(context)
+
+	fun schedule(context: ReadContext): GatewayReadResult<ScheduleModel> = gateway.schedule(context)
+
+	fun home(): GatewayReadResult<org.materialclass.data.HomeModel> = unsupported()
+
+	fun scheduleWeeks(context: ReadContext): GatewayReadResult<ScheduleModel> = gateway.schedule(context)
+
+	fun lessonDetail(lessonId: String): GatewayReadResult<org.materialclass.data.LessonDetailModel> = unsupported()
+
+	private fun <T> unsupported(): GatewayReadResult<T> = GatewayReadResult.Failure(AppError.UnsupportedContract)
 }
