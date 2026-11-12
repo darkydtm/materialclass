@@ -7,6 +7,8 @@
 	<string name="settings">Настройки</string>
 	<string name="profile">Профиль</string>
 	<string name="lesson_detail">Урок</string>
+	<string name="grades">Оценки</string>
+	<string name="attendance">Посещаемость</string>
 	<string name="subject_detail">Предмет</string>
 	<string name="login_prompt">Войдите, чтобы продолжить</string>
 	<string name="login">Логин</string>

@@ -7,6 +7,8 @@
 	<string name="settings">Баптаулар</string>
 	<string name="profile">Профиль</string>
 	<string name="lesson_detail">Сабақ</string>
+	<string name="grades">Бағалар</string>
+	<string name="attendance">Қатысу</string>
 	<string name="subject_detail">Пән</string>
 	<string name="login_prompt">Жалғастыру үшін кіріңіз</string>
 	<string name="login">Логин</string>

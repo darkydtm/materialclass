@@ -72,6 +72,8 @@ public enum class AppRoute {
 	Home,
 	Schedule,
 	LessonDetail,
+	Grades,
+	Attendance,
 	Diary,
 	SubjectDetail,
 	Calculator,
@@ -359,6 +361,7 @@ private fun AppScaffold(
 			AppRoute.Home -> HomeScreen(padding, title, viewModel, { viewModel.retry(AppRoute.Home) }, { navigator.go(AppRoute.Schedule) })
 			AppRoute.Schedule -> ScheduleScreen(padding, title, viewModel, { navigator.go(AppRoute.LessonDetail) })
 			AppRoute.LessonDetail -> UnsupportedScreen(padding, title, "lesson_detail_unavailable")
+			AppRoute.Grades, AppRoute.Attendance -> UnsupportedScreen(padding, title, "unsupported")
 			AppRoute.Diary -> DiaryScreen(padding, title, viewModel, { navigator.go(AppRoute.SubjectDetail) })
 			AppRoute.SubjectDetail -> UnsupportedScreen(padding, title, "subject_detail_unavailable")
 			AppRoute.Calculator -> CalculatorScreen(padding, title)
@@ -377,6 +380,8 @@ private fun AppRoute.titleKey(): String = when (this) {
 	AppRoute.Home -> "home"
 	AppRoute.Schedule -> "schedule"
 	AppRoute.LessonDetail -> "lesson_detail"
+	AppRoute.Grades -> "grades"
+	AppRoute.Attendance -> "attendance"
 	AppRoute.Diary -> "diary"
 	AppRoute.SubjectDetail -> "subject_detail"
 	AppRoute.Calculator -> "calculator"
