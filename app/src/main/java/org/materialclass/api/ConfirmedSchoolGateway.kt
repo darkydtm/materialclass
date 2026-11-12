@@ -5,7 +5,9 @@ import org.materialclass.data.AccountId
 import org.materialclass.data.ActiveSession
 import org.materialclass.data.DiaryModel
 import org.materialclass.data.DiaryWeeksModel
+import org.materialclass.data.PeriodsModel
 import org.materialclass.data.ScheduleModel
+import org.materialclass.data.SubjectsModel
 
 interface SessionController {
 	fun activate(accountId: AccountId, token: String, expiresAt: Instant): ActiveSession
@@ -101,6 +103,12 @@ class ConfirmedSchoolGateway(
 
 	fun diary(context: ReadContext): GatewayReadResult<DiaryModel> = gateway.diary(context)
 
+	fun diaryPeriods(context: ReadContext): GatewayReadResult<PeriodsModel> = gateway.diaryPeriods(context)
+
+	fun periods(context: ReadContext): GatewayReadResult<PeriodsModel> = gateway.periods(context)
+
+	fun subjects(context: ReadContext): GatewayReadResult<SubjectsModel> = gateway.subjects(context)
+
 	fun schedule(context: ReadContext): GatewayReadResult<ScheduleModel> = gateway.schedule(context)
 
 	fun home(): GatewayReadResult<org.materialclass.data.HomeModel> = unsupported()
@@ -108,6 +116,12 @@ class ConfirmedSchoolGateway(
 	fun scheduleWeeks(context: ReadContext): GatewayReadResult<ScheduleModel> = gateway.schedule(context)
 
 	fun lessonDetail(lessonId: String): GatewayReadResult<org.materialclass.data.LessonDetailModel> = unsupported()
+
+	fun grades(context: ReadContext): GatewayReadResult<org.materialclass.data.GradesModel> = unsupported()
+
+	fun attendance(context: ReadContext): GatewayReadResult<org.materialclass.data.AttendanceModel> = unsupported()
+
+	fun subjectDetails(subjectId: String): GatewayReadResult<org.materialclass.data.SubjectDetailsModel> = unsupported()
 
 	private fun <T> unsupported(): GatewayReadResult<T> = GatewayReadResult.Failure(AppError.UnsupportedContract)
 }

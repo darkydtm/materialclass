@@ -90,6 +90,22 @@ data class DiaryWeeksModel(
 	}
 }
 
+data class PeriodsModel(
+	val periodCount: Int,
+) {
+	init {
+		require(periodCount >= 0) { "Period count must not be negative" }
+	}
+}
+
+data class SubjectsModel(
+	val subjectCount: Int,
+) {
+	init {
+		require(subjectCount >= 0) { "Subject count must not be negative" }
+	}
+}
+
 data class ScheduleModel(
 	val dayCount: Int,
 	val daysWithSchedule: Int = 0,
@@ -109,6 +125,10 @@ data class GradesModel(
 		require(subjectCount >= 0) { "Grade subject count must not be negative" }
 	}
 }
+
+data object AttendanceModel
+
+data object SubjectDetailsModel
 
 data class ProfileModel(
 	val accountId: AccountId,

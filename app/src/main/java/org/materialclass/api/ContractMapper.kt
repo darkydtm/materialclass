@@ -3,7 +3,9 @@ package org.materialclass.api
 import java.time.Instant
 import org.materialclass.data.DiaryModel
 import org.materialclass.data.DiaryWeeksModel
+import org.materialclass.data.PeriodsModel
 import org.materialclass.data.ScheduleModel
+import org.materialclass.data.SubjectsModel
 
 /** Map only fields observed in the confirmed responses. */
 object ContractMapper {
@@ -38,6 +40,22 @@ object ContractMapper {
 		val days = JsonParser(body).parseObject().requiredObject("data").requiredArray("days")
 		if (days.any { it !is JsonValue.ObjectValue }) throw IllegalArgumentException("unsupported day shape")
 		if (days.isEmpty()) GatewayReadResult.Empty else GatewayReadResult.Success(DiaryModel(days.size))
+	} catch (_: Exception) {
+		GatewayReadResult.Failure(AppError.InvalidResponse)
+	}
+
+	fun mapDiaryPeriods(body: String): GatewayReadResult<PeriodsModel> = try {
+		val periods = JsonParser(body).parseObject().requiredObject("data").requiredArray("periods")
+		if (periods.any { it !is JsonValue.ObjectValue }) throw IllegalArgumentException("unsupported period shape")
+		if (periods.isEmpty()) GatewayReadResult.Empty else GatewayReadResult.Success(PeriodsModel(periods.size))
+	} catch (_: Exception) {
+		GatewayReadResult.Failure(AppError.InvalidResponse)
+	}
+
+	fun mapSubjects(body: String): GatewayReadResult<SubjectsModel> = try {
+		val subjects = JsonParser(body).parseObject().requiredArray("data")
+		if (subjects.any { it !is JsonValue.ObjectValue }) throw IllegalArgumentException("unsupported subject shape")
+		if (subjects.isEmpty()) GatewayReadResult.Empty else GatewayReadResult.Success(SubjectsModel(subjects.size))
 	} catch (_: Exception) {
 		GatewayReadResult.Failure(AppError.InvalidResponse)
 	}

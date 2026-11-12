@@ -2,6 +2,8 @@ package org.materialclass.api
 
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+import org.materialclass.data.PeriodsModel
+import org.materialclass.data.SubjectsModel
 
 /** Keep the transport boundary small so production code cannot invent requests. */
 data class HttpRequestData(
@@ -69,6 +71,14 @@ class SchoolGateway(
 	fun diary(context: ReadContext): GatewayReadResult<DiaryModel> =
 		read(context, DIARY_PATH, ContractMapper::mapDiary)
 
+	fun diaryPeriods(context: ReadContext): GatewayReadResult<PeriodsModel> =
+		read(context, DIARY_PERIODS_PATH, ContractMapper::mapDiaryPeriods)
+
+	fun periods(context: ReadContext): GatewayReadResult<PeriodsModel> = diaryPeriods(context)
+
+	fun subjects(context: ReadContext): GatewayReadResult<SubjectsModel> =
+		read(context, SUBJECTS_PATH, ContractMapper::mapSubjects)
+
 	fun schedule(context: ReadContext): GatewayReadResult<ScheduleModel> =
 		read(context, SCHEDULE_PATH, ContractMapper::mapSchedule)
 
@@ -111,6 +121,8 @@ class SchoolGateway(
 		const val LOGIN_URL = "https://api.bilimclass.kz/api/v2/os/login"
 		const val DIARY_WEEKS_PATH = "/api/v4/os/clientoffice/diary/weeks"
 		const val DIARY_PATH = "/api/v4/os/clientoffice/diary"
+		const val DIARY_PERIODS_PATH = "/api/v4/os/clientoffice/diary/periods"
+		const val SUBJECTS_PATH = "/api/v4/os/clientoffice/diary/subjects"
 		const val SCHEDULE_PATH = "/api/v4/os/clientoffice/schedule"
 
 		fun buildUrl(path: String, parameters: Map<String, String>): String {
