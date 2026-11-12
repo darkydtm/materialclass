@@ -1,6 +1,7 @@
 package org.materialclass.session
 
 import java.time.Instant
+import org.materialclass.api.SessionController
 import org.materialclass.cache.CacheFiles
 import org.materialclass.cache.EncryptedCache
 import org.materialclass.data.AccountId
@@ -19,7 +20,7 @@ class SessionCoordinator(
 	private val keys: KeyProvider,
 	private val cipher: SecureCipher,
 	private val tasks: SessionTaskRegistry,
-) {
+) : SessionController {
 	private val lock = Any()
 	private var active: ActiveSession? = null
 	private var nextGeneration = 0L
@@ -63,7 +64,9 @@ class SessionCoordinator(
 
 	fun cache(): EncryptedCache = encryptedCache
 
-	fun logout() = synchronized(lock) { clearLocked() }
+	override fun invalidateAndClear() = synchronized(lock) { clearLocked() }
+
+	fun logout() = invalidateAndClear()
 
 	private fun clearLocked() {
 		active = null
