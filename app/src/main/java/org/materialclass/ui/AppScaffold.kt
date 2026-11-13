@@ -58,12 +58,13 @@ internal fun AppScaffold(
 	onBackgroundInterval: (Float) -> Unit,
 	onLogout: () -> Unit,
 ) {
+	val titleKey = navigator.current.titleKey()
 	val rootRoutes = listOf(AppRoute.Home, AppRoute.Diary, AppRoute.Schedule, AppRoute.Settings)
 	Scaffold(
 		topBar = {
 			CenterAlignedTopAppBar(
 				colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-				title = { Text(text(navigator.current.titleKey())) },
+				title = { Text(text(titleKey)) },
 				navigationIcon = {
 					if (navigator.current !in rootRoutes) {
 						IconButton(onClick = { navigator.back() }, modifier = Modifier.testTag("back")) {
