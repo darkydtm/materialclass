@@ -3,11 +3,17 @@ package org.materialclass.ui
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -15,13 +21,20 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import java.util.Locale
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun AppScaffold(
 	navigator: AppNavigator,
@@ -47,7 +60,28 @@ internal fun AppScaffold(
 	onLogout: () -> Unit,
 ) {
 	val rootRoutes = listOf(AppRoute.Home, AppRoute.Diary, AppRoute.Schedule, AppRoute.Settings)
+	val titleKey = navigator.current.titleKey()
 	Scaffold(
+		topBar = {
+			TopAppBar(
+				colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+				title = { Text(text(titleKey)) },
+				navigationIcon = {
+					if (navigator.current !in rootRoutes) {
+						IconButton(onClick = { navigator.back() }, modifier = Modifier.testTag("back")) {
+							Icon(Icons.Default.ArrowBack, contentDescription = text("back"))
+						}
+					}
+				},
+				actions = {
+					if (navigator.current in rootRoutes) {
+						IconButton(onClick = { navigator.go(AppRoute.Profile) }) {
+							Icon(Icons.Default.Person, contentDescription = text("profile"))
+						}
+					}
+				},
+			)
+		},
 		bottomBar = {
 				if (navigator.current in rootRoutes) {
 					NavigationBar(
@@ -109,12 +143,24 @@ internal fun AppScaffold(
 	}
 }
 
+private fun AppRoute.titleKey(): String = when (this) {
+	AppRoute.Login, AppRoute.LoginLoading, AppRoute.LoginInvalid, AppRoute.LoginTwoFactor, AppRoute.LoginConnectionError -> "login"
+	AppRoute.Home, AppRoute.HomeError, AppRoute.HomeEmpty -> "nav_home"
+	AppRoute.Schedule, AppRoute.ScheduleOffline -> "week_title"
+	AppRoute.LessonDetail -> "lesson_title"
+	AppRoute.Diary -> "diary_title"
+	AppRoute.SubjectDetail -> "subject_title"
+	AppRoute.Calculator, AppRoute.CalculatorMissing -> "calculation_title"
+	AppRoute.Settings, AppRoute.SettingsLanguage, AppRoute.SettingsTheme, AppRoute.SettingsNotifications, AppRoute.BackgroundWork -> "nav_settings"
+	AppRoute.Profile -> "profile"
+}
+
 private fun AppRoute.labelKey(): String = when (this) {
 	AppRoute.Home -> "nav_home"
 	AppRoute.Diary -> "nav_diary"
 	AppRoute.Schedule -> "nav_schedule"
 	AppRoute.Settings -> "nav_settings"
-	else -> error("Only root routes have navigation labels")
+	else -> titleKey()
 }
 
 private fun AppRoute.icon(): ImageVector = when (this) {
