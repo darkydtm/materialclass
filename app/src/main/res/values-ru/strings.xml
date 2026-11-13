@@ -8,6 +8,9 @@
 	<string name="profile">Профиль</string>
 	<string name="lesson_detail">Урок</string>
 	<string name="grades">Оценки</string>
+	<string name="homework">Домашние задания</string>
+	<string name="journal">Журнал</string>
+	<string name="unknown">Неизвестно</string>
 	<string name="attendance">Посещаемость</string>
 	<string name="subject_detail">Предмет</string>
 	<string name="login_prompt">Войдите, чтобы продолжить</string>
