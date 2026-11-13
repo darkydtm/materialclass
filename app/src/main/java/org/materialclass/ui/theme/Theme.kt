@@ -30,9 +30,15 @@ fun MaterialClassTheme(themeMode: ThemeMode, content: @Composable () -> Unit) {
 		ThemeMode.LIGHT -> expressiveLightColorScheme()
 		ThemeMode.DARK, ThemeMode.SYSTEM -> if (dark) darkColorScheme() else lightColorScheme()
 	}
+	val typography = androidx.compose.material3.Typography(
+		displaySmall = androidx.compose.ui.text.TextStyle(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold),
+		headlineMedium = androidx.compose.ui.text.TextStyle(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold),
+		titleLarge = androidx.compose.ui.text.TextStyle(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold),
+	)
 	MaterialExpressiveTheme(
 		colorScheme = colorScheme,
 		motionScheme = MotionScheme.expressive(),
+		typography = typography,
 		content = content,
 	)
 }

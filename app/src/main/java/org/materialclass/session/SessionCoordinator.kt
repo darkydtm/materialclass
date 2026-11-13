@@ -7,6 +7,7 @@ import org.materialclass.cache.EncryptedCache
 import org.materialclass.data.AccountId
 import org.materialclass.data.ActiveSession
 import org.materialclass.data.Generation
+import org.materialclass.data.SessionAccess
 import org.materialclass.security.KeyProvider
 import org.materialclass.security.SecureCipher
 
@@ -20,7 +21,7 @@ class SessionCoordinator(
 	private val keys: KeyProvider,
 	private val cipher: SecureCipher,
 	private val tasks: SessionTaskRegistry,
-) : SessionController {
+) : SessionController, SessionAccess {
 	private val lock = Any()
 	private var active: ActiveSession? = null
 	private var nextGeneration = 0L
@@ -47,6 +48,8 @@ class SessionCoordinator(
 	}
 
 	fun currentSession(): ActiveSession? = synchronized(lock) { active }
+
+	override fun <T> withSessionLock(block: () -> T): T = synchronized(lock, block)
 
 	fun tokenFor(session: ActiveSession): String? = synchronized(lock) {
 		if (active != session) return@synchronized null

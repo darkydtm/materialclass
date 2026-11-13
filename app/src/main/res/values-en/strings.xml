@@ -11,6 +11,13 @@
 	<string name="attendance">Attendance</string>
 	<string name="subject_detail">Subject</string>
 	<string name="login_prompt">Sign in to continue</string>
+	<string name="home_description">Schedule, homework, and grades in one place.</string>
+	<string name="week_title">Schedule</string>
+	<string name="diary_title">Diary</string>
+	<string name="greeting_day">Good afternoon,</string>
+	<string name="student_name">Student</string>
+	<string name="student_context">School data</string>
+	<string name="day_progress">Today’s progress</string>
 	<string name="login">Login</string>
 	<string name="password">Password</string>
 	<string name="login_action">Sign in</string>

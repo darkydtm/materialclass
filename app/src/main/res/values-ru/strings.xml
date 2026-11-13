@@ -11,6 +11,13 @@
 	<string name="attendance">Посещаемость</string>
 	<string name="subject_detail">Предмет</string>
 	<string name="login_prompt">Войдите, чтобы продолжить</string>
+	<string name="home_description">Расписание, задания и оценки - в одном месте.</string>
+	<string name="week_title">Расписание</string>
+	<string name="diary_title">Дневник</string>
+	<string name="greeting_day">Добрый день,</string>
+	<string name="student_name">Ученик</string>
+	<string name="student_context">Учебные данные</string>
+	<string name="day_progress">Прогресс за день</string>
 	<string name="login">Логин</string>
 	<string name="password">Пароль</string>
 	<string name="login_action">Войти</string>

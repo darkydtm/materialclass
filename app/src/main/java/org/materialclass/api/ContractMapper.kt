@@ -1,9 +1,18 @@
 package org.materialclass.api
 
 import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneOffset
+import org.materialclass.data.DiaryDay
 import org.materialclass.data.DiaryModel
+import org.materialclass.data.DiarySubject
 import org.materialclass.data.DiaryWeeksModel
+import org.materialclass.data.GradeSchedule
+import org.materialclass.data.GradeSubject
+import org.materialclass.data.GradesModel
 import org.materialclass.data.PeriodsModel
+import org.materialclass.data.ScheduleDay
+import org.materialclass.data.ScheduleLesson
 import org.materialclass.data.ScheduleModel
 import org.materialclass.data.SubjectsModel
 
@@ -13,13 +22,14 @@ object ContractMapper {
 		val root = JsonParser(body).parseObject()
 		val accessToken = root.requiredString("access_token")
 		val refreshToken = root.requiredString("refresh_token")
-		val expiresAt = Instant.parse(root.requiredString("exp_time"))
+		val expiresAt = parseInstant(root.requiredString("exp_time"))
 		val userInfo = root.requiredObject("user_info")
-		val userId = userInfo.requiredString("userId")
+		val userId = userInfo["userId"]?.asText()?.takeIf { it.isNotBlank() }
+			?: throw IllegalArgumentException("unsupported userId shape")
 		if (accessToken.isBlank() || refreshToken.isBlank() || userId.isBlank()) {
 			throw IllegalArgumentException("blank observed field")
 		}
-		GatewayLoginResult.Success(LoginResponse(accessToken, refreshToken, expiresAt, UserInfo(userId)))
+		GatewayLoginResult.Success(LoginResponse(accessToken, refreshToken, expiresAt, userInfo.toUserInfo(userId)))
 	} catch (_: Exception) {
 		GatewayLoginResult.Failure(AppError.InvalidResponse)
 	}
@@ -37,9 +47,12 @@ object ContractMapper {
 	}
 
 	fun mapDiary(body: String): GatewayReadResult<DiaryModel> = try {
-		val days = JsonParser(body).parseObject().requiredObject("data").requiredArray("days")
+		val data = JsonParser(body).parseObject().requiredObject("data")
+		val days = data.requiredArray("days")
 		if (days.any { it !is JsonValue.ObjectValue }) throw IllegalArgumentException("unsupported day shape")
-		if (days.isEmpty()) GatewayReadResult.Empty else GatewayReadResult.Success(DiaryModel(days.size))
+		if (days.isEmpty()) GatewayReadResult.Empty else GatewayReadResult.Success(
+			DiaryModel(days.size, data["date"]?.asText(), days.map { (it as JsonValue.ObjectValue).toDiaryDay() }),
+		)
 	} catch (_: Exception) {
 		GatewayReadResult.Failure(AppError.InvalidResponse)
 	}
@@ -64,10 +77,23 @@ object ContractMapper {
 		val days = JsonParser(body).parseObject().requiredObject("data").requiredArray("days")
 		if (days.any { it !is JsonValue.ObjectValue }) throw IllegalArgumentException("unsupported schedule day shape")
 		val scheduledDays = days.count { it is JsonValue.ObjectValue && it.values["schedule"] is JsonValue.ArrayValue }
-		if (days.isEmpty()) GatewayReadResult.Empty else GatewayReadResult.Success(ScheduleModel(days.size, scheduledDays))
+		if (days.isEmpty()) GatewayReadResult.Empty else GatewayReadResult.Success(
+			ScheduleModel(days.size, scheduledDays, days.map { (it as JsonValue.ObjectValue).toScheduleDay() }),
+		)
 	} catch (_: Exception) {
 		GatewayReadResult.Failure(AppError.InvalidResponse)
 	}
+
+	fun mapGrades(body: String): GatewayReadResult<GradesModel> = try {
+		val subjects = JsonParser(body).parseObject().requiredArray("data")
+		if (subjects.any { it !is JsonValue.ObjectValue }) throw IllegalArgumentException("unsupported grade shape")
+		if (subjects.isEmpty()) GatewayReadResult.Empty else GatewayReadResult.Success(
+			GradesModel(subjects.size, subjects.map { (it as JsonValue.ObjectValue).toGradeSubject() }),
+		)
+	} catch (_: Exception) {
+		GatewayReadResult.Failure(AppError.InvalidResponse)
+	}
+
 }
 
 data class LoginResponse internal constructor(
@@ -81,14 +107,106 @@ data class LoginResponse internal constructor(
 
 data class UserInfo(
 	val userId: String,
+	val fullName: String? = null,
+	val schoolName: String? = null,
+	val region: String? = null,
+	val groupName: String? = null,
+	val schoolId: String? = null,
+	val groupId: String? = null,
+	val studentSchoolUuid: String? = null,
+	val studentGroupUuid: String? = null,
+	val eduYear: String? = null,
+	val role: String? = null,
 ) {
 	override fun toString(): String = "UserInfo(userId=<redacted>)"
+}
+
+private fun Map<String, JsonValue>.toUserInfo(userId: String): UserInfo {
+	val school = (get("school") as? JsonValue.ObjectValue)?.values
+	val group = (get("group") as? JsonValue.ObjectValue)?.values
+	val student = (get("studentInfo") as? JsonValue.ObjectValue)?.values
+	val years = (school?.get("eduYears") as? JsonValue.ArrayValue)?.values.orEmpty()
+	val currentYear = years.asSequence()
+		.mapNotNull { (it as? JsonValue.ObjectValue)?.values }
+		.firstOrNull { (it["isCurrent"] as? JsonValue.BooleanValue)?.value == true }
+		?.get("eduYear")?.asText()
+	val fullName = listOf("surname", "firstname", "lastname").mapNotNull { get(it)?.asText() }
+		.joinToString(" ").ifBlank { null }
+	return UserInfo(
+		userId = userId,
+		fullName = fullName,
+		schoolName = school?.get("name")?.asText(),
+		region = school?.get("region")?.asText(),
+		groupName = group?.get("name")?.asText(),
+		schoolId = get("school_id")?.asText(),
+		groupId = group?.get("id")?.asText(),
+		studentSchoolUuid = student?.get("studentSchoolUuid")?.asText(),
+		studentGroupUuid = student?.get("studentGroupUuid")?.asText(),
+		eduYear = currentYear,
+		role = get("role")?.asText(),
+	)
+}
+
+private fun Map<String, JsonValue>.toDiaryDay(): DiaryDay {
+	val subjects = (get("subjects") as? JsonValue.ArrayValue)?.values.orEmpty().map { value ->
+		val item = (value as? JsonValue.ObjectValue)?.values ?: throw IllegalArgumentException("unsupported diary subject")
+		DiarySubject(
+			scheduleUuid = item["scheduleUuid"]?.asText(),
+			label = item["label"]?.asText(),
+			type = item["type"]?.asText(),
+			timeslot = item["timeslot"]?.asText(),
+			cabinet = item["cabinet"]?.asText(),
+			theme = item["theme"]?.asText(),
+			teacher = item["teacherFio"]?.asText(),
+			homework = item["homeworkBody"]?.asText(),
+			hasFiles = item["hasFiles"]?.asBoolean() ?: false,
+			hasBooks = item["hasBooks"]?.asBoolean() ?: false,
+		)
+	}
+	return DiaryDay(get("day")?.asText(), get("date")?.asText(), get("isHoliday")?.asBoolean() ?: false, subjects)
+}
+
+private fun Map<String, JsonValue>.toScheduleDay(): ScheduleDay {
+	val lessons = (get("schedule") as? JsonValue.ArrayValue)?.values.orEmpty().map { value ->
+		val item = (value as? JsonValue.ObjectValue)?.values ?: throw IllegalArgumentException("unsupported schedule lesson")
+		ScheduleLesson(
+			uuid = item["uuid"]?.asText(),
+			label = item["label"]?.asText(),
+			timeslot = item["timeslot"]?.asText(),
+			cabinet = item["cabinet"]?.asText(),
+			teacher = item["teacherFio"]?.asText(),
+			type = item["type"]?.asText(),
+			theme = item["theme"]?.asText(),
+			homework = item["homeworkBody"]?.asText(),
+		)
+	}
+	return ScheduleDay(get("dateFormat")?.asText() ?: get("date_label")?.asText(), get("isCurrent")?.asBoolean() ?: false, get("isHoliday")?.asBoolean() ?: false, lessons)
+}
+
+private fun Map<String, JsonValue>.toGradeSubject(): GradeSubject {
+	val schedules = (get("schedules") as? JsonValue.ArrayValue)?.values.orEmpty().map { value ->
+		val item = (value as? JsonValue.ObjectValue)?.values ?: throw IllegalArgumentException("unsupported grade schedule")
+		GradeSchedule(item["uuid"]?.asText(), item["date"]?.asText(), item["timeStart"]?.asText(), item["markMax"]?.asText()?.toIntOrNull(), item["type"]?.asText())
+	}
+	return GradeSubject(get("subjectName")?.asText(), get("finalScore")?.asText(), schedules)
 }
 
 private fun Map<String, JsonValue>.requiredString(name: String): String =
 	when (val value = get(name)) {
 		is JsonValue.StringValue -> value.value
 		else -> throw IllegalArgumentException("unsupported $name shape")
+	}
+
+private fun JsonValue.asText(): String? = when (this) {
+	is JsonValue.StringValue -> value
+	is JsonValue.NumberValue -> value
+	else -> null
+}
+
+private fun JsonValue.asBoolean(): Boolean? = (this as? JsonValue.BooleanValue)?.value
+
+private fun parseInstant(value: String): Instant = runCatching { Instant.parse(value) }.getOrElse {
+		LocalDateTime.parse(value.replace(' ', 'T')).toInstant(ZoneOffset.UTC)
 	}
 
 private fun Map<String, JsonValue>.requiredObject(name: String): Map<String, JsonValue> =
@@ -108,7 +226,7 @@ private sealed interface JsonValue {
 	data class ObjectValue(val values: Map<String, JsonValue>) : JsonValue
 	data class ArrayValue(val values: List<JsonValue>) : JsonValue
 	data class NumberValue(val value: String) : JsonValue
-	data object BooleanValue : JsonValue
+	data class BooleanValue(val value: Boolean) : JsonValue
 	data object NullValue : JsonValue
 }
 
@@ -158,8 +276,8 @@ private class JsonParser(private val source: String) {
 			peek('{') -> parseObjectValue()
 			peek('[') -> parseArrayValue()
 			peek('"') -> JsonValue.StringValue(parseString())
-			source.startsWith("true", position) -> { position += 4; JsonValue.BooleanValue }
-			source.startsWith("false", position) -> { position += 5; JsonValue.BooleanValue }
+			source.startsWith("true", position) -> { position += 4; JsonValue.BooleanValue(true) }
+			source.startsWith("false", position) -> { position += 5; JsonValue.BooleanValue(false) }
 			source.startsWith("null", position) -> { position += 4; JsonValue.NullValue }
 			else -> JsonValue.NumberValue(parseNumber())
 		}

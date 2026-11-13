@@ -73,6 +73,7 @@ class SchoolRepositoryImpl(
 	private val sessions: SessionAccess,
 	private val store: SnapshotStore,
 	private val now: () -> Instant = { Instant.now() },
+	private val context: (String, String) -> ReadContext = { token, _ -> ReadContext(token) },
 ) : SchoolRepository {
 	private val lock = Any()
 	private val states = mutableMapOf<String, DataState<*>>()
@@ -97,7 +98,7 @@ class SchoolRepositoryImpl(
 	private fun <T> refresh(key: String, call: (ReadContext) -> GatewayReadResult<T>) {
 		val session = sessions.currentSession() ?: return publishFailure(key, AppError.LoginRequired)
 		val token = sessions.tokenFor(session) ?: return publishFailure(key, AppError.LoginRequired)
-		val result = try { call(ReadContext(token)) } catch (_: Exception) { GatewayReadResult.Failure(AppError.Network) }
+		val result = try { call(context(token, key)) } catch (_: Exception) { GatewayReadResult.Failure(AppError.Network) }
 		sessions.withSessionLock {
 			synchronized(lock) {
 				if (sessions.currentSession() != session) return@synchronized

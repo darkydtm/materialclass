@@ -74,11 +74,33 @@ data object HomeModel
 
 data class DiaryModel(
 	val dayCount: Int,
+	val rangeLabel: String? = null,
+	val days: List<DiaryDay> = emptyList(),
 ) {
 	init {
 		require(dayCount >= 0) { "Diary day count must not be negative" }
 	}
 }
+
+data class DiaryDay(
+	val dayLabel: String?,
+	val dateLabel: String?,
+	val isHoliday: Boolean,
+	val subjects: List<DiarySubject>,
+)
+
+data class DiarySubject(
+	val scheduleUuid: String?,
+	val label: String?,
+	val type: String?,
+	val timeslot: String?,
+	val cabinet: String?,
+	val theme: String?,
+	val teacher: String?,
+	val homework: String?,
+	val hasFiles: Boolean,
+	val hasBooks: Boolean,
+)
 
 data class DiaryWeeksModel(
 	val weekCount: Int,
@@ -109,6 +131,7 @@ data class SubjectsModel(
 data class ScheduleModel(
 	val dayCount: Int,
 	val daysWithSchedule: Int = 0,
+	val days: List<ScheduleDay> = emptyList(),
 ) {
 	init {
 		require(dayCount >= 0) { "Schedule day count must not be negative" }
@@ -116,15 +139,48 @@ data class ScheduleModel(
 	}
 }
 
+data class ScheduleDay(
+	val dateLabel: String?,
+	val isCurrent: Boolean,
+	val isHoliday: Boolean,
+	val lessons: List<ScheduleLesson>,
+)
+
+data class ScheduleLesson(
+	val uuid: String?,
+	val label: String?,
+	val timeslot: String?,
+	val cabinet: String?,
+	val teacher: String?,
+	val type: String?,
+	val theme: String?,
+	val homework: String?,
+)
+
 data object LessonDetailModel
 
 data class GradesModel(
 	val subjectCount: Int,
+	val subjects: List<GradeSubject> = emptyList(),
 ) {
 	init {
 		require(subjectCount >= 0) { "Grade subject count must not be negative" }
 	}
 }
+
+data class GradeSubject(
+	val subjectName: String?,
+	val finalScore: String?,
+	val schedules: List<GradeSchedule>,
+)
+
+data class GradeSchedule(
+	val uuid: String?,
+	val date: String?,
+	val timeStart: String?,
+	val markMax: Int?,
+	val type: String?,
+)
 
 data object AttendanceModel
 
@@ -134,6 +190,9 @@ data class ProfileModel(
 	val accountId: AccountId,
 	val schoolLabel: String?,
 	val groupLabel: String?,
+	val fullName: String? = null,
+	val region: String? = null,
+	val schoolYear: Int? = null,
 ) {
 	init {
 		require(schoolLabel?.isNotBlank() != false) { "School label must not be blank" }

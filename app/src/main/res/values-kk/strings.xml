@@ -11,6 +11,13 @@
 	<string name="attendance">Қатысу</string>
 	<string name="subject_detail">Пән</string>
 	<string name="login_prompt">Жалғастыру үшін кіріңіз</string>
+	<string name="home_description">Сабақ кестесі, тапсырмалар және бағалар - бір жерде.</string>
+	<string name="week_title">Сабақ кестесі</string>
+	<string name="diary_title">Күнделік</string>
+	<string name="greeting_day">Қайырлы күн,</string>
+	<string name="student_name">Оқушы</string>
+	<string name="student_context">Оқу деректері</string>
+	<string name="day_progress">Күн барысы</string>
 	<string name="login">Логин</string>
 	<string name="password">Құпиясөз</string>
 	<string name="login_action">Кіру</string>

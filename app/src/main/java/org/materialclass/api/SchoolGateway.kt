@@ -3,6 +3,7 @@ package org.materialclass.api
 import java.net.URLEncoder
 import org.materialclass.data.DiaryModel
 import org.materialclass.data.DiaryWeeksModel
+import org.materialclass.data.GradesModel
 import org.materialclass.data.PeriodsModel
 import org.materialclass.data.ScheduleModel
 import org.materialclass.data.SubjectsModel
@@ -81,6 +82,9 @@ class SchoolGateway(
 	fun subjects(context: ReadContext): GatewayReadResult<SubjectsModel> =
 		read(context, SUBJECTS_PATH, ContractMapper::mapSubjects)
 
+	fun grades(context: ReadContext): GatewayReadResult<GradesModel> =
+		read(context, SUBJECTS_PATH, ContractMapper::mapGrades)
+
 	fun schedule(context: ReadContext): GatewayReadResult<ScheduleModel> =
 		read(context, SCHEDULE_PATH, ContractMapper::mapSchedule)
 
@@ -151,6 +155,32 @@ class SchoolGateway(
 			}
 			append('"')
 		}
+	}
+}
+
+class UrlConnectionTransport : HttpsTransport {
+	override fun execute(request: HttpRequestData): HttpResponseData {
+		val connection = java.net.URI(request.url).toURL().openConnection() as java.net.HttpURLConnection
+		try {
+			connection.requestMethod = request.method
+			connection.connectTimeout = TIMEOUT_MS
+			connection.readTimeout = TIMEOUT_MS
+			connection.useCaches = false
+			request.headers.forEach { (name, value) -> connection.setRequestProperty(name, value) }
+			if (request.body.isNotEmpty()) {
+				connection.doOutput = true
+				connection.outputStream.use { it.write(request.body.toByteArray(Charsets.UTF_8)) }
+			}
+			val stream = if (connection.responseCode in 200..299) connection.inputStream else connection.errorStream
+			val body = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+			return HttpResponseData(connection.responseCode, connection.contentType.orEmpty(), body)
+		} finally {
+			connection.disconnect()
+		}
+	}
+
+	private companion object {
+		const val TIMEOUT_MS = 15_000
 	}
 }
 
