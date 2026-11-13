@@ -1,5 +1,9 @@
 package org.materialclass.ui
 
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -32,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import java.util.Locale
 
@@ -46,9 +51,13 @@ internal fun SettingsScreen(
 	homeworkNotifications: Boolean,
 	backgroundWork: Boolean,
 ) {
+	val context = LocalContext.current
 	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
 		Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-			SettingRow(text("language"), text("language_${language.tag}")) { navigator.go(AppRoute.SettingsLanguage) }
+			SettingRow(text("language"), text("language_${language.tag}")) {
+				val action = if (Build.VERSION.SDK_INT >= 33) Settings.ACTION_APP_LOCALE_SETTINGS else Settings.ACTION_LOCALE_SETTINGS
+				context.startActivity(Intent(action, Uri.parse("package:${context.packageName}")))
+			}
 			SettingRow(text("theme"), text(if (theme == ThemeMode.BLACK) "theme_amoled" else "theme_${theme.name.lowercase(Locale.ROOT)}")) { navigator.go(AppRoute.SettingsTheme) }
 			SettingRow(text("notifications"), text("notifications_description")) { navigator.go(AppRoute.SettingsNotifications) }
 			SettingRow(text("background_work"), text("background_work_description")) { navigator.go(AppRoute.BackgroundWork) }

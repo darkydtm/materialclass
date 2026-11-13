@@ -1,6 +1,6 @@
 package org.materialclass.ui
 
-import android.content.res.Configuration
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
@@ -16,7 +16,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import java.util.Locale
+
 import org.materialclass.api.AppError
 import org.materialclass.api.GatewayLoginResult
 import org.materialclass.api.LoginCredentials
@@ -32,7 +32,8 @@ fun MaterialClassApp(
 ) {
 	val context = LocalContext.current
 	val actualPreferences = preferences ?: remember(context) { AppPreferences(context) }
-	var language by remember(actualPreferences) { mutableStateOf(actualPreferences.language()) }
+	val configuration = LocalConfiguration.current
+	val language = AppLanguage.entries.firstOrNull { it.tag == configuration.locales[0].language } ?: AppLanguage.RU
 	var theme by remember(actualPreferences) { mutableStateOf(actualPreferences.theme()) }
 	var newGradeNotifications by remember(actualPreferences) { mutableStateOf(actualPreferences.newGradeNotifications()) }
 	var homeworkNotifications by remember(actualPreferences) { mutableStateOf(actualPreferences.homeworkNotifications()) }
@@ -42,19 +43,13 @@ fun MaterialClassApp(
 	val viewModel = remember(repository, loginHandler) { SchoolViewModel(repository, loginHandler) }
 	var selectedSubject by rememberSaveable { mutableStateOf("") }
 	var selectedLesson by rememberSaveable { mutableStateOf("") }
-	val configuration = LocalConfiguration.current
-	val localizedContext = remember(language, context, configuration) {
-		val localizedConfiguration = Configuration(configuration)
-		localizedConfiguration.setLocale(Locale.forLanguageTag(language.tag))
-		context.createConfigurationContext(localizedConfiguration)
-	}
-	val text: (String) -> String = remember(localizedContext) {
+	val text: (String) -> String = remember(context, configuration) {
 		val values = HashMap<String, String>()
 		{ key ->
 			values.getOrPut(key) {
-				localizedContext.resources.getIdentifier(key, "string", localizedContext.packageName)
+				context.resources.getIdentifier(key, "string", context.packageName)
 					.takeIf { it != 0 }
-					?.let(localizedContext::getString)
+					?.let(context::getString)
 					?: key
 			}
 		}
@@ -86,7 +81,7 @@ fun MaterialClassApp(
 					onSubjectSelected = { selectedSubject = it },
 					selectedLesson = selectedLesson,
 					onLessonSelected = { selectedLesson = it },
-					onLanguage = { language = it; actualPreferences.setLanguage(it) },
+					onLanguage = { actualPreferences.setLanguage(it) },
 					onTheme = { theme = it; actualPreferences.setTheme(it) },
 					newGradeNotifications = newGradeNotifications,
 					onNewGradeNotifications = { newGradeNotifications = it; actualPreferences.setNewGradeNotifications(it) },

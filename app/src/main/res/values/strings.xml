@@ -1,4 +1,5 @@
 <resources>
+	<string name="quarter">Четверть</string>
 	<string name="app_name">MaterialClass</string>
 	<string name="home">Главная</string>
 	<string name="schedule">Расписание</string>
