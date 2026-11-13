@@ -315,7 +315,12 @@ private fun Map<String, JsonValue>.toYearGradeSubject(): GradeSubject {
 	)
 }
 
-private fun Map<String, JsonValue>.score(name: String): String? = get(name)?.scoreValue()
+private fun Map<String, JsonValue>.score(name: String): String? = when (val value = get(name)) {
+	null, JsonValue.NullValue -> null
+	is JsonValue.StringValue, is JsonValue.NumberValue -> value.asText()
+	is JsonValue.ObjectValue -> value.values["mark"]?.asText() ?: value.values["value"]?.asText()
+	else -> null
+}
 
 private fun JsonValue.scoreValue(): String? = when (this) {
 	JsonValue.NullValue -> null
