@@ -59,22 +59,21 @@ internal fun AppScaffold(
 	onBackgroundInterval: (Float) -> Unit,
 	onLogout: () -> Unit,
 ) {
-	val rootRoutes = listOf(AppRoute.Home, AppRoute.Diary, AppRoute.Schedule, AppRoute.Settings)
 	val titleKey = navigator.current.titleKey()
 	Scaffold(
 		topBar = {
 			TopAppBar(
 				colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-				title = {},
+				title = { Text(text(titleKey)) },
 				navigationIcon = {
-					if (navigator.current !in rootRoutes) {
+					if (navigator.current !in ROOT_ROUTES) {
 						IconButton(onClick = { navigator.back() }, modifier = Modifier.testTag("back")) {
 							Icon(Icons.Default.ArrowBack, contentDescription = text("back"))
 						}
 					}
 				},
 				actions = {
-					if (navigator.current in rootRoutes) {
+					if (navigator.current in ROOT_ROUTES) {
 						IconButton(onClick = { navigator.go(AppRoute.Profile) }) {
 							Icon(Icons.Default.Person, contentDescription = text("profile"))
 						}
@@ -83,27 +82,26 @@ internal fun AppScaffold(
 			)
 		},
 		bottomBar = {
-				if (navigator.current in rootRoutes) {
-					NavigationBar(
-						modifier = Modifier.navigationBarsPadding(),
-						containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
-						tonalElevation = 0.dp,
-					) {
-						rootRoutes.forEach { route ->
-							NavigationBarItem(
-								selected = navigator.current == route,
-								onClick = { navigator.go(route) },
-								icon = { Icon(route.icon(), contentDescription = null) },
-								label = { Text(text(route.labelKey())) },
-								colors = NavigationBarItemDefaults.colors(
-									selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
-									selectedTextColor = MaterialTheme.colorScheme.onPrimaryContainer,
-									indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-									unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-									unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-								),
-							)
-						}
+			if (navigator.current in ROOT_ROUTES) {
+				NavigationBar(
+					modifier = Modifier.navigationBarsPadding(),
+					containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+					tonalElevation = 0.dp,
+				) {
+					ROOT_ROUTES.forEach { route ->
+						NavigationBarItem(
+							selected = navigator.current == route,
+							onClick = { navigator.go(route) },
+							icon = { Icon(route.icon(), contentDescription = null) },
+							label = { Text(text(route.labelKey())) },
+							colors = NavigationBarItemDefaults.colors(
+								selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+								selectedTextColor = MaterialTheme.colorScheme.onPrimaryContainer,
+								indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+								unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+								unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+							),
+						)
 					}
 				}
 		},
@@ -154,6 +152,13 @@ private fun AppRoute.titleKey(): String = when (this) {
 	AppRoute.Settings, AppRoute.SettingsLanguage, AppRoute.SettingsTheme, AppRoute.SettingsNotifications, AppRoute.BackgroundWork -> "nav_settings"
 	AppRoute.Profile -> "profile"
 }
+
+private val ROOT_ROUTES = listOf(
+	AppRoute.Home,
+	AppRoute.Diary,
+	AppRoute.Schedule,
+	AppRoute.Settings,
+)
 
 private fun AppRoute.labelKey(): String = when (this) {
 	AppRoute.Home -> "nav_home"
