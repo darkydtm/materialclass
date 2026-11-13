@@ -387,6 +387,8 @@ fun MaterialClassApp(
 					text = text,
 					viewModel = viewModel,
 					snackbarHostState = snackbarHostState,
+					language = language,
+					theme = theme,
 					selectedSubject = selectedSubject,
 					onSubjectSelected = { selectedSubject = it },
 					selectedLesson = selectedLesson,
@@ -526,6 +528,8 @@ private fun AppScaffold(
 	text: (String) -> String,
 	viewModel: SchoolViewModel,
 	snackbarHostState: SnackbarHostState,
+	language: AppLanguage,
+	theme: ThemeMode,
 	selectedSubject: String,
 	onSubjectSelected: (String) -> Unit,
 	selectedLesson: String,
@@ -595,6 +599,10 @@ private fun AppScaffold(
 				padding,
 				text,
 				navigator,
+				language = language,
+				theme = theme,
+				newGradeNotifications = newGradeNotifications,
+				homeworkNotifications = homeworkNotifications,
 				backgroundWork = backgroundWork,
 			)
 			AppRoute.SettingsLanguage -> ChoiceScreen(padding, text, "language", AppLanguage.entries, onLanguage) { text("language_${it.tag}") }
@@ -934,6 +942,10 @@ private fun SettingsScreen(
 	padding: PaddingValues,
 	text: (String) -> String,
 	navigator: AppNavigator,
+	language: AppLanguage,
+	theme: ThemeMode,
+	newGradeNotifications: Boolean,
+	homeworkNotifications: Boolean,
 	backgroundWork: Boolean,
 ) {
 	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
@@ -942,9 +954,9 @@ private fun SettingsScreen(
 			Text(text("settings_description"), color = MaterialTheme.colorScheme.onSurfaceVariant)
 		}
 		Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-			SettingRow(text("language"), text("language_description")) { navigator.go(AppRoute.SettingsLanguage) }
-			SettingRow(text("theme"), text("theme_description")) { navigator.go(AppRoute.SettingsTheme) }
-			SettingRow(text("notifications"), text("notifications_description")) { navigator.go(AppRoute.SettingsNotifications) }
+			SettingRow(text("language"), text("language_${language.tag}")) { navigator.go(AppRoute.SettingsLanguage) }
+			SettingRow(text("theme"), text(if (theme == ThemeMode.BLACK) "theme_amoled" else "theme_${theme.name.lowercase(Locale.ROOT)}")) { navigator.go(AppRoute.SettingsTheme) }
+			SettingRow(text("notifications"), text(if (newGradeNotifications || homeworkNotifications) "notifications_on" else "notifications_off")) { navigator.go(AppRoute.SettingsNotifications) }
 			SettingRow(text("background_work"), text(if (backgroundWork) "notifications_on" else "notifications_off")) { navigator.go(AppRoute.BackgroundWork) }
 		}
 	}
