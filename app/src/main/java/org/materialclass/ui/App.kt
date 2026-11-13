@@ -99,7 +99,7 @@ public class AppNavigator(start: AppRoute) {
 
 	public fun back(): Boolean {
 		if (stack.size == 1) return false
-		stack.removeLast()
+		stack.removeAt(stack.lastIndex)
 		route = stack.last()
 		return true
 	}
