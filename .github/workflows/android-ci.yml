@@ -42,7 +42,7 @@ jobs:
           profile: pixel_2
           script: ./gradlew --no-daemon connectedDebugAndroidTest
           force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           disable-animations: true
 
       - name: Upload verification reports
