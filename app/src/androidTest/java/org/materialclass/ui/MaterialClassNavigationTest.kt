@@ -2,7 +2,7 @@ package org.materialclass.ui
 
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.ui.test.assertExists
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -21,7 +21,7 @@ class MaterialClassNavigationTest {
 			MaterialClassApp(loginHandler = { GatewayLoginResult.Failure(org.materialclass.api.AppError.InvalidCredentials) })
 		}
 		composeRule.onNodeWithTag("login-button").performClick()
-		composeRule.onNodeWithText("Проверьте логин и пароль").assertExists()
+		composeRule.onNodeWithText("Проверьте логин и пароль").assertIsDisplayed()
 	}
 
 	@Test
