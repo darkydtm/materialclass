@@ -100,7 +100,6 @@ internal fun AppScaffold(
 					}
 				}
 		},
-		},
 		snackbarHost = { SnackbarHost(snackbarHostState) },
 		content = { padding ->
 			when (navigator.current) {
