@@ -303,6 +303,9 @@ internal fun <T> DataState<T>?.readyValue(): T? = when (this) {
 	else -> null
 }
 
+internal fun stableItemKey(kind: String, index: Int, identity: String?): String =
+	identity?.takeIf(String::isNotBlank)?.let { "$kind:$it" } ?: "$kind:index:$index"
+
 internal fun scheduleLessonStableKeys(lessons: List<ScheduleLesson>, scope: String = ""): List<String> {
 	val keys = uniqueStableKeys("lesson", lessons.map(::scheduleLessonIdentity))
 	return keys.map { key -> if (scope.isBlank()) key else "day:$scope:$key" }
