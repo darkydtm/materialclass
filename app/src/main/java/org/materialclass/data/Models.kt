@@ -180,6 +180,50 @@ data class GradeSubject(
 	val totalMissCount: Int? = null,
 )
 
+data class JournalGrade(
+	val scheduleUuid: String?,
+	val attendance: String?,
+	val formattedScore: String?,
+	val sor: String?,
+	val soch: String?,
+	val po: String?,
+	val mark: String? = null,
+	val markMax: String? = null,
+	val comment: String? = null,
+)
+
+data class JournalGradesModel(
+	val grades: List<JournalGrade>,
+	val groupsSucceeded: Int,
+	val groupsFailed: Int,
+)
+
+data class HomeworkItem(
+	val uuid: String?,
+	val subjectName: String?,
+	val theme: String?,
+	val body: String?,
+	val date: String?,
+	val hasFiles: Boolean?,
+)
+
+data class HomeworksModel(val items: List<HomeworkItem>)
+
+data class HomeworkDetailModel(
+	val subjectName: String?,
+	val groupName: String?,
+	val date: String?,
+	val dateExpired: String?,
+	val themeName: String?,
+	val homeworkBody: String?,
+	val teacherFio: String?,
+)
+
+data class SystemDataModel(
+	val dataKeys: Set<String>,
+	val itemCount: Int?,
+)
+
 data class GradeSchedule(
 	val uuid: String?,
 	val date: String?,

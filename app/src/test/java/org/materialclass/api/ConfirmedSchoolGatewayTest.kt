@@ -136,7 +136,7 @@ class ConfirmedSchoolGatewayTest {
 	}
 
 	@Test
-	fun refreshAndTwoFactorAreExplicitlyBlockedWithoutAConfirmedContract() {
+	fun refreshRequiresAnActiveSessionAndTwoFactorRemainsUnsupported() {
 		val transportCalls = AtomicInteger()
 		val transport = SyntheticHttpsTransport { transportCalls.incrementAndGet(); HttpResponseData(500, "", "") }
 		val sessions = FakeSessionController()
@@ -149,7 +149,24 @@ class ConfirmedSchoolGatewayTest {
 		assertEquals(RefreshResult.LoginRequired, gateway.refresh())
 		assertEquals(TwoFactorResult.Unsupported, gateway.startTwoFactor())
 		assertEquals(0, transportCalls.get())
-		assertEquals(1, sessions.clearCount)
+		assertEquals(0, sessions.clearCount)
+	}
+
+	@Test
+	fun confirmedSessionRotatesRefreshTokens() {
+		val responses = ArrayDeque<HttpResponseData>()
+		responses += HttpResponseData(200, "application/json", "{\"access_token\":\"next-access\",\"refresh_token\":\"next-refresh\",\"exp_time\":\"2030-01-01T00:00:00Z\"}")
+		val transport = SyntheticHttpsTransport { responses.removeFirst() }
+		val sessions = FakeSessionController()
+		val gateway = ConfirmedSchoolGateway(
+			SchoolGateway(transport),
+			sessions,
+			SyntheticConfirmedStudentVerifier(AccountId("student-1")),
+		)
+		assertTrue(gateway.login(credentials) is LoginResult.Confirmed)
+		assertEquals(RefreshResult.Refreshed(sessions.active!!), gateway.refresh())
+		assertEquals("next-access", sessions.token)
+		assertEquals("next-refresh", sessions.refreshToken)
 	}
 
 	private fun loginWith(response: HttpResponseData): LoginResult = ConfirmedSchoolGateway(
@@ -180,6 +197,7 @@ private class SyntheticHttpsTransport(
 private class FakeSessionController : SessionController {
 	var active: ActiveSession? = null
 	var token: String? = null
+	var refreshToken: String? = null
 	var clearCount = 0
 
 	override fun activate(accountId: AccountId, token: String, expiresAt: Instant): ActiveSession {
@@ -188,9 +206,29 @@ private class FakeSessionController : SessionController {
 		return active!!
 	}
 
+	override fun setRefreshToken(session: ActiveSession, refreshToken: String): Boolean {
+		if (active != session) return false
+		this.refreshToken = refreshToken
+		return true
+	}
+
+	override fun currentSession(): ActiveSession? = active
+
+	override fun accessTokenFor(session: ActiveSession): String? = token.takeIf { active == session }
+
+	override fun refreshTokenFor(session: ActiveSession): String? = refreshToken.takeIf { active == session }
+
+	override fun replaceTokens(session: ActiveSession, accessToken: String, refreshToken: String, expiresAt: Instant): Boolean {
+		if (active != session) return false
+		token = accessToken
+		this.refreshToken = refreshToken
+		return true
+	}
+
 	override fun invalidateAndClear() {
 		active = null
 		token = null
+		refreshToken = null
 		clearCount++
 	}
 }

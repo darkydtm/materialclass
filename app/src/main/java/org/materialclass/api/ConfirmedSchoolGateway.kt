@@ -13,6 +13,11 @@ import org.materialclass.data.SubjectsModel
 
 interface SessionController {
 	fun activate(accountId: AccountId, token: String, expiresAt: Instant): ActiveSession
+	fun setRefreshToken(session: ActiveSession, refreshToken: String): Boolean = false
+	fun currentSession(): ActiveSession? = null
+	fun accessTokenFor(session: ActiveSession): String? = null
+	fun refreshTokenFor(session: ActiveSession): String? = null
+	fun replaceTokens(session: ActiveSession, accessToken: String, refreshToken: String, expiresAt: Instant): Boolean = false
 	fun invalidateAndClear()
 }
 
@@ -50,7 +55,9 @@ sealed interface LoginResult {
 }
 
 sealed interface RefreshResult {
+	data class Refreshed(val session: ActiveSession) : RefreshResult
 	data object LoginRequired : RefreshResult
+	data class Failed(val error: AppError) : RefreshResult
 }
 
 sealed interface TwoFactorResult {
@@ -81,13 +88,15 @@ class ConfirmedSchoolGateway(
 				IdentityDecision.ConfirmedStudent -> try {
 					signedInUser = result.response.userInfo
 					lastLoginResponse = result.response
-					LoginResult.Confirmed(
-						sessions.activate(
-							AccountId(result.response.userInfo.userId),
-							result.response.accessToken,
-							result.response.expiresAt,
-						),
+					val session = sessions.activate(
+						AccountId(result.response.userInfo.userId),
+						result.response.accessToken,
+						result.response.expiresAt,
 					)
+					if (!sessions.setRefreshToken(session, result.response.refreshToken)) {
+						throw IllegalStateException("refresh token was not stored")
+					}
+					LoginResult.Confirmed(session)
 				} catch (_: Exception) {
 					sessions.invalidateAndClear()
 					LoginResult.Failure(AppError.SessionActivationFailed)
@@ -115,9 +124,28 @@ class ConfirmedSchoolGateway(
 	}
 
 	fun refresh(): RefreshResult {
-		// Keep refresh disabled until its route, body, rotation and expiry contract are observed.
-		sessions.invalidateAndClear()
-		return RefreshResult.LoginRequired
+		val session = sessions.currentSession() ?: return RefreshResult.LoginRequired
+		val refreshToken = sessions.refreshTokenFor(session) ?: return RefreshResult.LoginRequired
+		return when (val result = gateway.refresh(refreshToken)) {
+			is GatewayRefreshResult.Success -> {
+				if (!sessions.replaceTokens(
+						session,
+						result.response.accessToken,
+						result.response.refreshToken,
+						result.response.expiresAt,
+					)) {
+					sessions.invalidateAndClear()
+					RefreshResult.Failed(AppError.IdentityNotConfirmed)
+				} else {
+					lastLoginResponse = null
+					RefreshResult.Refreshed(session)
+				}
+			}
+			is GatewayRefreshResult.Failure -> if (result.error == AppError.LoginRequired) {
+				sessions.invalidateAndClear()
+				RefreshResult.LoginRequired
+			} else RefreshResult.Failed(result.error)
+		}
 	}
 
 	fun startTwoFactor(): TwoFactorResult = TwoFactorResult.Unsupported
@@ -135,6 +163,38 @@ class ConfirmedSchoolGateway(
 	fun grades(context: ReadContext): GatewayReadResult<GradesModel> = gateway.grades(context)
 
 	fun schedule(context: ReadContext): GatewayReadResult<ScheduleModel> = gateway.schedule(context)
+
+	fun homeworks(context: ReadContext): GatewayReadResult<org.materialclass.data.HomeworksModel> = gateway.homeworks(context)
+
+	fun homeworkDetail(context: ReadContext): GatewayReadResult<org.materialclass.data.HomeworkDetailModel> = gateway.homeworkDetail(context)
+
+	fun journalGrades(context: ReadContext): GatewayReadResult<org.materialclass.data.JournalGradesModel> = gateway.journalGrades(context)
+
+	fun downloadSubjectsExcel(context: ReadContext): HttpResult = gateway.downloadSubjectsExcel(context)
+
+	fun educationYears(context: ReadContext): GatewayReadResult<org.materialclass.data.SystemDataModel> = gateway.educationYears(context)
+
+	fun systemSettings(context: ReadContext): GatewayReadResult<org.materialclass.data.SystemDataModel> = gateway.systemSettings(context)
+
+	fun systemRelatedChildren(context: ReadContext): GatewayReadResult<org.materialclass.data.SystemDataModel> = gateway.relatedChildren(context)
+
+	fun logout(): GatewayReadResult<Unit> {
+		val session = sessions.currentSession() ?: return GatewayReadResult.Failure(AppError.LoginRequired)
+		val user = signedInUser ?: return GatewayReadResult.Failure(AppError.LoginRequired)
+		val accessToken = sessions.accessTokenFor(session) ?: return GatewayReadResult.Failure(AppError.LoginRequired)
+		val context = ReadContext(
+			accessToken = accessToken,
+			queryParameters = mapOf("schoolId" to user.schoolId.orEmpty(), "eduYear" to user.eduYear.orEmpty())
+				.filterValues { it.isNotBlank() },
+		)
+		val result = gateway.logout(context)
+		if (result is GatewayReadResult.Success) {
+			signedInUser = null
+			lastLoginResponse = null
+			sessions.invalidateAndClear()
+		}
+		return result
+	}
 
 	fun home(): GatewayReadResult<org.materialclass.data.HomeModel> = unsupported()
 
@@ -187,8 +247,25 @@ class ConfirmedSchoolGateway(
 				parameters["period"] = key.substringAfter(':')
 				user.groupId?.let { parameters["groupId"] = it }
 			}
+			key == "homeworks" || key.startsWith("homeworks:") -> {
+				user.studentGroupUuid?.let { parameters["studentGroupUuid"] = it }
+			}
+			key.startsWith("homework:") -> {
+				parameters["homeworkUuid"] = key.substringAfter(':')
+			}
+			key.startsWith("subjectsExcel:") -> {
+				parameters["periodType"] = "quarter"
+				parameters["period"] = key.substringAfter(':')
+				user.groupId?.let { parameters["groupId"] = it }
+			}
+			key.startsWith("journal:") -> {
+				parameters["userId"] = user.userId
+				parameters["studentGroupUuid"] = user.studentGroupUuid.orEmpty()
+				parameters["dateFrom"] = key.substringAfter(':').substringBefore(':') + "T00:00:00.000Z"
+				parameters["dateTo"] = key.substringAfterLast(':') + "T00:00:00.000Z"
+			}
 		}
-		return ReadContext(token, parameters.filterValues { it.isNotBlank() })
+		return ReadContext(token, parameters.filterValues { it.isNotBlank() }, user.chatToken)
 	}
 
 	private fun <T> unsupported(): GatewayReadResult<T> = GatewayReadResult.Failure(AppError.UnsupportedContract)

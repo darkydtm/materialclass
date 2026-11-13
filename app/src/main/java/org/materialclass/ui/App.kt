@@ -73,7 +73,9 @@ import org.materialclass.data.DataState
 import org.materialclass.data.DateRange
 import org.materialclass.data.DiaryModel
 import org.materialclass.data.GradesModel
+import org.materialclass.data.HomeworksModel
 import org.materialclass.data.HomeModel
+import org.materialclass.data.JournalGradesModel
 import org.materialclass.data.ProfileModel
 import org.materialclass.data.ScheduleModel
 import org.materialclass.data.SchoolRepository
@@ -87,6 +89,8 @@ public enum class AppRoute {
 	Schedule,
 	LessonDetail,
 	Grades,
+	Homework,
+	Journal,
 	Attendance,
 	Diary,
 	SubjectDetail,
@@ -207,6 +211,10 @@ public class SchoolViewModel(
 		private set
 	public var gradesState: DataState<GradesModel>? by mutableStateOf(null)
 		private set
+	public var homeworksState: DataState<HomeworksModel>? by mutableStateOf(null)
+		private set
+	public var journalState: DataState<JournalGradesModel>? by mutableStateOf(null)
+		private set
 
 	private val week: DateRange
 		get() {
@@ -275,6 +283,20 @@ public class SchoolViewModel(
 		io.execute { source.refreshGrades(period) }
 	}
 
+	public fun loadHomeworks() {
+		val source = repository ?: run { homeworksState = null; return }
+		val observation = source.observeHomeworks()
+		observation.observe { homeworksState = it }
+		io.execute { source.refreshHomeworks() }
+	}
+
+	public fun loadJournal() {
+		val source = repository ?: run { journalState = null; return }
+		val observation = source.observeJournal(week)
+		observation.observe { journalState = it }
+		io.execute { source.refreshJournal(week) }
+	}
+
 	public fun retry(route: AppRoute) {
 		when (route) {
 			AppRoute.Home -> loadHome()
@@ -294,6 +316,8 @@ public class SchoolViewModel(
 		diaryState = null
 		profileState = null
 		gradesState = null
+		homeworksState = null
+		journalState = null
 		loginState = LoginUiState.Ready
 	}
 }
@@ -366,7 +390,7 @@ private fun AppScaffold(
 	notifications: Boolean,
 	onLogout: () -> Unit,
 ) {
-	val rootRoutes = listOf(AppRoute.Home, AppRoute.Diary, AppRoute.Schedule, AppRoute.Settings)
+	val rootRoutes = listOf(AppRoute.Home, AppRoute.Diary, AppRoute.Schedule, AppRoute.Homework, AppRoute.Journal, AppRoute.Settings)
 	Scaffold(
 		topBar = {
 			TopAppBar(
@@ -399,9 +423,11 @@ private fun AppScaffold(
 		when (navigator.current) {
 			AppRoute.Home -> HomeScreen(padding, title, viewModel, { viewModel.retry(AppRoute.Home) }, { navigator.go(AppRoute.Schedule) })
 			AppRoute.Schedule -> ScheduleScreen(padding, title, viewModel, { navigator.go(AppRoute.LessonDetail) })
-			AppRoute.LessonDetail -> UnsupportedScreen(padding, title, "lesson_detail_unavailable")
 			AppRoute.Grades -> GradesScreen(padding, title, viewModel)
+			AppRoute.Homework -> HomeworkScreen(padding, title, viewModel)
+			AppRoute.Journal -> JournalScreen(padding, title, viewModel)
 			AppRoute.Attendance -> UnsupportedScreen(padding, title, "unsupported")
+			AppRoute.LessonDetail -> UnsupportedScreen(padding, title, "lesson_detail_unavailable")
 			AppRoute.Diary -> DiaryScreen(padding, title, viewModel, { navigator.go(AppRoute.SubjectDetail) })
 			AppRoute.SubjectDetail -> UnsupportedScreen(padding, title, "subject_detail_unavailable")
 			AppRoute.Calculator -> CalculatorScreen(padding, title)
@@ -421,6 +447,8 @@ private fun AppRoute.titleKey(): String = when (this) {
 	AppRoute.Schedule -> "schedule"
 	AppRoute.LessonDetail -> "lesson_detail"
 	AppRoute.Grades -> "grades"
+	AppRoute.Homework -> "homework"
+	AppRoute.Journal -> "journal"
 	AppRoute.Attendance -> "attendance"
 	AppRoute.Diary -> "diary"
 	AppRoute.SubjectDetail -> "subject_detail"
@@ -433,6 +461,8 @@ private fun AppRoute.labelKey(): String = when (this) {
 	AppRoute.Home -> "home"
 	AppRoute.Schedule -> "schedule"
 	AppRoute.Diary -> "diary"
+	AppRoute.Homework -> "homework"
+	AppRoute.Journal -> "journal"
 	AppRoute.Settings -> "settings"
 	else -> titleKey()
 }
@@ -441,6 +471,8 @@ private fun AppRoute.icon(): ImageVector = when (this) {
 	AppRoute.Home -> Icons.Default.Home
 	AppRoute.Schedule -> Icons.Default.CalendarMonth
 	AppRoute.Diary -> Icons.Default.MenuBook
+	AppRoute.Homework -> Icons.Default.Home
+	AppRoute.Journal -> Icons.Default.MenuBook
 	else -> Icons.Default.Settings
 }
 
@@ -564,6 +596,43 @@ private fun GradesScreen(padding: PaddingValues, title: (String) -> String, view
 				Row(modifier = Modifier.fillMaxWidth().padding(20.dp), horizontalArrangement = Arrangement.SpaceBetween) {
 					subject.subjectName?.let { Text(it, style = MaterialTheme.typography.titleMedium) }
 					Text(subject.finalScore ?: "-", style = MaterialTheme.typography.headlineSmall)
+				}
+			}
+		}
+	}
+}
+
+@Composable
+private fun HomeworkScreen(padding: PaddingValues, title: (String) -> String, viewModel: SchoolViewModel) {
+	LaunchedEffect(Unit) { viewModel.loadHomeworks() }
+	Column(modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+		Text(title("homework"), style = MaterialTheme.typography.headlineMedium)
+		StatePanel(title, viewModel.homeworksState.toUiState(), { viewModel.loadHomeworks() })
+		viewModel.homeworksState?.readyValue()?.items?.forEach { item ->
+			Card(modifier = Modifier.fillMaxWidth()) {
+				Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+					Text(item.subjectName ?: title("unknown"), style = MaterialTheme.typography.titleMedium)
+					item.theme?.let { Text(it, style = MaterialTheme.typography.bodyLarge) }
+					item.body?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+					item.date?.let { Text(it, style = MaterialTheme.typography.labelMedium) }
+				}
+			}
+		}
+	}
+}
+
+@Composable
+private fun JournalScreen(padding: PaddingValues, title: (String) -> String, viewModel: SchoolViewModel) {
+	LaunchedEffect(Unit) { viewModel.loadJournal() }
+	Column(modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+		Text(title("journal"), style = MaterialTheme.typography.headlineMedium)
+		StatePanel(title, viewModel.journalState.toUiState(), { viewModel.loadJournal() })
+		viewModel.journalState?.readyValue()?.grades?.forEach { grade ->
+			Card(modifier = Modifier.fillMaxWidth()) {
+				Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+					Text(grade.scheduleUuid ?: title("unknown"), style = MaterialTheme.typography.titleMedium)
+					grade.mark?.let { Text("$it/${grade.markMax ?: "?"}") }
+					grade.attendance?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
 				}
 			}
 		}

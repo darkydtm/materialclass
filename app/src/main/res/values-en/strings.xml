@@ -8,6 +8,9 @@
 	<string name="profile">Profile</string>
 	<string name="lesson_detail">Lesson</string>
 	<string name="grades">Grades</string>
+	<string name="homework">Homework</string>
+	<string name="journal">Journal</string>
+	<string name="unknown">Unknown</string>
 	<string name="attendance">Attendance</string>
 	<string name="subject_detail">Subject</string>
 	<string name="login_prompt">Sign in to continue</string>

@@ -39,7 +39,10 @@ class MainActivity : ComponentActivity() {
 				override fun diary(context: org.materialclass.api.ReadContext) = confirmedGateway.diary(context)
 				override fun schedule(context: org.materialclass.api.ReadContext) = confirmedGateway.schedule(context)
 				override fun grades(context: org.materialclass.api.ReadContext) = confirmedGateway.grades(context)
+				override fun homeworks(context: org.materialclass.api.ReadContext) = confirmedGateway.homeworks(context)
+				override fun journalGrades(context: org.materialclass.api.ReadContext) = confirmedGateway.journalGrades(context)
 				override fun profile() = confirmedGateway.profile()
+				override fun logout() = confirmedGateway.logout()
 			},
 			sessions = sessionCoordinator,
 			store = EncryptedSnapshotStore(sessionCoordinator.cache(), sessionCoordinator),

@@ -10,11 +10,17 @@ import org.materialclass.data.DiaryWeeksModel
 import org.materialclass.data.GradeSchedule
 import org.materialclass.data.GradeSubject
 import org.materialclass.data.GradesModel
+import org.materialclass.data.HomeworkDetailModel
+import org.materialclass.data.HomeworkItem
+import org.materialclass.data.HomeworksModel
+import org.materialclass.data.JournalGrade
+import org.materialclass.data.JournalGradesModel
 import org.materialclass.data.PeriodsModel
 import org.materialclass.data.ScheduleDay
 import org.materialclass.data.ScheduleLesson
 import org.materialclass.data.ScheduleModel
 import org.materialclass.data.SubjectsModel
+import org.materialclass.data.SystemDataModel
 
 /** Map only fields observed in the confirmed responses. */
 object ContractMapper {
@@ -32,6 +38,17 @@ object ContractMapper {
 		GatewayLoginResult.Success(LoginResponse(accessToken, refreshToken, expiresAt, userInfo.toUserInfo(userId)))
 	} catch (_: Exception) {
 		GatewayLoginResult.Failure(AppError.InvalidResponse)
+	}
+
+	fun mapRefreshResponse(body: String): GatewayRefreshResult = try {
+		val root = JsonParser(body).parseObject()
+		val accessToken = root.requiredString("access_token")
+		val refreshToken = root.requiredString("refresh_token")
+		val expiresAt = parseInstant(root.requiredString("exp_time"))
+		if (accessToken.isBlank() || refreshToken.isBlank()) throw IllegalArgumentException("blank refresh field")
+		GatewayRefreshResult.Success(RefreshResponse(accessToken, refreshToken, expiresAt))
+	} catch (_: Exception) {
+		GatewayRefreshResult.Failure(AppError.InvalidResponse)
 	}
 
 	fun mapDiaryWeeks(body: String): GatewayReadResult<DiaryWeeksModel> = try {
@@ -100,6 +117,58 @@ object ContractMapper {
 		GatewayReadResult.Failure(AppError.InvalidResponse)
 	}
 
+	fun mapHomeworks(body: String): GatewayReadResult<HomeworksModel> = try {
+		val items = JsonParser(body).parseObject().requiredArray("data")
+		if (items.any { it !is JsonValue.ObjectValue }) throw IllegalArgumentException("unsupported homework shape")
+		if (items.isEmpty()) GatewayReadResult.Empty else GatewayReadResult.Success(
+			HomeworksModel(items.map { (it as JsonValue.ObjectValue).values.toHomeworkItem() }),
+		)
+	} catch (_: Exception) {
+		GatewayReadResult.Failure(AppError.InvalidResponse)
+	}
+
+	fun mapHomeworkDetail(body: String): GatewayReadResult<HomeworkDetailModel> = try {
+		val data = JsonParser(body).parseObject().requiredObject("data")
+		if (data.isEmpty()) GatewayReadResult.Empty else GatewayReadResult.Success(data.toHomeworkDetail())
+	} catch (_: Exception) {
+		GatewayReadResult.Failure(AppError.InvalidResponse)
+	}
+
+	fun mapJournalGrades(body: String): GatewayReadResult<JournalGradesModel> = try {
+		val root = JsonParser(body).parseObject()
+		val dataValue = root["data"]
+		when (dataValue) {
+			is JsonValue.ArrayValue -> if (dataValue.values.isEmpty()) GatewayReadResult.Empty else throw IllegalArgumentException("unsupported journal array shape")
+			is JsonValue.ObjectValue -> {
+				val grades = dataValue.values.map { (scheduleUuid, value) ->
+					val item = (value as? JsonValue.ObjectValue)?.values
+						?: throw IllegalArgumentException("unsupported journal grade shape")
+					item.toJournalGrade(scheduleUuid)
+				}
+				if (grades.isEmpty()) GatewayReadResult.Empty else GatewayReadResult.Success(JournalGradesModel(grades, 1, 0))
+			}
+			else -> throw IllegalArgumentException("unsupported journal data shape")
+		}
+	} catch (_: Exception) {
+		GatewayReadResult.Failure(AppError.InvalidResponse)
+	}
+	fun mapSystem(body: String): GatewayReadResult<SystemDataModel> = try {
+		val data = JsonParser(body).parseObject()["data"]
+		when (data) {
+			is JsonValue.ObjectValue -> GatewayReadResult.Success(
+				SystemDataModel(
+					dataKeys = data.values.keys,
+					itemCount = data.values.values.firstOrNull { it is JsonValue.ArrayValue }
+						?.let { (it as JsonValue.ArrayValue).values.size },
+				),
+			)
+			is JsonValue.ArrayValue -> if (data.values.isEmpty()) GatewayReadResult.Empty else GatewayReadResult.Success(SystemDataModel(emptySet(), data.values.size))
+			else -> throw IllegalArgumentException("unsupported system data shape")
+		}
+	} catch (_: Exception) {
+		GatewayReadResult.Failure(AppError.InvalidResponse)
+	}
+
 }
 
 data class LoginResponse internal constructor(
@@ -109,6 +178,17 @@ data class LoginResponse internal constructor(
 	val userInfo: UserInfo,
 ) {
 	override fun toString(): String = "LoginResponse(userInfo=$userInfo)"
+}
+
+data class RefreshResponse internal constructor(
+	internal val accessToken: String,
+	internal val refreshToken: String,
+	internal val expiresAt: Instant,
+)
+
+sealed interface GatewayRefreshResult {
+	data class Success(val response: RefreshResponse) : GatewayRefreshResult
+	data class Failure(val error: AppError) : GatewayRefreshResult
 }
 
 data class UserInfo(
@@ -122,6 +202,7 @@ data class UserInfo(
 	val studentSchoolUuid: String? = null,
 	val studentGroupUuid: String? = null,
 	val eduYear: String? = null,
+	val chatToken: String? = null,
 	val role: String? = null,
 	val hasStudentContext: Boolean = false,
 ) {
@@ -155,6 +236,7 @@ private fun Map<String, JsonValue>.toUserInfo(userId: String): UserInfo {
 		studentGroupUuid = student?.get("studentGroupUuid")?.asText()
 			?: (student?.get("studentGroupUuids") as? JsonValue.ArrayValue)?.values?.firstOrNull()?.asText(),
 		eduYear = currentYear,
+		chatToken = get("chatToken")?.asText(),
 		role = get("role")?.asText(),
 		hasStudentContext = hasStudentContext,
 	)
@@ -230,6 +312,40 @@ private fun Map<String, JsonValue>.toYearGradeSubject(): GradeSubject {
 		quarter4 = attestations?.get("quarter4")?.asText(),
 		yearScore = yearScores?.get("yearScore")?.asText(),
 		totalMissCount = attendances?.get("totalMissCount")?.asText()?.toIntOrNull(),
+	)
+}
+
+private fun Map<String, JsonValue>.toHomeworkItem(): HomeworkItem = HomeworkItem(
+	uuid = get("uuid")?.asText(),
+	subjectName = get("subjectName")?.asText(),
+	theme = get("theme")?.asText() ?: get("currentLessonTheme")?.asText(),
+	body = get("body")?.asText(),
+	date = get("date")?.asText(),
+	hasFiles = get("hasFiles")?.asBoolean(),
+)
+
+private fun Map<String, JsonValue>.toHomeworkDetail(): HomeworkDetailModel = HomeworkDetailModel(
+	subjectName = get("subjectName")?.asText(),
+	groupName = get("groupName")?.asText(),
+	date = get("date")?.asText(),
+	dateExpired = get("dateExpired")?.asText(),
+	themeName = get("themeName")?.asText(),
+	homeworkBody = get("homeworkBody")?.asText(),
+	teacherFio = get("teacherFio")?.asText(),
+)
+
+private fun Map<String, JsonValue>.toJournalGrade(scheduleUuid: String): JournalGrade {
+	val formatted = (get("formattedScore") as? JsonValue.ObjectValue)?.values
+	return JournalGrade(
+		scheduleUuid = get("scheduleUuid")?.asText() ?: scheduleUuid,
+		attendance = get("attendance")?.asText(),
+		formattedScore = get("formattedScore")?.asText(),
+		sor = get("sor")?.asText(),
+		soch = get("soch")?.asText(),
+		po = get("po")?.asText(),
+		mark = formatted?.get("mark")?.asText(),
+		markMax = formatted?.get("markMax")?.asText(),
+		comment = formatted?.get("comment")?.asText(),
 	)
 }
 

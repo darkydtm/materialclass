@@ -10,11 +10,15 @@ interface SchoolRepository {
 	fun observeDiary(range: DateRange): RepositoryObservation<DiaryModel>
 	fun observeSchedule(range: DateRange): RepositoryObservation<ScheduleModel>
 	fun observeGrades(period: String): RepositoryObservation<GradesModel>
+	fun observeHomeworks(): RepositoryObservation<HomeworksModel>
+	fun observeJournal(range: DateRange): RepositoryObservation<JournalGradesModel>
 	fun observeProfile(): RepositoryObservation<ProfileModel>
 	fun refreshHome()
 	fun refreshDiary(range: DateRange)
 	fun refreshSchedule(range: DateRange)
 	fun refreshGrades(period: String)
+	fun refreshHomeworks()
+	fun refreshJournal(range: DateRange)
 	fun refreshProfile()
 	fun logout()
 }
@@ -24,7 +28,10 @@ interface RepositoryGateway {
 	fun diary(context: ReadContext): GatewayReadResult<DiaryModel>
 	fun schedule(context: ReadContext): GatewayReadResult<ScheduleModel>
 	fun grades(context: ReadContext): GatewayReadResult<GradesModel>
+	fun homeworks(context: ReadContext): GatewayReadResult<HomeworksModel> = GatewayReadResult.Failure(AppError.UnsupportedContract)
+	fun journalGrades(context: ReadContext): GatewayReadResult<JournalGradesModel> = GatewayReadResult.Failure(AppError.UnsupportedContract)
 	fun profile(): GatewayReadResult<ProfileModel>
+	fun logout(): GatewayReadResult<Unit> = GatewayReadResult.Success(Unit)
 }
 
 interface SessionAccess {
@@ -84,13 +91,20 @@ class SchoolRepositoryImpl(
 	override fun observeDiary(range: DateRange) = observation<DiaryModel>(diaryKey(range))
 	override fun observeSchedule(range: DateRange) = observation<ScheduleModel>(scheduleKey(range))
 	override fun observeGrades(period: String) = observation<GradesModel>(gradesKey(period))
+	override fun observeHomeworks() = observation<HomeworksModel>(HOMEWORKS)
+	override fun observeJournal(range: DateRange) = observation<JournalGradesModel>(journalKey(range))
 	override fun observeProfile() = observation<ProfileModel>(PROFILE)
 	override fun refreshHome() { refresh(HOME) { gateway.home(it) } }
 	override fun refreshDiary(range: DateRange) { refresh(diaryKey(range)) { gateway.diary(it) } }
 	override fun refreshSchedule(range: DateRange) { refresh(scheduleKey(range)) { gateway.schedule(it) } }
 	override fun refreshGrades(period: String) { refresh(gradesKey(period)) { gateway.grades(it) } }
+	override fun refreshHomeworks() { refresh(HOMEWORKS) { gateway.homeworks(it) } }
+	override fun refreshJournal(range: DateRange) { refresh(journalKey(range)) { gateway.journalGrades(it) } }
 	override fun refreshProfile() { refresh(PROFILE) { gateway.profile() } }
-	override fun logout() = sessions.withSessionLock { synchronized(lock) { states.clear(); observations.values.forEach { it.update(DataState.Loading) } } }
+	override fun logout() {
+		if (gateway.logout() !is GatewayReadResult.Success) return
+		sessions.withSessionLock { synchronized(lock) { states.clear(); observations.values.forEach { it.update(DataState.Loading) } } }
+	}
 
 	@Suppress("UNCHECKED_CAST")
 	private fun <T> observation(key: String): RepositoryObservation<T> = synchronized(lock) { (observations[key] as RepositoryObservation<T>?) ?: RepositoryObservation(states[key] as DataState<T>? ?: DataState.Loading).also { observations[key] = it } }
@@ -146,5 +160,6 @@ class SchoolRepositoryImpl(
 	private fun diaryKey(range: DateRange) = "diary:${range.start}:${range.endInclusive}"
 	private fun scheduleKey(range: DateRange) = "schedule:${range.start}:${range.endInclusive}"
 	private fun gradesKey(period: String) = "grades:$period"
-	private companion object { const val HOME = "home"; const val PROFILE = "profile"; val EMPTY_PAYLOAD = byteArrayOf(0) }
+	private fun journalKey(range: DateRange) = "journal:${range.start}:${range.endInclusive}"
+	private companion object { const val HOME = "home"; const val PROFILE = "profile"; const val HOMEWORKS = "homeworks"; val EMPTY_PAYLOAD = byteArrayOf(0) }
 }
