@@ -132,5 +132,4 @@
 	<string name="offline_title">Соңғы деректер</string>
 	<string name="offline_body">Соңғы сақталған нұсқа көрсетілуде.</string>
 	<string name="offline_hint">Деректерді кейінірек жаңартып көріңіз.</string>
-	<string name="calculator_missing">Жетіспейтін компоненттер ашық көрсетіледі</string>
 </resources>

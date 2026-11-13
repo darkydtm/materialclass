@@ -132,5 +132,4 @@
 	<string name="offline_title">Последние данные</string>
 	<string name="offline_body">Показана последняя сохранённая версия.</string>
 	<string name="offline_hint">Попробуйте обновить данные позже.</string>
-	<string name="calculator_missing">Недостающие компоненты показываются явно</string>
 </resources>
