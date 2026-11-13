@@ -33,4 +33,11 @@ class UiModelTest {
 		assertEquals("nav_settings", AppRoute.Settings.titleKey())
 		assertEquals("lesson_title", AppRoute.LessonDetail.titleKey())
 	}
+
+	@Test
+	fun stableItemKeyUsesIdentityAndUniqueFallback() {
+		assertEquals("lesson:lesson-42", stableItemKey("lesson", 0, "lesson-42"))
+		assertEquals("lesson:index:0", stableItemKey("lesson", 0, null))
+		assertEquals("lesson:index:1", stableItemKey("lesson", 1, ""))
+	}
 }

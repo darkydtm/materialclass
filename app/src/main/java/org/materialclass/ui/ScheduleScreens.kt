@@ -86,7 +86,12 @@ internal fun HomeScreen(
 		if (today == null) {
 			item { StatePanel(text, homeState, { viewModel.retry(AppRoute.Schedule) }) }
 		} else {
-			items(today.lessons) { lesson ->
+			items(
+				count = today.lessons.size,
+				key = { index -> stableItemKey("lesson", index, today.lessons[index].uuid) },
+				contentType = { "lesson" },
+			) { index ->
+				val lesson = today.lessons[index]
 				LessonCard(lesson) {
 					onLessonSelected(lesson.uuid.orEmpty())
 					navigator.go(AppRoute.LessonDetail)
@@ -153,7 +158,12 @@ internal fun ScheduleScreen(
 		} else if (day.lessons.isEmpty()) {
 			item { StatePanel(text, UiContent.Empty) { navigator.go(AppRoute.HomeEmpty) } }
 		} else {
-			items(day.lessons) { lesson ->
+			items(
+				count = day.lessons.size,
+				key = { index -> stableItemKey("lesson", index, day.lessons[index].uuid) },
+				contentType = { "lesson" },
+			) { index ->
+				val lesson = day.lessons[index]
 				LessonCard(lesson) {
 					onLessonSelected(lesson.uuid.orEmpty())
 					navigator.go(AppRoute.LessonDetail)

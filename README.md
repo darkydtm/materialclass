@@ -13,6 +13,10 @@ Native Android client for BilimClass. The code does not inject demo school data:
 - `app/src/test/`, `app/src/androidTest/` - unit and instrumented tests.
 - `docs/` - dependencies and release verification.
 
+## UI performance rule
+
+Design every interactive screen against the target device's frame budget before adding visual polish. At 120 Hz the budget is 8.3 ms per frame, so every scrollable or text-input surface must be tested with rapid gestures and focus changes on a real device. Use virtualized lists with stable keys and content types, keep per-frame composition free of resource lookup and avoid allocations in item content. Use standard motion for utilitarian scrolling surfaces; expressive motion requires a measured interaction benefit and a passing jank profile. A change is not ready when the static code looks efficient - it is ready when the measured fast-scroll profile stays within the frame budget and input remains responsive.
+
 ## Verification
 
 Release/integration evidence, known limitations, CI status and the separation between synthetic tests and real read-only API observations are recorded in [`docs/release-verification.md`](docs/release-verification.md).

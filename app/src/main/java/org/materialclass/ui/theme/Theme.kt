@@ -68,7 +68,7 @@ fun MaterialClassTheme(themeMode: ThemeMode, content: @Composable () -> Unit) {
 	)
 	MaterialExpressiveTheme(
 		colorScheme = colorScheme,
-		motionScheme = MotionScheme.expressive(),
+		motionScheme = MotionScheme.standard(),
 		typography = typography,
 		content = content,
 	)

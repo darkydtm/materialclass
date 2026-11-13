@@ -62,7 +62,12 @@ internal fun DiaryScreen(padding: PaddingValues, text: (String) -> String, viewM
 		} else if (grades.subjects.isEmpty()) {
 			item { StatePanel(text, UiContent.Empty) }
 		} else {
-			items(grades.subjects) { subject ->
+			items(
+				count = grades.subjects.size,
+				key = { index -> stableItemKey("subject", index, grades.subjects[index].subjectName) },
+				contentType = { "subject" },
+			) { index ->
+				val subject = grades.subjects[index]
 				SubjectCard(subject, text) {
 					subject.subjectName?.let(onSubjectSelected)
 					navigator.go(AppRoute.SubjectDetail)

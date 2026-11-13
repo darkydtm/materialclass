@@ -291,3 +291,6 @@ internal fun <T> DataState<T>?.toUiState(): UiContent = when (this) {
 }
 
 internal fun <T> DataState<T>?.readyValue(): T? = (this as? DataState.Ready<T>)?.snapshot?.value
+
+internal fun stableItemKey(kind: String, index: Int, identity: String?): String =
+	identity?.takeIf(String::isNotBlank)?.let { "$kind:$it" } ?: "$kind:index:$index"

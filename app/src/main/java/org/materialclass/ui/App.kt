@@ -48,11 +48,16 @@ fun MaterialClassApp(
 		localizedConfiguration.setLocale(Locale.forLanguageTag(language.tag))
 		context.createConfigurationContext(localizedConfiguration)
 	}
-	val text: (String) -> String = { key ->
-		localizedContext.resources.getIdentifier(key, "string", localizedContext.packageName)
-			.takeIf { it != 0 }
-			?.let(localizedContext::getString)
-			?: key
+	val text: (String) -> String = remember(localizedContext) {
+		val values = HashMap<String, String>()
+		{ key ->
+			values.getOrPut(key) {
+				localizedContext.resources.getIdentifier(key, "string", localizedContext.packageName)
+					.takeIf { it != 0 }
+					?.let(localizedContext::getString)
+					?: key
+			}
+		}
 	}
 	val snackbarHostState = remember { SnackbarHostState() }
 
