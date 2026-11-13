@@ -35,13 +35,11 @@ object GradeCalculator {
 
 	fun calculate(components: List<GradeComponent>): GradeEstimate {
 		val averages = components
-			.asSequence()
 			.filter { it.score != null }
-			.groupingBy { it.category }
-			.fold(0.0 to 0) { (sum, count), component ->
-				(sum + component.score!! to count + 1)
+			.groupBy(GradeComponent::category)
+			.mapValues { (_, categoryComponents) ->
+				categoryComponents.mapNotNull(GradeComponent::score).average()
 			}
-			.mapValues { (_, total) -> total.first / total.second }
 
 		val availableCategories = averages.keys
 		val missingCategories = GradeCategory.entries.toSet() - availableCategories

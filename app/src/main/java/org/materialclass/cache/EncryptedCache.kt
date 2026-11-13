@@ -23,8 +23,10 @@ class EncryptedCache(
 ) {
 	fun write(session: ActiveSession, payload: ByteArray): Boolean = synchronized(lock) {
 		if (current() != session) return@synchronized false
+		if (payload.size > MAX_CACHE_BYTES) return@synchronized false
 		try {
 			val encrypted = cipher.encrypt(keys.cacheKey(session.accountId), payload)
+			if (encrypted.size > MAX_CACHE_BYTES) return@synchronized false
 			val record = ByteArrayOutputStream().also { output ->
 				DataOutputStream(output).use { data ->
 					data.writeInt(MAGIC)
@@ -53,6 +55,7 @@ class EncryptedCache(
 				if (length < 0 || length > MAX_CACHE_BYTES) throw IllegalArgumentException("cache size")
 				val encrypted = ByteArray(length)
 				data.readFully(encrypted)
+				if (data.available() != 0) throw IllegalArgumentException("cache trailing data")
 				CacheRead.Hit(cipher.decrypt(keys.cacheKey(session.accountId), encrypted))
 			}
 			if (current() == session) hit else CacheRead.Unavailable

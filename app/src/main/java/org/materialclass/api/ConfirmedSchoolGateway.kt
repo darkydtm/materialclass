@@ -1,8 +1,11 @@
 package org.materialclass.api
 
 import java.time.Instant
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import org.materialclass.data.AccountId
 import org.materialclass.data.ActiveSession
+import org.materialclass.data.AttendanceModel
 import org.materialclass.data.DiaryModel
 import org.materialclass.data.DiaryWeeksModel
 import org.materialclass.data.GradesModel
@@ -10,6 +13,13 @@ import org.materialclass.data.PeriodsModel
 import org.materialclass.data.ProfileModel
 import org.materialclass.data.ScheduleModel
 import org.materialclass.data.SubjectsModel
+import org.materialclass.data.HomeModel
+import org.materialclass.data.HomeworkDetailModel
+import org.materialclass.data.HomeworksModel
+import org.materialclass.data.JournalGradesModel
+import org.materialclass.data.LessonDetailModel
+import org.materialclass.data.SubjectDetailsModel
+import org.materialclass.data.SystemDataModel
 
 interface SessionController {
 	fun activate(accountId: AccountId, token: String, expiresAt: Instant): ActiveSession
@@ -184,19 +194,19 @@ class ConfirmedSchoolGateway(
 
 	fun schedule(context: ReadContext): GatewayReadResult<ScheduleModel> = gateway.schedule(context)
 
-	fun homeworks(context: ReadContext): GatewayReadResult<org.materialclass.data.HomeworksModel> = gateway.homeworks(context)
+	fun homeworks(context: ReadContext): GatewayReadResult<HomeworksModel> = gateway.homeworks(context)
 
-	fun homeworkDetail(context: ReadContext): GatewayReadResult<org.materialclass.data.HomeworkDetailModel> = gateway.homeworkDetail(context)
+	fun homeworkDetail(context: ReadContext): GatewayReadResult<HomeworkDetailModel> = gateway.homeworkDetail(context)
 
-	fun journalGrades(context: ReadContext): GatewayReadResult<org.materialclass.data.JournalGradesModel> = gateway.journalGrades(context)
+	fun journalGrades(context: ReadContext): GatewayReadResult<JournalGradesModel> = gateway.journalGrades(context)
 
 	fun downloadSubjectsExcel(context: ReadContext): HttpResult = gateway.downloadSubjectsExcel(context)
 
-	fun educationYears(context: ReadContext): GatewayReadResult<org.materialclass.data.SystemDataModel> = gateway.educationYears(context)
+	fun educationYears(context: ReadContext): GatewayReadResult<SystemDataModel> = gateway.educationYears(context)
 
-	fun systemSettings(context: ReadContext): GatewayReadResult<org.materialclass.data.SystemDataModel> = gateway.systemSettings(context)
+	fun systemSettings(context: ReadContext): GatewayReadResult<SystemDataModel> = gateway.systemSettings(context)
 
-	fun systemRelatedChildren(context: ReadContext): GatewayReadResult<org.materialclass.data.SystemDataModel> = gateway.relatedChildren(context)
+	fun systemRelatedChildren(context: ReadContext): GatewayReadResult<SystemDataModel> = gateway.relatedChildren(context)
 
 	fun logout(): GatewayReadResult<Unit> {
 		val session = sessions.currentSession() ?: return GatewayReadResult.Failure(AppError.LoginRequired)
@@ -216,15 +226,15 @@ class ConfirmedSchoolGateway(
 		return result
 	}
 
-	fun home(): GatewayReadResult<org.materialclass.data.HomeModel> = unsupported()
+	fun home(): GatewayReadResult<HomeModel> = unsupported()
 
 	fun scheduleWeeks(context: ReadContext): GatewayReadResult<ScheduleModel> = gateway.schedule(context)
 
-	fun lessonDetail(lessonId: String): GatewayReadResult<org.materialclass.data.LessonDetailModel> = unsupported()
+	fun lessonDetail(lessonId: String): GatewayReadResult<LessonDetailModel> = unsupported()
 
-	fun attendance(context: ReadContext): GatewayReadResult<org.materialclass.data.AttendanceModel> = unsupported()
+	fun attendance(context: ReadContext): GatewayReadResult<AttendanceModel> = unsupported()
 
-	fun subjectDetails(subjectId: String): GatewayReadResult<org.materialclass.data.SubjectDetailsModel> = unsupported()
+	fun subjectDetails(subjectId: String): GatewayReadResult<SubjectDetailsModel> = unsupported()
 
 	fun profile(): GatewayReadResult<ProfileModel> = signedInUser?.let { user ->
 		GatewayReadResult.Success(
@@ -239,7 +249,7 @@ class ConfirmedSchoolGateway(
 		)
 	} ?: unsupported()
 
-	fun studentContext(): GatewayReadResult<org.materialclass.data.ProfileModel> = profile()
+	fun studentContext(): GatewayReadResult<ProfileModel> = profile()
 
 	fun readContext(token: String, key: String): ReadContext {
 		val user = signedInUser ?: return ReadContext(token)
@@ -250,16 +260,12 @@ class ConfirmedSchoolGateway(
 		when {
 			key.startsWith("diary:") -> {
 				val date = key.substringAfter(':').substringBefore(':')
-				parameters["date"] = runCatching {
-					java.time.LocalDate.parse(date).format(java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy"))
-				}.getOrDefault(date)
+				parameters["date"] = formatRequestDate(date)
 				user.groupId?.let { parameters["groupId"] = it }
 			}
 			key.startsWith("schedule:") -> {
 				val date = key.substringAfter(':').substringBefore(':')
-				parameters["date"] = runCatching {
-					java.time.LocalDate.parse(date).format(java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy"))
-				}.getOrDefault(date)
+				parameters["date"] = formatRequestDate(date)
 				user.studentSchoolUuid?.let { parameters["studentSchoolUuid"] = it }
 			}
 			key.startsWith("subjects:") -> {
@@ -288,5 +294,11 @@ class ConfirmedSchoolGateway(
 		return ReadContext(token, parameters.filterValues { it.isNotBlank() }, user.chatToken)
 	}
 
+	private fun formatRequestDate(value: String): String = runCatching {
+		LocalDate.parse(value).format(requestDateFormatter)
+	}.getOrDefault(value)
+
 	private fun <T> unsupported(): GatewayReadResult<T> = GatewayReadResult.Failure(AppError.UnsupportedContract)
 }
+
+private val requestDateFormatter = DateTimeFormatter.ofPattern("dd.MM.yyyy")
