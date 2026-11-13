@@ -80,14 +80,16 @@ class NotificationLifecycle(
 
 class AndroidNotificationPublisher(private val context: Context) : NotificationPublisher {
 	init {
-		val manager = context.getSystemService(NotificationManager::class.java)
-		manager.createNotificationChannel(
-			NotificationChannel(
-				CHANNEL_ID,
-				context.getString(org.materialclass.R.string.notification_channel_name),
-				NotificationManager.IMPORTANCE_DEFAULT,
-			),
-		)
+		if (android.os.Build.VERSION.SDK_INT >= 26) {
+			val manager = context.getSystemService(NotificationManager::class.java)
+			manager.createNotificationChannel(
+				NotificationChannel(
+					CHANNEL_ID,
+					context.getString(org.materialclass.R.string.notification_channel_name),
+					NotificationManager.IMPORTANCE_DEFAULT,
+				),
+			)
+		}
 	}
 
 	override fun publish(item: NotificationItem) {

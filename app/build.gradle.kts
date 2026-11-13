@@ -24,6 +24,7 @@ android {
 	compileOptions {
 		sourceCompatibility = JavaVersion.VERSION_17
 		targetCompatibility = JavaVersion.VERSION_17
+		isCoreLibraryDesugaringEnabled = true
 	}
 }
 
@@ -33,6 +34,7 @@ dependencies {
 	implementation(libs.androidx.compose.material3)
 	implementation(libs.androidx.core.ktx)
 	implementation(libs.androidx.work.runtime)
+	coreLibraryDesugaring(libs.android.desugar.jdk.libs)
 
 	testImplementation(libs.junit)
 }

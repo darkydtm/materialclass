@@ -42,6 +42,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -286,10 +287,11 @@ public fun MaterialClassApp(
 	var notifications by remember(actualPreferences) { mutableStateOf(actualPreferences.notificationsEnabled()) }
 	val navigator = remember { AppNavigator(AppRoute.Login) }
 	val viewModel = remember(repository, loginHandler) { SchoolViewModel(repository, loginHandler) }
-	val localizedContext = remember(language, context) {
-		val configuration = Configuration(context.resources.configuration)
-		configuration.setLocale(Locale.forLanguageTag(language.tag))
-		context.createConfigurationContext(configuration)
+	val configuration = LocalConfiguration.current
+	val localizedContext = remember(language, context, configuration) {
+		val localizedConfiguration = Configuration(configuration)
+		localizedConfiguration.setLocale(Locale.forLanguageTag(language.tag))
+		context.createConfigurationContext(localizedConfiguration)
 	}
 	val snackbarHostState = remember { SnackbarHostState() }
 	val title = { key: String -> localizedContext.getString(localizedContext.resources.getIdentifier(key, "string", localizedContext.packageName)) }
