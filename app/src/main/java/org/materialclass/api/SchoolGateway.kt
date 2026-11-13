@@ -1,7 +1,6 @@
 package org.materialclass.api
 
 import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
 import org.materialclass.data.DiaryModel
 import org.materialclass.data.DiaryWeeksModel
 import org.materialclass.data.PeriodsModel
@@ -136,7 +135,7 @@ class SchoolGateway(
 			return "https://api.bilimclass.kz$path?$query"
 		}
 
-		fun encode(value: String): String = URLEncoder.encode(value, StandardCharsets.UTF_8)
+		fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")
 
 		fun jsonString(value: String): String = buildString {
 			append('"')
