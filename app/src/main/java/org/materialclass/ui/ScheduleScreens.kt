@@ -19,7 +19,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -181,12 +180,12 @@ private fun LessonCard(lesson: ScheduleLesson, onClick: () -> Unit) {
 			Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
 				Text(lesson.timeslot ?: "", style = MaterialTheme.typography.titleMedium)
 				lesson.cabinet?.let(::formatCabinet)?.takeIf(String::isNotBlank)?.let { cabinet ->
-					AssistChip(onClick = {}, label = { Text(cabinet) })
+					Text(cabinet, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 				}
 			}
 			Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
 				Text(lesson.label ?: "", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
-				lesson.type?.let { AssistChip(onClick = {}, label = { Text(it) }) }
+				lesson.type?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
 			}
 			lesson.homework?.let {
 				Text(
