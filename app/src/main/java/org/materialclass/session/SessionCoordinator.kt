@@ -47,11 +47,11 @@ class SessionCoordinator(
 		true
 	}
 
-	fun currentSession(): ActiveSession? = synchronized(lock) { active }
+	override fun currentSession(): ActiveSession? = synchronized(lock) { active }
 
 	override fun <T> withSessionLock(block: () -> T): T = synchronized(lock, block)
 
-	fun tokenFor(session: ActiveSession): String? = synchronized(lock) {
+	override fun tokenFor(session: ActiveSession): String? = synchronized(lock) {
 		if (active != session) return@synchronized null
 		val restored = store.load() ?: run {
 			clearLocked()
