@@ -12,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -142,7 +143,7 @@ private fun LoginStateScreen(title: String, body: String, text: (String) -> Stri
 		) {
 			Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
 				if (isLoading) CircularProgressIndicator(modifier = Modifier.size(32.dp))
-				else Icon(if (isError) Icons.Default.Error else Icons.Default.Check, contentDescription = null)
+				else Icon(if (isError) Icons.Default.Close else Icons.Default.Check, contentDescription = null)
 				Text(title, style = MaterialTheme.typography.headlineMedium)
 				Text(body, color = MaterialTheme.colorScheme.onSurfaceVariant)
 				if (isLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
