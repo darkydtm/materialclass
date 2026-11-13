@@ -38,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.materialclass.data.ScheduleLesson
 
@@ -188,9 +189,14 @@ private fun LessonCard(lesson: ScheduleLesson, onClick: () -> Unit) {
 				lesson.type?.let { AssistChip(onClick = {}, label = { Text(it) }) }
 			}
 			lesson.homework?.let {
-				Row(modifier = Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
-					Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-				}
+				Text(
+					it,
+					modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+					maxLines = 3,
+					overflow = TextOverflow.Ellipsis,
+					style = MaterialTheme.typography.bodySmall,
+					color = MaterialTheme.colorScheme.onSurfaceVariant,
+				)
 			}
 		}
 	}
