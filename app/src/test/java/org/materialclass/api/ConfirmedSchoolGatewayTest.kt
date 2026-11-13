@@ -155,6 +155,7 @@ class ConfirmedSchoolGatewayTest {
 	@Test
 	fun confirmedSessionRotatesRefreshTokens() {
 		val responses = ArrayDeque<HttpResponseData>()
+		responses += HttpResponseData(200, "application/json", validBody)
 		responses += HttpResponseData(200, "application/json", "{\"access_token\":\"next-access\",\"refresh_token\":\"next-refresh\",\"exp_time\":\"2030-01-01T00:00:00Z\"}")
 		val transport = SyntheticHttpsTransport { responses.removeFirst() }
 		val sessions = FakeSessionController()
