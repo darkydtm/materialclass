@@ -10,6 +10,7 @@ import org.materialclass.data.JournalGradesModel
 import org.materialclass.data.PeriodsModel
 import org.materialclass.data.ScheduleModel
 import org.materialclass.data.SubjectsModel
+import org.materialclass.data.SystemDataModel
 
 /** Keep the transport boundary small so production code cannot invent requests. */
 data class HttpRequestData(
@@ -156,16 +157,16 @@ class SchoolGateway(
 	fun downloadSubjectsExcel(context: ReadContext): HttpResult =
 		readBinary(context, SUBJECTS_EXCEL_PATH)
 
-	fun system(context: ReadContext, path: String): GatewayReadResult<org.materialclass.data.SystemDataModel> =
+	fun system(context: ReadContext, path: String): GatewayReadResult<SystemDataModel> =
 		read(context, path, ContractMapper::mapSystem)
 
-	fun educationYears(context: ReadContext): GatewayReadResult<org.materialclass.data.SystemDataModel> =
+	fun educationYears(context: ReadContext): GatewayReadResult<SystemDataModel> =
 		system(context, SYSTEM_EDUCATION_YEARS_PATH)
 
-	fun systemSettings(context: ReadContext): GatewayReadResult<org.materialclass.data.SystemDataModel> =
+	fun systemSettings(context: ReadContext): GatewayReadResult<SystemDataModel> =
 		system(context, SYSTEM_SETTINGS_PATH)
 
-	fun relatedChildren(context: ReadContext): GatewayReadResult<org.materialclass.data.SystemDataModel> =
+	fun relatedChildren(context: ReadContext): GatewayReadResult<SystemDataModel> =
 		system(context, SYSTEM_RELATED_CHILDREN_PATH)
 
 	private fun <T> read(
