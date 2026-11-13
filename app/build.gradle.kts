@@ -13,14 +13,34 @@ val releaseSigningConfigured = listOf(
 	releaseKeyAlias,
 	releaseKeyPassword,
 ).all { !it.isNullOrBlank() }
+val debugStoreFile = providers.environmentVariable("ANDROID_DEBUG_KEYSTORE_PATH").orNull
+val debugStorePassword = providers.environmentVariable("ANDROID_DEBUG_KEYSTORE_PASSWORD").orNull
+val debugKeyAlias = providers.environmentVariable("ANDROID_DEBUG_KEY_ALIAS").orNull
+val debugKeyPassword = providers.environmentVariable("ANDROID_DEBUG_KEY_PASSWORD").orNull
+val debugSigningConfigured = listOf(
+	debugStoreFile,
+	debugStorePassword,
+	debugKeyAlias,
+	debugKeyPassword,
+).all { !it.isNullOrBlank() }
 val releaseTaskRequested = gradle.startParameter.taskNames.any {
 	it.contains("Release", ignoreCase = true)
+}
+val debugTaskRequested = gradle.startParameter.taskNames.any {
+	it.contains("Debug", ignoreCase = true)
 }
 
 if (releaseTaskRequested && !releaseSigningConfigured) {
 	throw GradleException(
 		"Release signing is not configured. Set ANDROID_KEYSTORE_PATH, " +
 			"ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, and ANDROID_KEY_PASSWORD.",
+	)
+}
+if (debugTaskRequested && !debugSigningConfigured) {
+	throw GradleException(
+		"Debug signing is not configured. Set ANDROID_DEBUG_KEYSTORE_PATH, " +
+			"ANDROID_DEBUG_KEYSTORE_PASSWORD, ANDROID_DEBUG_KEY_ALIAS, and " +
+			"ANDROID_DEBUG_KEY_PASSWORD.",
 	)
 }
 
@@ -35,6 +55,16 @@ android {
 				storePassword = releaseStorePassword
 				keyAlias = releaseKeyAlias
 				keyPassword = releaseKeyPassword
+			}
+		}
+	}
+	if (debugSigningConfigured) {
+		signingConfigs {
+			create("debugCustom") {
+				storeFile = file(debugStoreFile!!)
+				storePassword = debugStorePassword
+				keyAlias = debugKeyAlias
+				keyPassword = debugKeyPassword
 			}
 		}
 	}
@@ -60,6 +90,11 @@ android {
 	}
 
 	buildTypes {
+		getByName("debug") {
+			if (debugSigningConfigured) {
+				signingConfig = signingConfigs.getByName("debugCustom")
+			}
+		}
 		getByName("release") {
 			if (releaseSigningConfigured) {
 				signingConfig = signingConfigs.getByName("release")
