@@ -50,7 +50,7 @@ fun MaterialClassApp(
 	}
 	val text: (String) -> String = remember(localizedContext) {
 		val values = HashMap<String, String>()
-		{ key ->
+		return@remember { key ->
 			values.getOrPut(key) {
 				localizedContext.resources.getIdentifier(key, "string", localizedContext.packageName)
 					.takeIf { it != 0 }
