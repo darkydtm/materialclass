@@ -1,8 +1,11 @@
 package org.materialclass.ui
 
 
-import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -16,6 +19,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 
 import org.materialclass.api.AppError
 import org.materialclass.api.GatewayLoginResult
@@ -55,9 +63,18 @@ fun MaterialClassApp(
 		}
 	}
 	val snackbarHostState = remember { SnackbarHostState() }
+	val backProgress = remember { Animatable(0f) }
+	val screenWidth = with(LocalDensity.current) { configuration.screenWidthDp.toFloat() * density }
 
-	BackHandler(enabled = navigator.current !in loginRoutes && navigator.canGoBack()) {
-		navigator.back()
+	PredictiveBackHandler(enabled = navigator.current !in loginRoutes && navigator.canGoBack()) { events ->
+		try {
+			events.collect { event -> backProgress.snapTo(event.progress) }
+			backProgress.animateTo(1f, tween(150))
+			navigator.back()
+			backProgress.snapTo(0f)
+		} catch (_: CancellationException) {
+			withContext(NonCancellable) { backProgress.animateTo(0f, tween(150)) }
+		}
 	}
 
 	LaunchedEffect(viewModel.loginState) {
@@ -66,7 +83,7 @@ fun MaterialClassApp(
 	}
 
 	MaterialClassTheme(theme) {
-		Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+		Surface(modifier = Modifier.fillMaxSize().offset { IntOffset((screenWidth * backProgress.value).toInt(), 0) }, color = MaterialTheme.colorScheme.background) {
 			if (navigator.current in loginRoutes) {
 				LoginFlow(text, viewModel, loginRoute(viewModel.loginState)) { viewModel.resetLogin(); navigator.reset(AppRoute.Login) }
 			} else {

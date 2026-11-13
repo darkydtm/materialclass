@@ -1,5 +1,9 @@
 package org.materialclass.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -103,7 +107,8 @@ internal fun AppScaffold(
 		},
 		snackbarHost = { SnackbarHost(snackbarHostState) },
 	) { padding ->
-			when (navigator.current) {
+		AnimatedContent(targetState = navigator.current, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "screen") { route ->
+			when (route) {
 				AppRoute.Home -> HomeScreen(padding, text, viewModel, navigator, onLessonSelected)
 				AppRoute.HomeError -> StateScreen(padding, text, "nav_home", "error_load", "error_load_body") { viewModel.retry(AppRoute.HomeError) }
 				AppRoute.HomeEmpty -> StateScreen(padding, text, "nav_home", "empty_day", "empty_day_body") { navigator.go(AppRoute.Schedule) }
@@ -135,6 +140,7 @@ internal fun AppScaffold(
 				else -> Unit
 			}
 		}
+	}
 }
 
 private fun AppRoute.labelKey(): String = when (this) {
