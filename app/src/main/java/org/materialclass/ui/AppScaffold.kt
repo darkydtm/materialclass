@@ -54,20 +54,21 @@ internal fun AppScaffold(
 	onBackgroundInterval: (Float) -> Unit,
 	onLogout: () -> Unit,
 ) {
+	val rootRoutes = listOf(AppRoute.Home, AppRoute.Diary, AppRoute.Schedule, AppRoute.Settings)
 	Scaffold(
 		topBar = {
 			CenterAlignedTopAppBar(
 				colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
 				title = { Text(text("app_name")) },
 				navigationIcon = {
-					if (navigator.current !in ROOT_ROUTES) {
+					if (navigator.current !in rootRoutes) {
 						IconButton(onClick = { navigator.back() }, modifier = Modifier.testTag("back")) {
 							Icon(Icons.Default.ArrowBack, contentDescription = text("back"))
 						}
 					}
 				},
 				actions = {
-					if (navigator.current in ROOT_ROUTES) {
+					if (navigator.current in rootRoutes) {
 						IconButton(onClick = { navigator.go(AppRoute.Profile) }) {
 							Icon(Icons.Default.AccountCircle, contentDescription = text("profile"))
 						}
@@ -76,13 +77,13 @@ internal fun AppScaffold(
 			)
 		},
 		bottomBar = {
-			if (navigator.current in ROOT_ROUTES) {
+			if (navigator.current in rootRoutes) {
 				NavigationBar(
 					modifier = Modifier.navigationBarsPadding(),
 					containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
 					tonalElevation = 0.dp,
 				) {
-					ROOT_ROUTES.forEach { route ->
+					rootRoutes.forEach { route ->
 						NavigationBarItem(
 							selected = navigator.current == route,
 							onClick = { navigator.go(route) },
@@ -136,12 +137,6 @@ internal fun AppScaffold(
 	)
 }
 
-private val ROOT_ROUTES = listOf(
-	AppRoute.Home,
-	AppRoute.Diary,
-	AppRoute.Schedule,
-	AppRoute.Settings,
-)
 private fun AppRoute.labelKey(): String = when (this) {
 	AppRoute.Home -> "nav_home"
 	AppRoute.Diary -> "nav_diary"
