@@ -111,8 +111,8 @@
 	<string name="theme_description">Choose the app appearance.</string>
 	<string name="notifications_title">Notifications</string>
 	<string name="notifications_description">Choose which changes you want to hear about.</string>
-	<string name="notification_new_grade">When a new grade is added</string>
-	<string name="notification_homework">When homework is posted</string>
+	<string name="notification_new_grade_setting">When a new grade is added</string>
+	<string name="notification_homework_setting">When homework is posted</string>
 	<string name="background_work">Background work</string>
 	<string name="background_work_enabled">Run in the background</string>
 	<string name="update_check_frequency">How often to check for updates</string>

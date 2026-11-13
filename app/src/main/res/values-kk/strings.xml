@@ -111,8 +111,8 @@
 	<string name="theme_description">Қолданба көрінісін таңдаңыз.</string>
 	<string name="notifications_title">Хабарландырулар</string>
 	<string name="notifications_description">Қандай өзгерістер туралы хабарлау керегін таңдаңыз.</string>
-	<string name="notification_new_grade">Жаңа баға қойылғанда</string>
-	<string name="notification_homework">Үй жұмысы жарияланғанда</string>
+	<string name="notification_new_grade_setting">Жаңа баға қойылғанда</string>
+	<string name="notification_homework_setting">Үй жұмысы жарияланғанда</string>
 	<string name="background_work">Фондық жұмыс</string>
 	<string name="background_work_enabled">Фонда жұмыс істеу</string>
 	<string name="update_check_frequency">Жаңартуларды тексеру жиілігі</string>

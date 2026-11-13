@@ -1047,8 +1047,8 @@ private fun NotificationsScreen(
 	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 		Text(text("notifications_title"), style = MaterialTheme.typography.headlineMedium)
 		Text(text("notifications_description"), color = MaterialTheme.colorScheme.onSurfaceVariant)
-		NotificationRow(text, text("notification_new_grade"), newGradeNotifications, onNewGradeNotifications)
-		NotificationRow(text, text("notification_homework"), homeworkNotifications, onHomeworkNotifications)
+		NotificationRow(text, text("notification_new_grade_setting"), newGradeNotifications, onNewGradeNotifications)
+		NotificationRow(text, text("notification_homework_setting"), homeworkNotifications, onHomeworkNotifications)
 	}
 }
 
