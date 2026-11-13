@@ -3,6 +3,7 @@ package org.materialclass.ui
 import android.content.Context
 import android.content.SharedPreferences
 import android.content.res.Configuration
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -142,6 +143,8 @@ class AppNavigator(start: AppRoute) {
 		route = stack.last()
 		return true
 	}
+
+	fun canGoBack(): Boolean = stack.size > 1
 
 	fun reset(next: AppRoute) {
 		stack.clear()
@@ -356,6 +359,7 @@ fun MaterialClassApp(
 	repository: SchoolRepository? = null,
 	preferences: AppPreferences? = null,
 	loginHandler: (LoginCredentials) -> GatewayLoginResult = { GatewayLoginResult.Failure(AppError.Network) },
+	startAuthenticated: Boolean = false,
 ) {
 	val context = LocalContext.current
 	val actualPreferences = preferences ?: remember(context) { AppPreferences(context) }
@@ -365,7 +369,7 @@ fun MaterialClassApp(
 	var homeworkNotifications by remember(actualPreferences) { mutableStateOf(actualPreferences.homeworkNotifications()) }
 	var backgroundWork by remember(actualPreferences) { mutableStateOf(actualPreferences.backgroundWork()) }
 	var backgroundInterval by remember(actualPreferences) { mutableStateOf(actualPreferences.backgroundInterval()) }
-	val navigator = remember { AppNavigator(AppRoute.Login) }
+	val navigator = remember { AppNavigator(if (startAuthenticated) AppRoute.Home else AppRoute.Login) }
 	val viewModel = remember(repository, loginHandler) { SchoolViewModel(repository, loginHandler) }
 	var selectedSubject by rememberSaveable { mutableStateOf("") }
 	var selectedLesson by rememberSaveable { mutableStateOf("") }
@@ -382,6 +386,10 @@ fun MaterialClassApp(
 			?: key
 	}
 	val snackbarHostState = remember { SnackbarHostState() }
+
+	BackHandler(enabled = navigator.current !in loginRoutes && navigator.canGoBack()) {
+		navigator.back()
+	}
 
 	LaunchedEffect(viewModel.loginState) {
 		if (viewModel.loginState == LoginUiState.Confirmed) navigator.reset(AppRoute.Home)

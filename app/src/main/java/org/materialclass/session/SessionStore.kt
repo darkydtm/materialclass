@@ -5,6 +5,7 @@ import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.time.Instant
+import org.materialclass.api.UserInfo
 import org.materialclass.cache.CacheFiles
 import org.materialclass.data.AccountId
 import org.materialclass.data.ActiveSession
@@ -17,12 +18,20 @@ class SessionStore(
 	private val keys: KeyProvider,
 	private val cipher: SecureCipher,
 ) {
-	fun save(session: ActiveSession, token: String, expiresAt: Instant, refreshToken: String? = null) {
+	fun save(
+		session: ActiveSession,
+		token: String,
+		expiresAt: Instant,
+		refreshToken: String? = null,
+		userInfo: UserInfo? = null,
+	) {
 		require(token.isNotEmpty()) { "Token must not be empty" }
 		val plaintext = ByteArrayOutputStream().also { output ->
 			DataOutputStream(output).use { data ->
+				data.writeInt(PAYLOAD_MAGIC)
 				data.writeUTF(token)
 				data.writeUTF(refreshToken.orEmpty())
+				data.writeUserInfo(userInfo)
 			}
 		}.toByteArray()
 		val encrypted = cipher.encrypt(keys.tokenKey(), plaintext)
@@ -53,13 +62,14 @@ class SessionStore(
 				val encrypted = ByteArray(length)
 				data.readFully(encrypted)
 				val decrypted = DataInputStream(ByteArrayInputStream(cipher.decrypt(keys.tokenKey(), encrypted)))
-				val (token, refreshToken) = decrypted.use { input ->
+				val (token, refreshToken, userInfo) = decrypted.use { input ->
+					if (input.readInt() != PAYLOAD_MAGIC) throw IllegalArgumentException("unsupported session payload")
 					val token = input.readUTF()
-					val refreshToken = if (input.available() > 0) input.readUTF().takeIf(String::isNotEmpty) else null
-					token to refreshToken
+					val refreshToken = input.readUTF().takeIf(String::isNotEmpty)
+					Triple(token, refreshToken, input.readUserInfo())
 				}
 				if (token.isEmpty()) return null
-				StoredSession(ActiveSession(account, generation), token, refreshToken, expiresAt)
+				StoredSession(ActiveSession(account, generation), token, refreshToken, expiresAt, userInfo)
 			}
 		} catch (_: Exception) {
 			null
@@ -70,6 +80,7 @@ class SessionStore(
 
 	private companion object {
 		const val MAGIC = 0x4D435331
+		const val PAYLOAD_MAGIC = 0x4D435332
 		const val MAX_RECORD_BYTES = 1024 * 1024
 	}
 }
@@ -79,4 +90,49 @@ data class StoredSession(
 	val token: String,
 	val refreshToken: String?,
 	val expiresAt: Instant,
+	val userInfo: UserInfo? = null,
 )
+
+private fun DataOutputStream.writeUserInfo(userInfo: UserInfo?) {
+	writeBoolean(userInfo != null)
+	if (userInfo == null) return
+	writeUTF(userInfo.userId)
+	writeNullable(userInfo.fullName)
+	writeNullable(userInfo.schoolName)
+	writeNullable(userInfo.region)
+	writeNullable(userInfo.groupName)
+	writeNullable(userInfo.schoolId)
+	writeNullable(userInfo.groupId)
+	writeNullable(userInfo.studentSchoolUuid)
+	writeNullable(userInfo.studentGroupUuid)
+	writeNullable(userInfo.eduYear)
+	writeNullable(userInfo.chatToken)
+	writeNullable(userInfo.role)
+	writeBoolean(userInfo.hasStudentContext)
+}
+
+private fun DataOutputStream.writeNullable(value: String?) {
+	writeBoolean(value != null)
+	if (value != null) writeUTF(value)
+}
+
+private fun DataInputStream.readUserInfo(): UserInfo? {
+	if (!readBoolean()) return null
+	return UserInfo(
+		userId = readUTF(),
+		fullName = readNullable(),
+		schoolName = readNullable(),
+		region = readNullable(),
+		groupName = readNullable(),
+		schoolId = readNullable(),
+		groupId = readNullable(),
+		studentSchoolUuid = readNullable(),
+		studentGroupUuid = readNullable(),
+		eduYear = readNullable(),
+		chatToken = readNullable(),
+		role = readNullable(),
+		hasStudentContext = readBoolean(),
+	)
+}
+
+private fun DataInputStream.readNullable(): String? = if (readBoolean()) readUTF() else null

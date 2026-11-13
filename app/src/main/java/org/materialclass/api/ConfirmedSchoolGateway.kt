@@ -14,9 +14,11 @@ import org.materialclass.data.SubjectsModel
 interface SessionController {
 	fun activate(accountId: AccountId, token: String, expiresAt: Instant): ActiveSession
 	fun setRefreshToken(session: ActiveSession, refreshToken: String): Boolean = false
+	fun setUserInfo(session: ActiveSession, userInfo: UserInfo): Boolean = true
 	fun currentSession(): ActiveSession? = null
 	fun accessTokenFor(session: ActiveSession): String? = null
 	fun refreshTokenFor(session: ActiveSession): String? = null
+	fun userInfoFor(session: ActiveSession): UserInfo? = null
 	fun replaceTokens(session: ActiveSession, accessToken: String, refreshToken: String, expiresAt: Instant): Boolean = false
 	fun invalidateAndClear()
 }
@@ -96,6 +98,9 @@ class ConfirmedSchoolGateway(
 					if (!sessions.setRefreshToken(session, result.response.refreshToken)) {
 						throw IllegalStateException("refresh token was not stored")
 					}
+					if (!sessions.setUserInfo(session, result.response.userInfo)) {
+						throw IllegalStateException("user context was not stored")
+					}
 					LoginResult.Confirmed(session)
 				} catch (_: Exception) {
 					sessions.invalidateAndClear()
@@ -121,6 +126,21 @@ class ConfirmedSchoolGateway(
 		is LoginResult.Confirmed -> lastLoginResponse?.let { GatewayLoginResult.Success(it) }
 			?: GatewayLoginResult.Failure(AppError.InvalidResponse)
 		is LoginResult.Failure -> GatewayLoginResult.Failure(result.error)
+	}
+
+	fun restoreSession(): Boolean {
+		val session = sessions.currentSession() ?: return false
+		if (sessions.refreshTokenFor(session).isNullOrBlank()) {
+			sessions.invalidateAndClear()
+			return false
+		}
+		val user = sessions.userInfoFor(session) ?: run {
+			sessions.invalidateAndClear()
+			return false
+		}
+		signedInUser = user
+		lastLoginResponse = null
+		return true
 	}
 
 	fun refresh(): RefreshResult {

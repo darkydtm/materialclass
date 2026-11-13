@@ -33,6 +33,7 @@ class MainActivity : ComponentActivity() {
 			sessionCoordinator,
 			StudentRoleVerifier,
 		)
+		val startAuthenticated = confirmedGateway.restoreSession()
 		val repository = SchoolRepositoryImpl(
 			gateway = object : org.materialclass.data.RepositoryGateway {
 				override fun home(context: org.materialclass.api.ReadContext) = confirmedGateway.home()
@@ -52,6 +53,7 @@ class MainActivity : ComponentActivity() {
 			MaterialClassApp(
 				repository = repository,
 				loginHandler = confirmedGateway::loginForUi,
+				startAuthenticated = startAuthenticated,
 			)
 		}
 	}

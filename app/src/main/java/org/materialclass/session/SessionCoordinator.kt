@@ -2,6 +2,7 @@ package org.materialclass.session
 
 import java.time.Instant
 import org.materialclass.api.SessionController
+import org.materialclass.api.UserInfo
 import org.materialclass.cache.CacheFiles
 import org.materialclass.cache.EncryptedCache
 import org.materialclass.data.AccountId
@@ -26,6 +27,7 @@ class SessionCoordinator(
 	private var active: ActiveSession? = null
 	private var nextGeneration = 0L
 	private var refreshToken: String? = null
+	private var userInfo: UserInfo? = null
 	private val encryptedCache = EncryptedCache(files, keys, cipher, lock) { active }
 
 	override fun activate(accountId: AccountId, token: String, expiresAt: Instant): ActiveSession = synchronized(lock) {
@@ -34,14 +36,23 @@ class SessionCoordinator(
 		store.save(session, token, expiresAt)
 		active = session
 		refreshToken = null
+		userInfo = null
 		session
 	}
 
 	override fun setRefreshToken(session: ActiveSession, refreshToken: String): Boolean = synchronized(lock) {
 		if (active != session || refreshToken.isBlank()) return@synchronized false
 		val stored = store.load() ?: return@synchronized false
-		store.save(session, stored.token, stored.expiresAt, refreshToken)
+		store.save(session, stored.token, stored.expiresAt, refreshToken, stored.userInfo)
 		this.refreshToken = refreshToken
+		true
+	}
+
+	override fun setUserInfo(session: ActiveSession, userInfo: UserInfo): Boolean = synchronized(lock) {
+		if (active != session) return@synchronized false
+		val stored = store.load() ?: return@synchronized false
+		store.save(session, stored.token, stored.expiresAt, stored.refreshToken, userInfo)
+		this.userInfo = userInfo
 		true
 	}
 
@@ -55,6 +66,7 @@ class SessionCoordinator(
 		nextGeneration = maxOf(nextGeneration, restored.session.generation.value + 1)
 		active = restored.session
 		refreshToken = restored.refreshToken
+		userInfo = restored.userInfo
 		true
 	}
 
@@ -83,9 +95,14 @@ class SessionCoordinator(
 		refreshToken ?: store.load()?.takeIf { it.session == session }?.refreshToken
 	}
 
+	override fun userInfoFor(session: ActiveSession): UserInfo? = synchronized(lock) {
+		if (active != session) return@synchronized null
+		userInfo ?: store.load()?.takeIf { it.session == session }?.userInfo
+	}
+
 	override fun replaceTokens(session: ActiveSession, accessToken: String, refreshToken: String, expiresAt: Instant): Boolean = synchronized(lock) {
 		if (active != session || accessToken.isBlank() || refreshToken.isBlank()) return@synchronized false
-		store.save(session, accessToken, expiresAt, refreshToken)
+		store.save(session, accessToken, expiresAt, refreshToken, userInfo)
 		this.refreshToken = refreshToken
 		true
 	}
@@ -99,6 +116,7 @@ class SessionCoordinator(
 	private fun clearLocked() {
 		active = null
 		refreshToken = null
+		userInfo = null
 		tasks.cancelAll()
 		store.clear()
 		files.cacheFiles().forEach { it.delete() }

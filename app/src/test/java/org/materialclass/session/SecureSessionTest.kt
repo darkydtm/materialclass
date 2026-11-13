@@ -9,10 +9,10 @@ import javax.crypto.spec.SecretKeySpec
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.materialclass.api.UserInfo
 import org.materialclass.data.AccountId
 import org.materialclass.data.ActiveSession
 import org.materialclass.data.Generation
@@ -44,6 +44,26 @@ class SecureSessionTest {
 		assertTrue(restored.replaceTokens(restoredSession, "access-b", "refresh-b", Instant.MAX))
 		assertEquals("refresh-b", restored.refreshTokenFor(restoredSession))
 		assertEquals("access-b", restored.tokenFor(restoredSession))
+	}
+
+	@Test
+	fun authenticatedUserContextSurvivesEncryptedSessionRestore() {
+		val fixture = Fixture()
+		val session = fixture.coordinator.activate(AccountId("synthetic-a"), "access-a", Instant.MAX)
+		val user = UserInfo(
+			userId = "synthetic-a",
+			schoolId = "synthetic-school",
+			groupId = "synthetic-group",
+			eduYear = "2026",
+			hasStudentContext = true,
+		)
+
+		assertTrue(fixture.coordinator.setRefreshToken(session, "refresh-a"))
+		assertTrue(fixture.coordinator.setUserInfo(session, user))
+
+		val restored = SessionCoordinator(fixture.store, fixture.files, fixture.keys, fixture.cipher, fixture.tasks)
+		assertTrue(restored.restore(Instant.EPOCH))
+		assertEquals(user, restored.userInfoFor(restored.currentSession()!!))
 	}
 
 	@Test
