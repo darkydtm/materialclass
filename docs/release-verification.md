@@ -1,6 +1,6 @@
 # Release verification
 
-Статус: stage 15 audit for commit `b1530684ac2b2b25fba76881f94ba074b2164ade`, updated in the stage commit. This document separates source/static evidence, synthetic tests, CI evidence and real-account read-only observations. It does not authorize push, merge, release signing, publication or distribution.
+Status: stage 15 audit for commit `b1530684ac2b2b25fba76881f94ba074b2164ade`, updated in the stage commit. This document separates source/static evidence, synthetic tests, CI evidence, and real-account read-only observations. It does not authorize push, merge, release signing, publication, or distribution.
 
 ## Executive result
 

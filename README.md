@@ -1,20 +1,20 @@
 # MaterialClass
 
-Нативный Android-клиент BilimClass. Код не подставляет демонстрационные школьные данные: неподтверждённые серверные источники остаются типизированным `UnsupportedContract`.
+Native Android client for BilimClass. The code does not inject demo school data: unconfirmed server sources remain typed as `UnsupportedContract`.
 
-## Структура
+## Structure
 
-- `.github/workflows/` - read-only CI для unit tests, lint, debug APK и connected debug tests.
-- `app/src/main/java/org/materialclass/api/` - подтверждённый API-адаптер и границы неподтверждённых контрактов.
-- `app/src/main/java/org/materialclass/data/` - доменные модели и репозитории.
-- `app/src/main/java/org/materialclass/session/`, `security/`, `cache/` - сессия, защищённое хранилище и зашифрованный кэш.
-- `app/src/main/java/org/materialclass/ui/` - Compose-экраны и тема Material 3 Expressive.
-- `app/src/main/res/` - ресурсы, локализация и правила резервного копирования.
-- `app/src/test/`, `app/src/androidTest/` - unit- и instrumented-тесты.
-- `docs/` - зависимости и release-проверка.
+- `.github/workflows/` - read-only CI for unit tests, lint, debug APK, and connected debug tests.
+- `app/src/main/java/org/materialclass/api/` - confirmed API adapter and boundaries for unconfirmed contracts.
+- `app/src/main/java/org/materialclass/data/` - domain models and repositories.
+- `app/src/main/java/org/materialclass/session/`, `security/`, `cache/` - session, secure storage, and encrypted cache.
+- `app/src/main/java/org/materialclass/ui/` - Compose screens and Material 3 Expressive theme.
+- `app/src/main/res/` - resources, localization, and backup rules.
+- `app/src/test/`, `app/src/androidTest/` - unit and instrumented tests.
+- `docs/` - dependencies and release verification.
 
-## Проверка
+## Verification
 
 Release/integration evidence, known limitations, CI status and the separation between synthetic tests and real read-only API observations are recorded in [`docs/release-verification.md`](docs/release-verification.md).
 
-Подробные этапы и ограничения реализации описаны во внутреннем плане `internal/docs/design/android-client-plan.md`; этот файл не включён в Git. Toolchain зафиксирован в `docs/dependencies.md`; локальная тяжёлая Android-сборка не выполняется, её проверяет CI. Не выполняйте release signing, публикацию или распространение APK из этого checkout без отдельного разрешения.
+Detailed implementation stages and constraints are described in the internal plan at `internal/docs/design/android-client-plan.md`; that file is not included in Git. The toolchain is pinned in `docs/dependencies.md`; heavy local Android builds are not run, and CI verifies them. Do not perform release signing, publish, or distribute an APK from this checkout without separate authorization.
