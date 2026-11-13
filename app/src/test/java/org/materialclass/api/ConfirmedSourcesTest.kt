@@ -77,6 +77,28 @@ class ConfirmedSourcesTest {
 	}
 
 	@Test
+	fun scheduleMapsRoomNumberInsteadOfLessonTypeAsCabinet() {
+		val result = SchoolGateway(SyntheticReadTransport {
+			HttpResponseData(200, "application/json", "{\"data\":{\"days\":[{\"schedule\":[{\"subject\":\"Math\",\"cabinet\":\"37\",\"type\":{\"name\":\"regular\"}}]}]}}")
+		}).schedule(context)
+
+		val lesson = (result as GatewayReadResult.Success).value.days.single().lessons.single()
+		assertEquals("37", lesson.cabinet)
+		assertEquals("regular", lesson.type)
+	}
+
+	@Test
+	fun scheduleMapsRoomNumberInsteadOfLessonTypeAsCabinet() {
+		val result = SchoolGateway(SyntheticReadTransport {
+			HttpResponseData(200, "application/json", "{\"data\":{\"days\":[{\"schedule\":[{\"subject\":\"Math\",\"cabinet\":\"37\",\"type\":{\"name\":\"regular\"}}]}]}}")
+		}).schedule(context)
+
+		val lesson = (result as GatewayReadResult.Success).value.days.single().lessons.single()
+		assertEquals("37", lesson.cabinet)
+		assertEquals("regular", lesson.type)
+	}
+
+	@Test
 	fun partialOrMalformedSlicesAreRejectedBeforeTheyCanBeCached() {
 		val partial = SchoolGateway(SyntheticReadTransport {
 			HttpResponseData(200, "application/json", "{\"data\":{\"days\":[{},1]}}")
