@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.filled.Error
+
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -25,20 +25,22 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 internal fun StateScreen(padding: PaddingValues, text: (String) -> String, bar: String, title: String, body: String, retry: () -> Unit) {
+	val isEmptyDay = title == "empty_day"
+	val isError = title == "error_load"
 	Column(modifier = Modifier.fillMaxSize().padding(padding).padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
 		Column(modifier = Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
 				Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
 					Text(text(title), style = MaterialTheme.typography.headlineLarge)
 					Text(text(body), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 				}
-				Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = if (title == text("empty_day")) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer), modifier = Modifier.fillMaxWidth()) {
+				Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = if (isEmptyDay) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer), modifier = Modifier.fillMaxWidth()) {
 					Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-						if (title == text("empty_day")) Text("-", style = MaterialTheme.typography.displaySmall)
-						Text(if (title == text("empty_day")) text("empty_hint") else text("offline_hint"), style = MaterialTheme.typography.titleLarge)
-						if (title != text("empty_day")) Text(text("offline_hint"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+						if (isEmptyDay) Text("-", style = MaterialTheme.typography.displaySmall)
+						Text(if (isEmptyDay) text("empty_hint") else text("offline_hint"), style = MaterialTheme.typography.titleLarge)
+						if (!isEmptyDay) Text(text("offline_hint"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 					}
 				}
-				if (title == text("error_load")) Button(onClick = retry, shape = RowShape, modifier = Modifier.fillMaxWidth()) { Text(text("retry")) }
+				if (isError) Button(onClick = retry, shape = RowShape, modifier = Modifier.fillMaxWidth()) { Text(text("retry")) }
 			}
 	}
 }

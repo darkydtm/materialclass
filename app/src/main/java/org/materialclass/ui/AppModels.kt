@@ -14,8 +14,12 @@ import org.materialclass.api.LoginCredentials
 import org.materialclass.data.DataState
 import org.materialclass.data.DateRange
 import org.materialclass.data.DiaryModel
+import org.materialclass.data.GradeSchedule
+import org.materialclass.data.GradeSubject
 import org.materialclass.data.GradesModel
 import org.materialclass.data.ProfileModel
+import org.materialclass.data.ScheduleDay
+import org.materialclass.data.ScheduleLesson
 import org.materialclass.data.ScheduleModel
 import org.materialclass.data.SchoolRepository
 
@@ -299,5 +303,152 @@ internal fun <T> DataState<T>?.readyValue(): T? = when (this) {
 	else -> null
 }
 
-internal fun stableItemKey(kind: String, index: Int, identity: String?): String =
-	identity?.takeIf(String::isNotBlank)?.let { "$kind:$it" } ?: "$kind:index:$index"
+internal fun scheduleLessonStableKeys(lessons: List<ScheduleLesson>, scope: String = ""): List<String> {
+	val keys = uniqueStableKeys("lesson", lessons.map(::scheduleLessonIdentity))
+	return keys.map { key -> if (scope.isBlank()) key else "day:$scope:$key" }
+}
+
+internal data class LessonRow(
+	val stableKey: String,
+	val timeslot: String,
+	val label: String,
+	val cabinet: String?,
+	val type: String?,
+	val homework: String?,
+)
+
+internal fun scheduleLessonRows(lessons: List<ScheduleLesson>, scope: String = ""): List<LessonRow> {
+	val keys = scheduleLessonStableKeys(lessons, scope)
+	return lessons.mapIndexed { index, lesson ->
+		LessonRow(
+			stableKey = keys[index],
+			timeslot = lesson.timeslot.orEmpty(),
+			label = lesson.label.orEmpty(),
+			cabinet = lesson.cabinet?.trim()?.takeUnless { it.equals("regular", ignoreCase = true) }?.takeIf(String::isNotBlank),
+			type = lesson.type?.takeIf(String::isNotBlank),
+			homework = lesson.homework?.takeIf(String::isNotBlank),
+		)
+	}
+}
+
+internal fun scheduleDayScope(day: ScheduleDay): String =
+	day.dateLabel?.takeIf(String::isNotBlank)
+		?: day.lessons.joinToString(";") { lesson -> scheduleLessonIdentity(lesson) }
+			.takeIf(String::isNotBlank)
+		?: "empty-day"
+
+internal fun findScheduleLesson(days: List<ScheduleDay>, selected: String): ScheduleLesson? {
+	days.forEach { day ->
+		val scope = scheduleDayScope(day)
+		val keys = scheduleLessonStableKeys(day.lessons, scope)
+		for (index in day.lessons.indices) {
+			val lesson = day.lessons[index]
+			if (lesson.uuid == selected || keys[index] == selected) return lesson
+		}
+	}
+	return null
+}
+
+internal fun gradeSubjectStableKeys(subjects: List<GradeSubject>): List<String> =
+	uniqueStableKeys("subject", subjects.map(::gradeSubjectIdentity))
+
+internal const val INTERACTIVE_FRAME_BUDGET_MS = 8.3f
+
+internal val interactiveScreenFrameBudgets: Map<AppRoute, Float> by lazy {
+	AppRoute.entries.associateWith { INTERACTIVE_FRAME_BUDGET_MS }
+}
+
+internal data class SubjectRow(
+	val stableKey: String,
+	val subjectName: String?,
+	val name: String,
+	val finalScore: String,
+	val quarter1: String,
+	val quarter2: String,
+	val quarter3: String,
+	val quarter4: String,
+)
+
+internal fun gradeSubjectRows(subjects: List<GradeSubject>, unknown: String, noData: String): List<SubjectRow> {
+	val keys = gradeSubjectStableKeys(subjects)
+	return subjects.mapIndexed { index, subject ->
+		SubjectRow(
+			stableKey = keys[index],
+			subjectName = subject.subjectName,
+			name = subject.subjectName ?: unknown,
+			finalScore = subject.finalScore ?: noData,
+			quarter1 = subject.quarter1 ?: noData,
+			quarter2 = subject.quarter2 ?: noData,
+			quarter3 = subject.quarter3 ?: noData,
+			quarter4 = subject.quarter4 ?: noData,
+		)
+	}
+}
+
+internal data class SubjectDetailRow(
+	val title: String,
+	val finalGrade: String,
+	val scheduleRows: List<GradeScheduleRow>,
+	val hasSchedules: Boolean,
+)
+
+internal fun findGradeSubject(subjects: List<GradeSubject>, selected: String): GradeSubject? {
+	val keys = gradeSubjectStableKeys(subjects)
+	return subjects.indices.firstOrNull { index ->
+		keys[index] == selected || subjects[index].subjectName == selected
+	}?.let(subjects::get)
+}
+
+internal fun gradeSubjectDetailRow(subject: GradeSubject, unknown: String, noData: String): SubjectDetailRow =
+	SubjectDetailRow(
+		title = subject.subjectName.orEmpty(),
+		finalGrade = subject.finalScore ?: noData,
+		scheduleRows = gradeScheduleRows(subject.schedules, unknown),
+		hasSchedules = subject.schedules.isNotEmpty(),
+	)
+
+internal fun gradeScheduleStableKeys(schedules: List<GradeSchedule>): List<String> =
+	uniqueStableKeys("grade", schedules.map(::gradeScheduleIdentity))
+
+internal data class GradeScheduleRow(
+	val stableKey: String,
+	val type: String,
+	val markMax: String,
+)
+
+internal fun gradeScheduleRows(schedules: List<GradeSchedule>, unknown: String): List<GradeScheduleRow> {
+	val keys = gradeScheduleStableKeys(schedules)
+	return schedules.mapIndexed { index, schedule ->
+		GradeScheduleRow(
+			stableKey = keys[index],
+			type = schedule.type ?: unknown,
+			markMax = schedule.markMax?.toString() ?: "-",
+		)
+	}
+}
+
+private fun scheduleLessonIdentity(lesson: ScheduleLesson): String =
+	lesson.uuid?.takeIf(String::isNotBlank)
+		?: listOf(lesson.timeslot, lesson.label, lesson.type, lesson.cabinet, lesson.teacher)
+			.joinToString("|") { it.orEmpty() }
+
+private fun gradeSubjectIdentity(subject: GradeSubject): String =
+	subject.subjectName?.takeIf(String::isNotBlank)
+		?: subject.schedules.joinToString(";") { schedule ->
+			schedule.uuid?.takeIf(String::isNotBlank)
+				?: listOf(schedule.date, schedule.timeStart, schedule.type).joinToString("|") { it.orEmpty() }
+		}
+
+private fun gradeScheduleIdentity(schedule: GradeSchedule): String =
+	schedule.uuid?.takeIf(String::isNotBlank)
+		?: listOf(schedule.date, schedule.timeStart, schedule.type, schedule.markMax?.toString())
+			.joinToString("|") { it.orEmpty() }
+
+private fun uniqueStableKeys(kind: String, identities: List<String>): List<String> {
+	val occurrences = HashMap<String, Int>(identities.size)
+	return identities.map { identity ->
+		val occurrence = occurrences.getOrDefault(identity, 0)
+		occurrences[identity] = occurrence + 1
+		"$kind:${identity.length}:$identity:$occurrence"
+	}
+}
