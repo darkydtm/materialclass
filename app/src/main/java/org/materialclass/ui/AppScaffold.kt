@@ -59,7 +59,7 @@ internal fun AppScaffold(
 		topBar = {
 			CenterAlignedTopAppBar(
 				colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-				title = { Text(text("app_name")) },
+				title = { Text(text(navigator.current.titleKey())) },
 				navigationIcon = {
 					if (navigator.current !in rootRoutes) {
 						IconButton(onClick = { navigator.back() }, modifier = Modifier.testTag("back")) {
@@ -142,6 +142,22 @@ private fun AppRoute.labelKey(): String = when (this) {
 	AppRoute.Diary -> "nav_diary"
 	AppRoute.Schedule -> "nav_schedule"
 	AppRoute.Settings -> "nav_settings"
+	else -> "app_name"
+}
+
+internal fun AppRoute.titleKey(): String = when (this) {
+	AppRoute.Home, AppRoute.HomeError, AppRoute.HomeEmpty -> "nav_home"
+	AppRoute.Diary -> "nav_diary"
+	AppRoute.Schedule, AppRoute.ScheduleOffline -> "nav_schedule"
+	AppRoute.LessonDetail -> "lesson_title"
+	AppRoute.SubjectDetail -> "subject_title"
+	AppRoute.Calculator, AppRoute.CalculatorMissing -> "calculation_title"
+	AppRoute.Settings -> "nav_settings"
+	AppRoute.SettingsLanguage -> "language"
+	AppRoute.SettingsTheme -> "theme"
+	AppRoute.SettingsNotifications -> "notifications_title"
+	AppRoute.BackgroundWork -> "background_work"
+	AppRoute.Profile -> "profile"
 	else -> "app_name"
 }
 

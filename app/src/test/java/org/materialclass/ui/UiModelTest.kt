@@ -25,4 +25,12 @@ class UiModelTest {
 		assertEquals(UiContent.Empty, UiContent.from(DataStateKind.Empty))
 		assertEquals(UiContent.Error, UiContent.from(DataStateKind.Error))
 	}
+
+	@Test
+	fun routeTitleUsesTheSelectedScreen() {
+		assertEquals("nav_home", AppRoute.Home.titleKey())
+		assertEquals("theme", AppRoute.SettingsTheme.titleKey())
+		assertEquals("nav_settings", AppRoute.Settings.titleKey())
+		assertEquals("lesson_title", AppRoute.LessonDetail.titleKey())
+	}
 }
