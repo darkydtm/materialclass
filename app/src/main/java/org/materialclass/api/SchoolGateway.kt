@@ -2,7 +2,10 @@ package org.materialclass.api
 
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+import org.materialclass.data.DiaryModel
+import org.materialclass.data.DiaryWeeksModel
 import org.materialclass.data.PeriodsModel
+import org.materialclass.data.ScheduleModel
 import org.materialclass.data.SubjectsModel
 
 /** Keep the transport boundary small so production code cannot invent requests. */

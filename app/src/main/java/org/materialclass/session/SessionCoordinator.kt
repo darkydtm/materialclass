@@ -26,7 +26,7 @@ class SessionCoordinator(
 	private var nextGeneration = 0L
 	private val encryptedCache = EncryptedCache(files, keys, cipher, lock) { active }
 
-	fun activate(accountId: AccountId, token: String, expiresAt: Instant): ActiveSession = synchronized(lock) {
+	override fun activate(accountId: AccountId, token: String, expiresAt: Instant): ActiveSession = synchronized(lock) {
 		if (active != null) clearLocked()
 		val session = ActiveSession(accountId, Generation(nextGeneration++))
 		store.save(session, token, expiresAt)

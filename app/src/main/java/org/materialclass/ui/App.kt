@@ -336,9 +336,11 @@ private fun AppScaffold(
 		topBar = {
 			TopAppBar(
 				title = { Text(title(navigator.current.titleKey())) },
-				navigationIcon = if (navigator.current !in rootRoutes) {
-					{ IconButton(onClick = { navigator.back() }) { Text("‹", modifier = Modifier.testTag("back")) } }
-				} else null,
+				navigationIcon = {
+					if (navigator.current !in rootRoutes) {
+						IconButton(onClick = { navigator.back() }) { Text("‹", modifier = Modifier.testTag("back")) }
+					}
+				},
 			)
 		},
 		bottomBar = {
