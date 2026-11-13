@@ -134,7 +134,7 @@ class ConfirmedSchoolGateway(
 
 	fun subjects(context: ReadContext): GatewayReadResult<SubjectsModel> = gateway.subjects(context)
 
-	fun grades(context: ReadContext): GatewayReadResult<GradesModel> = gateway.grades(context)
+	fun grades(context: ReadContext): GatewayReadResult<GradesModel> = unsupported()
 
 	fun schedule(context: ReadContext): GatewayReadResult<ScheduleModel> = gateway.schedule(context)
 
@@ -148,18 +148,7 @@ class ConfirmedSchoolGateway(
 
 	fun subjectDetails(subjectId: String): GatewayReadResult<org.materialclass.data.SubjectDetailsModel> = unsupported()
 
-	fun profile(): GatewayReadResult<ProfileModel> = signedInUser?.let { user ->
-		GatewayReadResult.Success(
-			ProfileModel(
-				accountId = AccountId(user.userId),
-				schoolLabel = user.schoolName,
-				groupLabel = user.groupName,
-				fullName = user.fullName,
-				region = user.region,
-				schoolYear = user.eduYear?.toIntOrNull(),
-			),
-		)
-	} ?: GatewayReadResult.Failure(AppError.LoginRequired)
+	fun profile(): GatewayReadResult<ProfileModel> = unsupported()
 
 	fun studentContext(): GatewayReadResult<org.materialclass.data.ProfileModel> = unsupported()
 
