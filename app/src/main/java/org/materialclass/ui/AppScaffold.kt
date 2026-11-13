@@ -65,7 +65,7 @@ internal fun AppScaffold(
 		topBar = {
 			TopAppBar(
 				colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-				title = { Text(text(titleKey)) },
+				title = {},
 				navigationIcon = {
 					if (navigator.current !in rootRoutes) {
 						IconButton(onClick = { navigator.back() }, modifier = Modifier.testTag("back")) {
