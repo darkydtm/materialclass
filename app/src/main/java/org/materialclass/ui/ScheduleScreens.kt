@@ -185,7 +185,7 @@ private fun LessonCard(lesson: ScheduleLesson, onClick: () -> Unit) {
 			}
 			Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
 				Text(lesson.label ?: "", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
-				lesson.type?.let { AssistChip(onClick = {}, label = { Text(it) }) }
+				lesson.type?.takeUnless { it.equals("regular", ignoreCase = true) }?.let { AssistChip(onClick = {}, label = { Text(it) }) }
 			}
 			lesson.homework?.let {
 				Row(modifier = Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {

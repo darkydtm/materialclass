@@ -124,8 +124,8 @@ internal fun AppScaffold(
 					homeworkNotifications = homeworkNotifications,
 					backgroundWork = backgroundWork,
 				)
-				AppRoute.SettingsLanguage -> ChoiceScreen(padding, text, "language", AppLanguage.entries, onLanguage) { text("language_${it.tag}") }
-				AppRoute.SettingsTheme -> ChoiceScreen(padding, text, "theme", ThemeMode.entries, onTheme) { mode ->
+				AppRoute.SettingsLanguage -> ChoiceScreen(padding, text, "language", AppLanguage.entries, language, onLanguage) { text("language_${it.tag}") }
+				AppRoute.SettingsTheme -> ChoiceScreen(padding, text, "theme", ThemeMode.entries, theme, onTheme) { mode ->
 					val key = if (mode == ThemeMode.BLACK) "theme_amoled" else "theme_${mode.name.lowercase(Locale.ROOT)}"
 					text(key)
 				}

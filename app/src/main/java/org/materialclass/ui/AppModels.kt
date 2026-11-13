@@ -187,9 +187,10 @@ class SchoolViewModel(
 	var gradesState: DataState<GradesModel>? by mutableStateOf(null)
 		private set
 
-	private fun week(offset: Int = 0): DateRange {
+	private fun week(offset: Int = 0, nextWeekOnWeekend: Boolean = false): DateRange {
 			val today = LocalDate.now()
 			val monday = today.minusDays((today.dayOfWeek.value - 1).toLong())
+				.plusWeeks(if (nextWeekOnWeekend && today.dayOfWeek.value >= 6) 1 else 0)
 			val shiftedMonday = monday.plusWeeks(offset.toLong())
 			return DateRange(shiftedMonday, shiftedMonday.plusDays(6))
 		}
@@ -219,7 +220,7 @@ class SchoolViewModel(
 
 	fun loadSchedule(weekOffset: Int = 0) {
 		val source = repository ?: run { scheduleState = null; return }
-		val range = week(weekOffset)
+		val range = week(weekOffset, nextWeekOnWeekend = true)
 		val observation = source.observeSchedule(range)
 		observation.observe { scheduleState = it }
 		io.execute { source.refreshSchedule(range) }
@@ -290,7 +291,13 @@ internal fun <T> DataState<T>?.toUiState(): UiContent = when (this) {
 	is DataState.Error -> if (error == AppError.UnsupportedContract) UiContent.Unsupported else UiContent.Error
 }
 
-internal fun <T> DataState<T>?.readyValue(): T? = (this as? DataState.Ready<T>)?.snapshot?.value
+internal fun <T> DataState<T>?.readyValue(): T? = when (this) {
+	is DataState.Ready -> snapshot.value
+	is DataState.Stale -> snapshot.value
+	is DataState.Offline -> snapshot?.value
+	is DataState.Error -> snapshot?.value
+	else -> null
+}
 
 internal fun stableItemKey(kind: String, index: Int, identity: String?): String =
 	identity?.takeIf(String::isNotBlank)?.let { "$kind:$it" } ?: "$kind:index:$index"

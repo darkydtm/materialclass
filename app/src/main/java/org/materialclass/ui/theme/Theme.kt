@@ -27,7 +27,10 @@ fun MaterialClassTheme(themeMode: ThemeMode, content: @Composable () -> Unit) {
 		ThemeMode.LIGHT -> false
 		ThemeMode.DARK, ThemeMode.BLACK -> true
 	}
-	val colorScheme = when (themeMode) {
+	val effectiveMode = if (themeMode == ThemeMode.SYSTEM) {
+		if (dark) ThemeMode.DARK else ThemeMode.LIGHT
+	} else themeMode
+	val colorScheme = when (effectiveMode) {
 		ThemeMode.BLACK -> darkColorScheme(
 			primary = Color(0xFFB5CCB6), onPrimary = Color(0xFF203526), primaryContainer = Color(0xFF263A2B), onPrimaryContainer = Color(0xFFD1E8D2),
 			secondary = Color(0xFFBBCBB8), onSecondary = Color(0xFF263426), secondaryContainer = Color(0xFF2B382B), onSecondaryContainer = Color(0xFFD6E8D3),

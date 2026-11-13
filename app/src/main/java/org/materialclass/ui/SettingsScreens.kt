@@ -6,7 +6,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -59,7 +59,7 @@ internal fun SettingsScreen(
 @Composable
 private fun SettingRow(label: String, supporting: String, onClick: () -> Unit) {
 	Card(onClick = onClick, shape = RowShape, modifier = Modifier.fillMaxWidth()) {
-		Row(modifier = Modifier.padding(horizontal = 20.dp).height(58.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+		Row(modifier = Modifier.fillMaxWidth().heightIn(min = 58.dp).padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
 			Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
 				Text(label, style = MaterialTheme.typography.labelLarge)
 				Text(supporting, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -70,14 +70,14 @@ private fun SettingRow(label: String, supporting: String, onClick: () -> Unit) {
 }
 
 @Composable
-internal fun <T> ChoiceScreen(padding: PaddingValues, text: (String) -> String, kind: String, values: List<T>, onValue: (T) -> Unit, label: (T) -> String) {
+internal fun <T> ChoiceScreen(padding: PaddingValues, text: (String) -> String, kind: String, values: List<T>, selected: T, onValue: (T) -> Unit, label: (T) -> String) {
 	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
 		Text(text(kind), style = MaterialTheme.typography.headlineMedium)
 		values.forEach { value ->
 			Card(onClick = { onValue(value) }, shape = RowShape, modifier = Modifier.fillMaxWidth()) {
 				Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
 					Text(label(value))
-					Icon(Icons.Default.Check, contentDescription = null)
+					if (value == selected) Icon(Icons.Default.Check, contentDescription = null)
 				}
 			}
 		}
@@ -103,7 +103,7 @@ internal fun NotificationsScreen(
 @Composable
 private fun NotificationRow(text: (String) -> String, label: String, description: String, enabled: Boolean, onChange: (Boolean) -> Unit) {
 	Card(shape = RowShape, modifier = Modifier.fillMaxWidth()) {
-		Row(modifier = Modifier.padding(start = 20.dp, top = 12.dp, end = 16.dp, bottom = 12.dp).height(48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+		Row(modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(start = 20.dp, top = 12.dp, end = 16.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
 			Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
 				Text(label, style = MaterialTheme.typography.bodyMedium)
 				Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
