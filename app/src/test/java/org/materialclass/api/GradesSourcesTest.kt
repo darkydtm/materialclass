@@ -64,8 +64,8 @@ class GradesSourcesTest {
 			HttpResponseData(200, "application/json", "{\"data\":{\"subjects\":[]}}")
 		}).subjects(context)
 
-		assertEquals(GatewayReadResult.Failure(AppError.InvalidResponse), periods)
-		assertEquals(GatewayReadResult.Failure(AppError.InvalidResponse), subjects)
+		assertEquals(GatewayReadResult.Failure<PeriodsModel>(AppError.InvalidResponse), periods)
+		assertEquals(GatewayReadResult.Failure<SubjectsModel>(AppError.InvalidResponse), subjects)
 	}
 
 	@Test
@@ -74,7 +74,7 @@ class GradesSourcesTest {
 			HttpResponseData(403, "application/json", "{}")
 		}).subjects(context)
 
-		assertEquals(GatewayReadResult.Failure(AppError.Forbidden), result)
+		assertEquals(GatewayReadResult.Failure<SubjectsModel>(AppError.Forbidden), result)
 	}
 
 	@Test
@@ -88,9 +88,9 @@ class GradesSourcesTest {
 			FakeGradesSessionController(),
 		)
 
-		assertEquals(GatewayReadResult.Failure(AppError.UnsupportedContract), gateway.grades(context))
-		assertEquals(GatewayReadResult.Failure(AppError.UnsupportedContract), gateway.attendance(context))
-		assertEquals(GatewayReadResult.Failure(AppError.UnsupportedContract), gateway.subjectDetails("synthetic-subject"))
+		assertEquals(GatewayReadResult.Failure<GradesModel>(AppError.UnsupportedContract), gateway.grades(context))
+		assertEquals(GatewayReadResult.Failure<AttendanceModel>(AppError.UnsupportedContract), gateway.attendance(context))
+		assertEquals(GatewayReadResult.Failure<SubjectDetailsModel>(AppError.UnsupportedContract), gateway.subjectDetails("synthetic-subject"))
 		assertTrue(calls.isEmpty())
 	}
 }

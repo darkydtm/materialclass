@@ -2,6 +2,8 @@ package org.materialclass.session
 
 import java.nio.file.Files
 import java.time.Instant
+import org.materialclass.cache.CacheFiles
+import org.materialclass.cache.CacheRead
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 import org.junit.Assert.assertArrayEquals

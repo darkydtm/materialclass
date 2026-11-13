@@ -3,7 +3,13 @@ package org.materialclass.api
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.Instant
+import org.materialclass.data.AccountId
+import org.materialclass.data.ActiveSession
 import org.materialclass.data.DiaryModel
+import org.materialclass.data.Generation
+import org.materialclass.data.HomeModel
+import org.materialclass.data.LessonDetailModel
 import org.materialclass.data.ScheduleModel
 
 class ConfirmedSourcesTest {
@@ -62,16 +68,16 @@ class ConfirmedSourcesTest {
 			HttpResponseData(200, "application/json", "{\"data\":null}")
 		}).schedule(context)
 
-		assertEquals(GatewayReadResult.Failure(AppError.InvalidResponse), partial)
-		assertEquals(GatewayReadResult.Failure(AppError.InvalidResponse), malformed)
+		assertEquals(GatewayReadResult.Failure<DiaryModel>(AppError.InvalidResponse), partial)
+		assertEquals(GatewayReadResult.Failure<ScheduleModel>(AppError.InvalidResponse), malformed)
 	}
 
 	@Test
 	fun forbiddenServerTimeoutAndOfflineAreTyped() {
-		assertEquals(GatewayReadResult.Failure(AppError.Forbidden), read(HttpResponseData(403, "application/json", "{}")))
-		assertEquals(GatewayReadResult.Failure(AppError.Server), read(HttpResponseData(503, "application/json", "{}")))
-		assertEquals(GatewayReadResult.Failure(AppError.Timeout), readFailure(TransportFailure.Timeout))
-		assertEquals(GatewayReadResult.Failure(AppError.Offline), readFailure(TransportFailure.Offline))
+		assertEquals(GatewayReadResult.Failure<DiaryModel>(AppError.Forbidden), read(HttpResponseData(403, "application/json", "{}")))
+		assertEquals(GatewayReadResult.Failure<DiaryModel>(AppError.Server), read(HttpResponseData(503, "application/json", "{}")))
+		assertEquals(GatewayReadResult.Failure<DiaryModel>(AppError.Timeout), readFailure(TransportFailure.Timeout))
+		assertEquals(GatewayReadResult.Failure<DiaryModel>(AppError.Offline), readFailure(TransportFailure.Offline))
 	}
 
 	@Test
@@ -82,11 +88,11 @@ class ConfirmedSourcesTest {
 				transportCalls += request
 				HttpResponseData(500, "application/json", "{}")
 			}),
-			FakeSessionController(),
+			ConfirmedSourcesSessionController(),
 		)
 
-		assertEquals(GatewayReadResult.Failure(AppError.UnsupportedContract), gateway.home())
-		assertEquals(GatewayReadResult.Failure(AppError.UnsupportedContract), gateway.lessonDetail("synthetic-lesson"))
+		assertEquals(GatewayReadResult.Failure<HomeModel>(AppError.UnsupportedContract), gateway.home())
+		assertEquals(GatewayReadResult.Failure<LessonDetailModel>(AppError.UnsupportedContract), gateway.lessonDetail("synthetic-lesson"))
 		assertTrue(transportCalls.isEmpty())
 	}
 
@@ -96,7 +102,7 @@ class ConfirmedSourcesTest {
 			SchoolGateway(SyntheticReadTransport {
 				HttpResponseData(200, "application/json", "{\"data\":{\"days\":[{}]}}")
 			}),
-			FakeSessionController(),
+			ConfirmedSourcesSessionController(),
 		)
 
 		assertEquals(GatewayReadResult.Success(ScheduleModel(dayCount = 1)), gateway.scheduleWeeks(context))
@@ -118,4 +124,11 @@ private class SyntheticReadTransport(
 		lastRequest = request
 		return responder(request)
 	}
+}
+
+private class ConfirmedSourcesSessionController : SessionController {
+	override fun activate(accountId: AccountId, token: String, expiresAt: Instant): ActiveSession =
+		ActiveSession(accountId, Generation(1))
+
+	override fun invalidateAndClear() = Unit
 }

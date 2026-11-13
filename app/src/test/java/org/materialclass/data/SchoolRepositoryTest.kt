@@ -111,7 +111,7 @@ class SchoolRepositoryTest {
 		assertEquals(before, fixture.store.read(session))
 	}
 
-	private class Fixture {
+	private inner class Fixture {
 		val sessions = FakeSessionAccess(session)
 		val store = MemorySnapshotStore()
 		val gateway = FakeGateway()
