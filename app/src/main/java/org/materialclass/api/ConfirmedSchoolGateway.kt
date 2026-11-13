@@ -40,10 +40,8 @@ object DisallowedRoleVerifier : IdentityVerifier {
 }
 
 object StudentRoleVerifier : IdentityVerifier {
-	override fun verify(userInfo: UserInfo): IdentityDecision = when (userInfo.role?.lowercase()) {
-		"student", "studentv4" -> IdentityDecision.ConfirmedStudent
-		else -> IdentityDecision.NotConfirmed
-	}
+	override fun verify(userInfo: UserInfo): IdentityDecision =
+		if (userInfo.hasStudentContext) IdentityDecision.ConfirmedStudent else IdentityDecision.NotConfirmed
 }
 
 sealed interface LoginResult {
@@ -134,7 +132,7 @@ class ConfirmedSchoolGateway(
 
 	fun subjects(context: ReadContext): GatewayReadResult<SubjectsModel> = gateway.subjects(context)
 
-	fun grades(context: ReadContext): GatewayReadResult<GradesModel> = unsupported()
+	fun grades(context: ReadContext): GatewayReadResult<GradesModel> = gateway.grades(context)
 
 	fun schedule(context: ReadContext): GatewayReadResult<ScheduleModel> = gateway.schedule(context)
 
@@ -148,9 +146,20 @@ class ConfirmedSchoolGateway(
 
 	fun subjectDetails(subjectId: String): GatewayReadResult<org.materialclass.data.SubjectDetailsModel> = unsupported()
 
-	fun profile(): GatewayReadResult<ProfileModel> = unsupported()
+	fun profile(): GatewayReadResult<ProfileModel> = signedInUser?.let { user ->
+		GatewayReadResult.Success(
+			ProfileModel(
+				accountId = AccountId(user.userId),
+				schoolLabel = user.schoolName,
+				groupLabel = user.groupName,
+				fullName = user.fullName,
+				region = user.region,
+				schoolYear = user.eduYear?.toIntOrNull(),
+			),
+		)
+	} ?: unsupported()
 
-	fun studentContext(): GatewayReadResult<org.materialclass.data.ProfileModel> = unsupported()
+	fun studentContext(): GatewayReadResult<org.materialclass.data.ProfileModel> = profile()
 
 	fun readContext(token: String, key: String): ReadContext {
 		val user = signedInUser ?: return ReadContext(token)
@@ -167,10 +176,13 @@ class ConfirmedSchoolGateway(
 				user.groupId?.let { parameters["groupId"] = it }
 			}
 			key.startsWith("schedule:") -> {
-				parameters["date"] = key.substringAfter(':').substringBefore(':')
+				val date = key.substringAfter(':').substringBefore(':')
+				parameters["date"] = runCatching {
+					java.time.LocalDate.parse(date).format(java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy"))
+				}.getOrDefault(date)
 				user.studentSchoolUuid?.let { parameters["studentSchoolUuid"] = it }
 			}
-			key.startsWith("grades:") -> {
+			key.startsWith("subjects:") -> {
 				parameters["periodType"] = "quarter"
 				parameters["period"] = key.substringAfter(':')
 				user.groupId?.let { parameters["groupId"] = it }

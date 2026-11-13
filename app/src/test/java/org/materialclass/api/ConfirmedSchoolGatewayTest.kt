@@ -14,7 +14,7 @@ import org.materialclass.data.Generation
 class ConfirmedSchoolGatewayTest {
 	private val credentials = LoginCredentials("synthetic-login", "synthetic-password")
 	private val validBody = """
-		{"access_token":"synthetic-access","refresh_token":"synthetic-refresh","exp_time":"2030-01-01T00:00:00Z","user_info":{"userId":"student-1","school_id":"school-1","group":"group-1"}}
+		{"access_token":"synthetic-access","refresh_token":"synthetic-refresh","exp_time":"2030-01-01T00:00:00Z","user_info":{"userId":"student-1","school_id":"school-1","group":{"id":"group-1"},"studentInfo":{"studentGroupUuids":["group-uuid-1"]},"school":{"eduYears":[{"eduYear":2026,"isCurrent":true}]}}}
 	""".trimIndent()
 
 	@Test
@@ -31,6 +31,11 @@ class ConfirmedSchoolGatewayTest {
 		assertTrue(gateway.login(credentials) is LoginResult.Confirmed)
 		assertEquals("POST", transport.lastRequest!!.method)
 		assertEquals("https://api.bilimclass.kz/api/v2/os/login", transport.lastRequest!!.url)
+		assertEquals("application/json", transport.lastRequest!!.headers["Accept"])
+		assertEquals("ru", transport.lastRequest!!.headers["X-Localization"])
+		assertTrue(transport.lastRequest!!.headers["X-Mathrix"].orEmpty().isNotBlank())
+		assertEquals("https://www.bilimclass.kz", transport.lastRequest!!.headers["Origin"])
+		assertEquals("https://www.bilimclass.kz/", transport.lastRequest!!.headers["Referer"])
 		assertTrue(transport.lastRequest!!.body.contains("\"login\":\"synthetic-login\""))
 		assertTrue(transport.lastRequest!!.body.contains("\"password\":\"synthetic-password\""))
 		assertTrue(logs.none { it.contains("synthetic-password") || it.contains("synthetic-access") || it.contains("synthetic-refresh") })
@@ -79,6 +84,26 @@ class ConfirmedSchoolGatewayTest {
 		assertTrue(result is LoginResult.Confirmed)
 		assertEquals(AccountId("student-1"), sessions.active!!.accountId)
 		assertEquals("synthetic-access", sessions.token)
+	}
+
+	@Test
+	fun documentedLoginContextBuildsReadQueriesAndProfile() {
+		val body = """
+			{"access_token":"synthetic-access","refresh_token":"synthetic-refresh","exp_time":"2030-01-01T00:00:00Z","user_info":{"userId":"student-1","school_id":"school-1","group":{"id":"group-1","name":"Class"},"studentInfo":{"studentSchoolUuid":"student-school-1","studentGroupUuids":["group-uuid-1"]},"school":{"name":"School","region":"Region","eduYears":[{"eduYear":2026,"isCurrent":true}]}}}
+		""".trimIndent()
+		val gateway = ConfirmedSchoolGateway(
+			SchoolGateway(SyntheticHttpsTransport { HttpResponseData(200, "application/json", body) }),
+			FakeSessionController(),
+			StudentRoleVerifier,
+		)
+
+		assertTrue(gateway.login(credentials) is LoginResult.Confirmed)
+		val context = gateway.readContext("synthetic-access", "schedule:2026-09-07:2026-09-13")
+		assertEquals("school-1", context.queryParameters["schoolId"])
+		assertEquals("2026", context.queryParameters["eduYear"])
+		assertEquals("07.09.2026", context.queryParameters["date"])
+		assertEquals("student-school-1", context.queryParameters["studentSchoolUuid"])
+		assertTrue(gateway.profile() is GatewayReadResult.Success)
 	}
 
 	@Test

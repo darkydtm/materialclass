@@ -172,6 +172,12 @@ data class GradeSubject(
 	val subjectName: String?,
 	val finalScore: String?,
 	val schedules: List<GradeSchedule>,
+	val quarter1: String? = null,
+	val quarter2: String? = null,
+	val quarter3: String? = null,
+	val quarter4: String? = null,
+	val yearScore: String? = null,
+	val totalMissCount: Int? = null,
 )
 
 data class GradeSchedule(

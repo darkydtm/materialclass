@@ -29,7 +29,7 @@ object ContractMapper {
 		if (accessToken.isBlank() || refreshToken.isBlank() || userId.isBlank()) {
 			throw IllegalArgumentException("blank observed field")
 		}
-		GatewayLoginResult.Success(LoginResponse(accessToken, refreshToken, expiresAt, UserInfo(userId)))
+		GatewayLoginResult.Success(LoginResponse(accessToken, refreshToken, expiresAt, userInfo.toUserInfo(userId)))
 	} catch (_: Exception) {
 		GatewayLoginResult.Failure(AppError.InvalidResponse)
 	}
@@ -91,10 +91,10 @@ object ContractMapper {
 	}
 
 	fun mapGrades(body: String): GatewayReadResult<GradesModel> = try {
-		val subjects = JsonParser(body).parseObject().requiredArray("data")
-		if (subjects.any { it !is JsonValue.ObjectValue }) throw IllegalArgumentException("unsupported grade shape")
-		if (subjects.isEmpty()) GatewayReadResult.Empty else GatewayReadResult.Success(
-			GradesModel(subjects.size, subjects.map { (it as JsonValue.ObjectValue).values.toGradeSubject() }),
+		val rows = JsonParser(body).parseObject().requiredObject("data").requiredArray("rows")
+		if (rows.any { it !is JsonValue.ObjectValue }) throw IllegalArgumentException("unsupported grade shape")
+		if (rows.isEmpty()) GatewayReadResult.Empty else GatewayReadResult.Success(
+			GradesModel(rows.size, rows.map { (it as JsonValue.ObjectValue).values.toYearGradeSubject() }),
 		)
 	} catch (_: Exception) {
 		GatewayReadResult.Failure(AppError.InvalidResponse)
@@ -123,6 +123,7 @@ data class UserInfo(
 	val studentGroupUuid: String? = null,
 	val eduYear: String? = null,
 	val role: String? = null,
+	val hasStudentContext: Boolean = false,
 ) {
 	override fun toString(): String = "UserInfo(userId=<redacted>)"
 }
@@ -136,6 +137,10 @@ private fun Map<String, JsonValue>.toUserInfo(userId: String): UserInfo {
 		.mapNotNull { (it as? JsonValue.ObjectValue)?.values }
 		.firstOrNull { (it["isCurrent"] as? JsonValue.BooleanValue)?.value == true }
 		?.get("eduYear")?.asText()
+	val hasStudentContext = get("school_id")?.asText()?.isNotBlank() == true &&
+		group?.get("id")?.asText()?.isNotBlank() == true &&
+		student != null &&
+		currentYear?.isNotBlank() == true
 	val fullName = listOf("surname", "firstname", "lastname").mapNotNull { get(it)?.asText() }
 		.joinToString(" ").ifBlank { null }
 	return UserInfo(
@@ -147,9 +152,11 @@ private fun Map<String, JsonValue>.toUserInfo(userId: String): UserInfo {
 		schoolId = get("school_id")?.asText(),
 		groupId = group?.get("id")?.asText(),
 		studentSchoolUuid = student?.get("studentSchoolUuid")?.asText(),
-		studentGroupUuid = student?.get("studentGroupUuid")?.asText(),
+		studentGroupUuid = student?.get("studentGroupUuid")?.asText()
+			?: (student?.get("studentGroupUuids") as? JsonValue.ArrayValue)?.values?.firstOrNull()?.asText(),
 		eduYear = currentYear,
 		role = get("role")?.asText(),
+		hasStudentContext = hasStudentContext,
 	)
 }
 
@@ -176,17 +183,29 @@ private fun Map<String, JsonValue>.toScheduleDay(): ScheduleDay {
 	val lessons = (get("schedule") as? JsonValue.ArrayValue)?.values.orEmpty().map { value ->
 		val item = (value as? JsonValue.ObjectValue)?.values ?: throw IllegalArgumentException("unsupported schedule lesson")
 		ScheduleLesson(
-			uuid = item["uuid"]?.asText(),
-			label = item["label"]?.asText(),
-			timeslot = item["timeslot"]?.asText(),
-			cabinet = item["cabinet"]?.asText(),
-			teacher = item["teacherFio"]?.asText(),
+			uuid = item.textValue("scheduleUuid", "uuid"),
+			label = item.textValue("subject", "lesson", "label"),
+			timeslot = item.textValue("time", "timeslot"),
+			cabinet = item.textValue("cabinet"),
+			teacher = item.textValue("teacher", "teacherFio"),
 			type = item["type"]?.asText(),
 			theme = item["theme"]?.asText(),
-			homework = item["homeworkBody"]?.asText(),
+			homework = item.textValue("homeworkBody", "homework", "body"),
 		)
 	}
 	return ScheduleDay(get("dateFormat")?.asText() ?: get("date_label")?.asText(), get("isCurrent")?.asBoolean() ?: false, get("isHoliday")?.asBoolean() ?: false, lessons)
+}
+
+private fun Map<String, JsonValue>.textValue(vararg names: String): String? =
+	names.asSequence().mapNotNull { name -> get(name)?.textValue() }.firstOrNull()
+
+private fun JsonValue.textValue(): String? = when (this) {
+	is JsonValue.StringValue, is JsonValue.NumberValue -> asText()
+	is JsonValue.ObjectValue -> listOf("name", "title", "label", "body", "fio")
+		.asSequence()
+		.mapNotNull { values[it]?.asText() }
+		.firstOrNull()
+	else -> null
 }
 
 private fun Map<String, JsonValue>.toGradeSubject(): GradeSubject {
@@ -195,6 +214,23 @@ private fun Map<String, JsonValue>.toGradeSubject(): GradeSubject {
 		GradeSchedule(item["uuid"]?.asText(), item["date"]?.asText(), item["timeStart"]?.asText(), item["markMax"]?.asText()?.toIntOrNull(), item["type"]?.asText())
 	}
 	return GradeSubject(get("subjectName")?.asText(), get("finalScore")?.asText(), schedules)
+}
+
+private fun Map<String, JsonValue>.toYearGradeSubject(): GradeSubject {
+	val attestations = (get("attestations") as? JsonValue.ObjectValue)?.values
+	val yearScores = (get("yearScores") as? JsonValue.ObjectValue)?.values
+	val attendances = (get("attendances") as? JsonValue.ObjectValue)?.values
+	return GradeSubject(
+		subjectName = get("subjectName")?.asText(),
+		finalScore = yearScores?.get("finalScore")?.asText(),
+		schedules = emptyList(),
+		quarter1 = attestations?.get("quarter1")?.asText(),
+		quarter2 = attestations?.get("quarter2")?.asText(),
+		quarter3 = attestations?.get("quarter3")?.asText(),
+		quarter4 = attestations?.get("quarter4")?.asText(),
+		yearScore = yearScores?.get("yearScore")?.asText(),
+		totalMissCount = attendances?.get("totalMissCount")?.asText()?.toIntOrNull(),
+	)
 }
 
 private fun Map<String, JsonValue>.requiredString(name: String): String =

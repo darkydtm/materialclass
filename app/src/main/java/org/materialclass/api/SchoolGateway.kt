@@ -36,6 +36,7 @@ fun interface HttpsTransport {
 class SchoolGateway(
 	private val transport: HttpsTransport,
 	private val log: (String) -> Unit = {},
+	private val deviceId: String = java.util.UUID.randomUUID().toString(),
 ) {
 	fun login(credentials: LoginCredentials): GatewayLoginResult {
 		if (credentials.login.isBlank() || credentials.password.isBlank()) {
@@ -44,7 +45,15 @@ class SchoolGateway(
 		val request = HttpRequestData(
 			method = "POST",
 			url = LOGIN_URL,
-			headers = mapOf("Content-Type" to "application/json"),
+				headers = mapOf(
+					"User-Agent" to USER_AGENT,
+					"Accept" to "application/json",
+				"Content-Type" to "application/json",
+				"X-Localization" to "ru",
+				"X-Mathrix" to deviceId,
+				"Origin" to "https://www.bilimclass.kz",
+				"Referer" to "https://www.bilimclass.kz/",
+			),
 			body = "{\"login\":${jsonString(credentials.login)},\"password\":${jsonString(credentials.password)}}",
 		)
 		log("login request POST $LOGIN_URL")
@@ -83,7 +92,7 @@ class SchoolGateway(
 		read(context, SUBJECTS_PATH, ContractMapper::mapSubjects)
 
 	fun grades(context: ReadContext): GatewayReadResult<GradesModel> =
-		read(context, SUBJECTS_PATH, ContractMapper::mapGrades)
+		read(context, YEAR_GRADES_PATH, ContractMapper::mapGrades)
 
 	fun schedule(context: ReadContext): GatewayReadResult<ScheduleModel> =
 		read(context, SCHEDULE_PATH, ContractMapper::mapSchedule)
@@ -97,7 +106,13 @@ class SchoolGateway(
 		val request = HttpRequestData(
 			method = "GET",
 			url = buildUrl(path, context.queryParameters),
-			headers = mapOf("Authorization" to "Bearer ${context.accessToken}"),
+				headers = buildMap {
+					put("User-Agent", USER_AGENT)
+					put("Accept", "application/json")
+				put("Authorization", "Bearer ${context.accessToken}")
+				put("X-Localization", "ru")
+				context.queryParameters["schoolId"]?.let { put("x-school-id", it) }
+			},
 			body = "",
 		)
 		log("read request GET $path")
@@ -125,10 +140,12 @@ class SchoolGateway(
 
 	private companion object {
 		const val LOGIN_URL = "https://api.bilimclass.kz/api/v2/os/login"
+		const val USER_AGENT = "Mozilla/5.0 (Android) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36"
 		const val DIARY_WEEKS_PATH = "/api/v4/os/clientoffice/diary/weeks"
 		const val DIARY_PATH = "/api/v4/os/clientoffice/diary"
 		const val DIARY_PERIODS_PATH = "/api/v4/os/clientoffice/diary/periods"
 		const val SUBJECTS_PATH = "/api/v4/os/clientoffice/diary/subjects"
+		const val YEAR_GRADES_PATH = "/api/v4/os/clientoffice/diary/year"
 		const val SCHEDULE_PATH = "/api/v4/os/clientoffice/schedule"
 
 		fun buildUrl(path: String, parameters: Map<String, String>): String {

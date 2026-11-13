@@ -34,19 +34,23 @@ class ProfileSourcesTest {
 	}
 
 	@Test
-	fun loginMappingKeepsOnlyConfirmedIdentityStructureAndDoesNotExposeContextValues() {
+	fun loginMappingPreservesConfirmedContextWithoutExposingItInDiagnostics() {
 		val result = ContractMapper.mapLoginResponse(
 			"""
-			{"access_token":"synthetic-access","refresh_token":"synthetic-refresh","exp_time":"2030-01-01T00:00:00Z","user_info":{"userId":"synthetic-account","school_id":"synthetic-school","group":"synthetic-group","studentInfo":{"name":"synthetic-name"}}}
+			{"access_token":"synthetic-access","refresh_token":"synthetic-refresh","exp_time":"2030-01-01T00:00:00Z","user_info":{"userId":"synthetic-account","school_id":"synthetic-school","group":{"id":"synthetic-group"},"studentInfo":{"studentGroupUuids":["synthetic-group-uuid"]},"school":{"eduYears":[{"eduYear":2026,"isCurrent":true}]}}}
 			""".trimIndent(),
 		)
 
 		assertTrue(result is GatewayLoginResult.Success)
 		val response = (result as GatewayLoginResult.Success).response
-		assertEquals(UserInfo("synthetic-account"), response.userInfo)
+		assertEquals("synthetic-school", response.userInfo.schoolId)
+		assertEquals("synthetic-group", response.userInfo.groupId)
+		assertEquals("synthetic-group-uuid", response.userInfo.studentGroupUuid)
+		assertEquals("2026", response.userInfo.eduYear)
+		assertTrue(response.userInfo.hasStudentContext)
 		assertFalse(response.toString().contains("synthetic-school"))
 		assertFalse(response.toString().contains("synthetic-group"))
-		assertFalse(response.toString().contains("synthetic-name"))
+		assertFalse(response.toString().contains("synthetic-group-uuid"))
 	}
 
 	@Test
