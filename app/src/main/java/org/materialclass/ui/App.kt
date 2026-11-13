@@ -21,6 +21,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -64,7 +65,7 @@ fun MaterialClassApp(
 	}
 	val snackbarHostState = remember { SnackbarHostState() }
 	val backProgress = remember { Animatable(0f) }
-	val screenWidth = with(LocalDensity.current) { configuration.screenWidthDp.toFloat() * density }
+	val screenWidth = with(LocalDensity.current) { configuration.screenWidthDp.dp.toPx() }
 
 	PredictiveBackHandler(enabled = navigator.current !in loginRoutes && navigator.canGoBack()) { events ->
 		try {

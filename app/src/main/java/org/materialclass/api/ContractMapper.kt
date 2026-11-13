@@ -305,13 +305,23 @@ private fun Map<String, JsonValue>.toYearGradeSubject(): GradeSubject {
 		subjectName = get("subjectName")?.asText(),
 		finalScore = yearScores?.get("finalScore")?.asText(),
 		schedules = emptyList(),
-		quarter1 = attestations?.get("quarter1")?.asText(),
-		quarter2 = attestations?.get("quarter2")?.asText(),
-		quarter3 = attestations?.get("quarter3")?.asText(),
-		quarter4 = attestations?.get("quarter4")?.asText(),
+		quarter1 = attestations?.score("quarter1"),
+		quarter2 = attestations?.score("quarter2"),
+		quarter3 = attestations?.score("quarter3"),
+		quarter4 = attestations?.score("quarter4"),
 		yearScore = yearScores?.get("yearScore")?.asText(),
 		totalMissCount = attendances?.get("totalMissCount")?.asText()?.toIntOrNull(),
+		scores = attestations.orEmpty().values.mapNotNull { it.scoreValue() }.distinct(),
 	)
+}
+
+private fun Map<String, JsonValue>.score(name: String): String? = get(name)?.scoreValue()
+
+private fun JsonValue.scoreValue(): String? = when (this) {
+	JsonValue.NullValue -> null
+	is JsonValue.StringValue, is JsonValue.NumberValue -> asText()?.takeIf { it.isNotBlank() }
+	is JsonValue.ObjectValue -> values["mark"]?.asText() ?: values["value"]?.asText()
+	else -> null
 }
 
 private fun Map<String, JsonValue>.toHomeworkItem(): HomeworkItem = HomeworkItem(

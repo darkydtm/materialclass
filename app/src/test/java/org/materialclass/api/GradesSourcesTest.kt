@@ -111,6 +111,14 @@ class GradesSourcesTest {
 		assertEquals(null, subject.finalScore)
 		assertEquals(0, subject.totalMissCount)
 	}
+
+	@Test
+	fun yearGradeMapperExtractsScoresFromStructuredAttestations() {
+		val result = ContractMapper.mapGrades(
+			"{\"data\":{\"rows\":[{\"subjectName\":\"Math\",\"attestations\":{\"a\":{\"mark\":\"8\"},\"b\":{\"value\":\"9\"},\"c\":null}}]}}",
+		)
+		assertEquals(listOf("8", "9"), (result as GatewayReadResult.Success).value.subjects.single().scores)
+	}
 }
 
 private class SyntheticGradesTransport(

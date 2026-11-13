@@ -178,6 +178,7 @@ data class GradeSubject(
 	val quarter4: String? = null,
 	val yearScore: String? = null,
 	val totalMissCount: Int? = null,
+	val scores: List<String> = emptyList(),
 ) : java.io.Serializable
 
 data class JournalGrade(

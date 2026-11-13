@@ -7,21 +7,21 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.filled.Error
+
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Divider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
+
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -90,7 +90,7 @@ private fun SubjectCard(subject: GradeSubject, text: (String) -> String, onClick
 			}
 			Divider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 1.dp)
 			Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-				listOf(subject.quarter1, subject.quarter2, subject.quarter3, subject.quarter4).forEach { score ->
+				(subject.scores.ifEmpty { listOfNotNull(subject.quarter1, subject.quarter2, subject.quarter3, subject.quarter4) }).forEach { score ->
 					Text(score ?: text("no_data"), modifier = Modifier.width(42.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
 				}
 			}
