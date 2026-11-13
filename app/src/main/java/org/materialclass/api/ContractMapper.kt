@@ -69,7 +69,7 @@ object ContractMapper {
 		if (days.any { it !is JsonValue.ObjectValue }) throw IllegalArgumentException("unsupported day shape")
 		if (days.isEmpty()) GatewayReadResult.Empty else GatewayReadResult.Success(
 			DiaryModel(days.size, null, days.mapNotNull { value ->
-				(value as JsonValue.ObjectValue).values.takeIf { it.isNotEmpty() }?.toDiaryDay()
+				value.asObject().takeIf { it.isNotEmpty() }?.toDiaryDay()
 			}),
 		)
 	} catch (_: Exception) {
@@ -95,10 +95,10 @@ object ContractMapper {
 	fun mapSchedule(body: String): GatewayReadResult<ScheduleModel> = try {
 		val days = JsonParser(body).parseObject().requiredObject("data").requiredArray("days")
 		if (days.any { it !is JsonValue.ObjectValue }) throw IllegalArgumentException("unsupported schedule day shape")
-		val scheduledDays = days.count { it is JsonValue.ObjectValue && it.values["schedule"] is JsonValue.ArrayValue }
+		val scheduledDays = days.count { it.asObject()["schedule"] is JsonValue.ArrayValue }
 		if (days.isEmpty()) GatewayReadResult.Empty else GatewayReadResult.Success(
 			ScheduleModel(days.size, scheduledDays, days.mapNotNull { value ->
-				(value as JsonValue.ObjectValue).values.takeIf { item ->
+				value.asObject().takeIf { item ->
 					item.keys.any { it != "schedule" } || (item["schedule"] as? JsonValue.ArrayValue)?.values?.isNotEmpty() == true
 				}?.toScheduleDay()
 			}),
@@ -111,7 +111,7 @@ object ContractMapper {
 		val rows = JsonParser(body).parseObject().requiredObject("data").requiredArray("rows")
 		if (rows.any { it !is JsonValue.ObjectValue }) throw IllegalArgumentException("unsupported grade shape")
 		if (rows.isEmpty()) GatewayReadResult.Empty else GatewayReadResult.Success(
-			GradesModel(rows.size, rows.map { (it as JsonValue.ObjectValue).values.toYearGradeSubject() }),
+			GradesModel(rows.size, rows.map { it.asObject().toYearGradeSubject() }),
 		)
 	} catch (_: Exception) {
 		GatewayReadResult.Failure(AppError.InvalidResponse)
@@ -121,7 +121,7 @@ object ContractMapper {
 		val items = JsonParser(body).parseObject().requiredArray("data")
 		if (items.any { it !is JsonValue.ObjectValue }) throw IllegalArgumentException("unsupported homework shape")
 		if (items.isEmpty()) GatewayReadResult.Empty else GatewayReadResult.Success(
-			HomeworksModel(items.map { (it as JsonValue.ObjectValue).values.toHomeworkItem() }),
+			HomeworksModel(items.map { it.asObject().toHomeworkItem() }),
 		)
 	} catch (_: Exception) {
 		GatewayReadResult.Failure(AppError.InvalidResponse)
@@ -141,9 +141,7 @@ object ContractMapper {
 			is JsonValue.ArrayValue -> if (dataValue.values.isEmpty()) GatewayReadResult.Empty else throw IllegalArgumentException("unsupported journal array shape")
 			is JsonValue.ObjectValue -> {
 				val grades = dataValue.values.map { (scheduleUuid, value) ->
-					val item = (value as? JsonValue.ObjectValue)?.values
-						?: throw IllegalArgumentException("unsupported journal grade shape")
-					item.toJournalGrade(scheduleUuid)
+					value.asObject().toJournalGrade(scheduleUuid)
 				}
 				if (grades.isEmpty()) GatewayReadResult.Empty else GatewayReadResult.Success(JournalGradesModel(grades, 1, 0))
 			}
@@ -158,8 +156,8 @@ object ContractMapper {
 			is JsonValue.ObjectValue -> GatewayReadResult.Success(
 				SystemDataModel(
 					dataKeys = data.values.keys,
-					itemCount = data.values.values.firstOrNull { it is JsonValue.ArrayValue }
-						?.let { (it as JsonValue.ArrayValue).values.size },
+					itemCount = data.values.values.filterIsInstance<JsonValue.ArrayValue>()
+						.firstOrNull()?.values?.size,
 				),
 			)
 			is JsonValue.ArrayValue -> if (data.values.isEmpty()) GatewayReadResult.Empty else GatewayReadResult.Success(SystemDataModel(emptySet(), data.values.size))
@@ -244,7 +242,7 @@ private fun Map<String, JsonValue>.toUserInfo(userId: String): UserInfo {
 
 private fun Map<String, JsonValue>.toDiaryDay(): DiaryDay {
 	val subjects = (get("subjects") as? JsonValue.ArrayValue)?.values.orEmpty().map { value ->
-		val item = (value as? JsonValue.ObjectValue)?.values ?: throw IllegalArgumentException("unsupported diary subject")
+		val item = value.asObject()
 		DiarySubject(
 			scheduleUuid = item["scheduleUuid"]?.asText(),
 			label = item["label"]?.asText(),
@@ -263,7 +261,7 @@ private fun Map<String, JsonValue>.toDiaryDay(): DiaryDay {
 
 private fun Map<String, JsonValue>.toScheduleDay(): ScheduleDay {
 	val lessons = (get("schedule") as? JsonValue.ArrayValue)?.values.orEmpty().map { value ->
-		val item = (value as? JsonValue.ObjectValue)?.values ?: throw IllegalArgumentException("unsupported schedule lesson")
+		val item = value.asObject()
 		ScheduleLesson(
 			uuid = item.textValue("scheduleUuid", "uuid"),
 			label = item.textValue("subject", "lesson", "label"),
@@ -292,7 +290,7 @@ private fun JsonValue.textValue(): String? = when (this) {
 
 private fun Map<String, JsonValue>.toGradeSubject(): GradeSubject {
 	val schedules = (get("schedules") as? JsonValue.ArrayValue)?.values.orEmpty().map { value ->
-		val item = (value as? JsonValue.ObjectValue)?.values ?: throw IllegalArgumentException("unsupported grade schedule")
+		val item = value.asObject()
 		GradeSchedule(item["uuid"]?.asText(), item["date"]?.asText(), item["timeStart"]?.asText(), item["markMax"]?.asText()?.toIntOrNull(), item["type"]?.asText())
 	}
 	return GradeSubject(get("subjectName")?.asText(), get("finalScore")?.asText(), schedules)
@@ -360,6 +358,10 @@ private fun JsonValue.asText(): String? = when (this) {
 	is JsonValue.NumberValue -> value
 	else -> null
 }
+
+private fun JsonValue.asObject(): Map<String, JsonValue> =
+	(this as? JsonValue.ObjectValue)?.values
+		?: throw IllegalArgumentException("expected JSON object")
 
 private fun JsonValue.asBoolean(): Boolean? = (this as? JsonValue.BooleanValue)?.value
 
