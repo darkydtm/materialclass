@@ -30,8 +30,29 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
+      - name: Decode debug keystore
+        env:
+          ANDROID_DEBUG_KEYSTORE_BASE64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$ANDROID_DEBUG_KEYSTORE_BASE64"
+          printf '%s' "$ANDROID_DEBUG_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/materialclass-debug.jks"
+          chmod 600 "$RUNNER_TEMP/materialclass-debug.jks"
+
       - name: Run unit tests, lint, and debug build
-        run: ./gradlew --no-daemon assembleDebug testDebugUnitTest lintDebug
+        env:
+          ANDROID_DEBUG_KEYSTORE_PATH: ${{ runner.temp }}/materialclass-debug.jks
+          ANDROID_DEBUG_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_DEBUG_KEYSTORE_PASSWORD }}
+          ANDROID_DEBUG_KEY_ALIAS: ${{ secrets.ANDROID_DEBUG_KEY_ALIAS }}
+          ANDROID_DEBUG_KEY_PASSWORD: ${{ secrets.ANDROID_DEBUG_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon clean assembleDebug testDebugUnitTest lintDebug
+
+      - name: Verify debug APK signature
+        if: success()
+        run: |
+          apksigner="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -n "$apksigner"
+          test ! -e app/build/outputs/apk/debug/app-debug-unsigned.apk
+          "$apksigner" verify --verbose --print-certs app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload verification reports
         if: always()

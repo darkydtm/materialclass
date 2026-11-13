@@ -54,7 +54,7 @@ fun MaterialClassApp(
 	var selectedLesson by rememberSaveable { mutableStateOf("") }
 	val text: (String) -> String = remember(context, configuration) {
 		val values = HashMap<String, String>()
-		{ key ->
+		return@remember { key: String ->
 			values.getOrPut(key) {
 				context.resources.getIdentifier(key, "string", context.packageName)
 					.takeIf { it != 0 }
