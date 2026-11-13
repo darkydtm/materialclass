@@ -16,7 +16,7 @@ import org.materialclass.data.SubjectsModel
 class GradesSourcesTest {
 	private val context = ReadContext(
 		accessToken = "synthetic-access",
-		queryParameters = mapOf("synthetic-context" to "current"),
+		queryParameters = mapOf("schoolId" to "synthetic-school"),
 	)
 
 	@Test
@@ -81,20 +81,35 @@ class GradesSourcesTest {
 	}
 
 	@Test
-	fun gradesAttendanceAndSubjectDetailsAreTypedUnsupportedWithoutTransportCalls() {
+	fun yearGradesUseTheConfirmedYearEndpointWhileOtherSourcesStayUnsupported() {
 		val calls = mutableListOf<HttpRequestData>()
 		val gateway = ConfirmedSchoolGateway(
 			SchoolGateway(SyntheticGradesTransport { request ->
 				calls += request
-				HttpResponseData(500, "application/json", "{}")
+				HttpResponseData(200, "application/json", "{\"data\":{\"rows\":[{\"subjectName\":\"Math\",\"attestations\":{\"quarter1\":\"5\"},\"yearScores\":{\"yearScore\":\"5\",\"finalScore\":null},\"attendances\":{\"totalMissCount\":0}}]}}")
 			}),
 			FakeGradesSessionController(),
 		)
 
-		assertEquals(GatewayReadResult.Failure<GradesModel>(AppError.UnsupportedContract), gateway.grades(context))
+		val grades = gateway.grades(context)
+		assertEquals("https://api.bilimclass.kz/api/v4/os/clientoffice/diary/year", calls.single().url.substringBefore('?'))
+		assertEquals("Math", (grades as GatewayReadResult.Success).value.subjects.single().subjectName)
 		assertEquals(GatewayReadResult.Failure<AttendanceModel>(AppError.UnsupportedContract), gateway.attendance(context))
 		assertEquals(GatewayReadResult.Failure<SubjectDetailsModel>(AppError.UnsupportedContract), gateway.subjectDetails("synthetic-subject"))
-		assertTrue(calls.isEmpty())
+		assertEquals(1, calls.size)
+	}
+
+	@Test
+	fun yearGradeMapperKeepsNullScoresDistinctFromEmptyValues() {
+		val result = ContractMapper.mapGrades(
+			"{\"data\":{\"rows\":[{\"subjectName\":\"Math\",\"attestations\":{\"quarter1\":null,\"quarter2\":\"\"},\"yearScores\":null,\"attendances\":{\"totalMissCount\":0}}]}}",
+		)
+
+		val subject = (result as GatewayReadResult.Success).value.subjects.single()
+		assertEquals(null, subject.quarter1)
+		assertEquals("", subject.quarter2)
+		assertEquals(null, subject.finalScore)
+		assertEquals(0, subject.totalMissCount)
 	}
 }
 

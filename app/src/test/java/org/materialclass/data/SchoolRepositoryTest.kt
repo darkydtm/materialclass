@@ -134,7 +134,10 @@ private class FakeGateway : RepositoryGateway {
 	override fun diary(context: ReadContext) = diaryCall?.invoke() ?: diaryResult
 	override fun schedule(context: ReadContext) = scheduleResult
 	override fun grades(context: ReadContext) = GatewayReadResult.Failure<GradesModel>(AppError.UnsupportedContract)
+	override fun homeworks(context: ReadContext) = GatewayReadResult.Failure<HomeworksModel>(AppError.UnsupportedContract)
+	override fun journalGrades(context: ReadContext) = GatewayReadResult.Failure<JournalGradesModel>(AppError.UnsupportedContract)
 	override fun profile() = GatewayReadResult.Failure<ProfileModel>(AppError.UnsupportedContract)
+	override fun logout() = GatewayReadResult.Success(Unit)
 }
 
 private class MemorySnapshotStore : SnapshotStore {

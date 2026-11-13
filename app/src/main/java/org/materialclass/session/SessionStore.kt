@@ -17,10 +17,13 @@ class SessionStore(
 	private val keys: KeyProvider,
 	private val cipher: SecureCipher,
 ) {
-	fun save(session: ActiveSession, token: String, expiresAt: Instant) {
+	fun save(session: ActiveSession, token: String, expiresAt: Instant, refreshToken: String? = null) {
 		require(token.isNotEmpty()) { "Token must not be empty" }
 		val plaintext = ByteArrayOutputStream().also { output ->
-			DataOutputStream(output).use { data -> data.writeUTF(token) }
+			DataOutputStream(output).use { data ->
+				data.writeUTF(token)
+				data.writeUTF(refreshToken.orEmpty())
+			}
 		}.toByteArray()
 		val encrypted = cipher.encrypt(keys.tokenKey(), plaintext)
 		val record = ByteArrayOutputStream().also { output ->
@@ -49,9 +52,14 @@ class SessionStore(
 				if (length <= 0 || length > MAX_RECORD_BYTES) return null
 				val encrypted = ByteArray(length)
 				data.readFully(encrypted)
-				val token = DataInputStream(ByteArrayInputStream(cipher.decrypt(keys.tokenKey(), encrypted))).use { it.readUTF() }
+				val decrypted = DataInputStream(ByteArrayInputStream(cipher.decrypt(keys.tokenKey(), encrypted)))
+				val (token, refreshToken) = decrypted.use { input ->
+					val token = input.readUTF()
+					val refreshToken = if (input.available() > 0) input.readUTF().takeIf(String::isNotEmpty) else null
+					token to refreshToken
+				}
 				if (token.isEmpty()) return null
-				StoredSession(ActiveSession(account, generation), token, expiresAt)
+				StoredSession(ActiveSession(account, generation), token, refreshToken, expiresAt)
 			}
 		} catch (_: Exception) {
 			null
@@ -69,5 +77,6 @@ class SessionStore(
 data class StoredSession(
 	val session: ActiveSession,
 	val token: String,
+	val refreshToken: String?,
 	val expiresAt: Instant,
 )

@@ -15,7 +15,7 @@ import org.materialclass.data.ScheduleModel
 class ConfirmedSourcesTest {
 	private val context = ReadContext(
 		accessToken = "synthetic-access",
-		queryParameters = mapOf("synthetic-context" to "current"),
+		queryParameters = mapOf("schoolId" to "synthetic-school"),
 	)
 
 	@Test
@@ -30,6 +30,9 @@ class ConfirmedSourcesTest {
 
 		assertEquals(GatewayReadResult.Success(DiaryModel(dayCount = 2)), result)
 		assertEquals("Bearer synthetic-access", transport.lastRequest!!.headers["Authorization"])
+		assertEquals("application/json", transport.lastRequest!!.headers["Accept"])
+		assertEquals("ru", transport.lastRequest!!.headers["X-Localization"])
+		assertEquals("synthetic-school", transport.lastRequest!!.headers["x-school-id"])
 	}
 
 	@Test
@@ -57,6 +60,20 @@ class ConfirmedSourcesTest {
 		assertEquals(1, (weeks as GatewayReadResult.Success).value.weekCount)
 		assertEquals(0, weeks.value.periodCount)
 		assertEquals(ScheduleModel(dayCount = 3, daysWithSchedule = 1), (schedule as GatewayReadResult.Success).value)
+	}
+
+	@Test
+	fun scheduleMapsTheConfirmedScheduleItemNames() {
+		val result = SchoolGateway(SyntheticReadTransport {
+			HttpResponseData(200, "application/json", "{\"data\":{\"days\":[{\"dateFormat\":\"07.09.2026\",\"schedule\":[{\"scheduleUuid\":\"lesson-1\",\"subject\":\"Math\",\"time\":\"09:00\",\"teacher\":{\"name\":\"Teacher\"},\"homework\":{\"body\":\"Read\"}}]}]}}")
+		}).schedule(context)
+
+		val lesson = (result as GatewayReadResult.Success).value.days.single().lessons.single()
+		assertEquals("lesson-1", lesson.uuid)
+		assertEquals("Math", lesson.label)
+		assertEquals("09:00", lesson.timeslot)
+		assertEquals("Teacher", lesson.teacher)
+		assertEquals("Read", lesson.homework)
 	}
 
 	@Test

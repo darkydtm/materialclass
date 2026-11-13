@@ -33,6 +33,20 @@ class SecureSessionTest {
 	}
 
 	@Test
+	fun refreshTokenSurvivesEncryptedSessionRestoreAndRotation() {
+		val fixture = Fixture()
+		val session = fixture.coordinator.activate(AccountId("synthetic-a"), "access-a", Instant.MAX)
+		assertTrue(fixture.coordinator.setRefreshToken(session, "refresh-a"))
+		val restored = SessionCoordinator(fixture.store, fixture.files, fixture.keys, fixture.cipher, fixture.tasks)
+		assertTrue(restored.restore(Instant.EPOCH))
+		val restoredSession = restored.currentSession()!!
+		assertEquals("refresh-a", restored.refreshTokenFor(restoredSession))
+		assertTrue(restored.replaceTokens(restoredSession, "access-b", "refresh-b", Instant.MAX))
+		assertEquals("refresh-b", restored.refreshTokenFor(restoredSession))
+		assertEquals("access-b", restored.tokenFor(restoredSession))
+	}
+
+	@Test
 	fun logoutClosesAccessCancelsTasksAndDeletesTokenAndCache() {
 		val fixture = Fixture()
 		val session = fixture.coordinator.activate(AccountId("synthetic-a"), "synthetic-token", Instant.MAX)

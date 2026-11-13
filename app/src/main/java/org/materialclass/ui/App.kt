@@ -5,6 +5,8 @@ import android.content.SharedPreferences
 import android.content.res.Configuration
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,13 +17,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -32,6 +38,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -40,32 +47,40 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import java.time.LocalDate
+import java.util.concurrent.Executors
 
 import java.util.Locale
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.Settings
 import org.materialclass.api.AppError
 import org.materialclass.api.GatewayLoginResult
 import org.materialclass.api.LoginCredentials
 import org.materialclass.data.DataState
 import org.materialclass.data.DateRange
 import org.materialclass.data.DiaryModel
+import org.materialclass.data.GradesModel
+import org.materialclass.data.HomeworksModel
 import org.materialclass.data.HomeModel
+import org.materialclass.data.JournalGradesModel
 import org.materialclass.data.ProfileModel
 import org.materialclass.data.ScheduleModel
 import org.materialclass.data.SchoolRepository
 import org.materialclass.grades.GradeCalculator
 import org.materialclass.grades.GradeComponent
-import org.materialclass.grades.GradeCategory
 import org.materialclass.ui.theme.MaterialClassTheme
 
 public enum class AppRoute {
@@ -74,6 +89,8 @@ public enum class AppRoute {
 	Schedule,
 	LessonDetail,
 	Grades,
+	Homework,
+	Journal,
 	Attendance,
 	Diary,
 	SubjectDetail,
@@ -180,6 +197,8 @@ public class SchoolViewModel(
 	private val repository: SchoolRepository? = null,
 	private val loginHandler: (LoginCredentials) -> GatewayLoginResult = { GatewayLoginResult.Failure(AppError.Network) },
 ) {
+	private val io = Executors.newCachedThreadPool()
+	private var loginRequest = 0L
 	public var loginState: LoginUiState by mutableStateOf(LoginUiState.Ready)
 		private set
 	public var homeState: DataState<HomeModel>? by mutableStateOf(null)
@@ -189,6 +208,12 @@ public class SchoolViewModel(
 	public var diaryState: DataState<DiaryModel>? by mutableStateOf(null)
 		private set
 	public var profileState: DataState<ProfileModel>? by mutableStateOf(null)
+		private set
+	public var gradesState: DataState<GradesModel>? by mutableStateOf(null)
+		private set
+	public var homeworksState: DataState<HomeworksModel>? by mutableStateOf(null)
+		private set
+	public var journalState: DataState<JournalGradesModel>? by mutableStateOf(null)
 		private set
 
 	private val week: DateRange
@@ -204,13 +229,19 @@ public class SchoolViewModel(
 			return
 		}
 		loginState = LoginUiState.Loading
-		loginState = when (val result = loginHandler(LoginCredentials(login, password))) {
-			is GatewayLoginResult.Success -> LoginUiState.Confirmed
-			is GatewayLoginResult.Failure -> when (result.error) {
-				AppError.InvalidCredentials -> LoginUiState.InvalidCredentials
-				AppError.Network, AppError.Offline, AppError.Timeout -> LoginUiState.ConnectionError
-				AppError.UnsupportedContract -> LoginUiState.Unsupported
-				else -> LoginUiState.ConnectionError
+		val request = ++loginRequest
+		io.execute {
+			val next = when (val result = loginHandler(LoginCredentials(login, password))) {
+				is GatewayLoginResult.Success -> LoginUiState.Confirmed
+				is GatewayLoginResult.Failure -> when (result.error) {
+					AppError.InvalidCredentials -> LoginUiState.InvalidCredentials
+					AppError.Network, AppError.Offline, AppError.Timeout -> LoginUiState.ConnectionError
+					AppError.UnsupportedContract -> LoginUiState.Unsupported
+					else -> LoginUiState.ConnectionError
+				}
+			}
+			android.os.Handler(android.os.Looper.getMainLooper()).post {
+				if (request == loginRequest) loginState = next
 			}
 		}
 	}
@@ -219,7 +250,7 @@ public class SchoolViewModel(
 		val source = repository ?: run { homeState = null; return }
 		val observation = source.observeHome()
 		observation.observe { homeState = it }
-		source.refreshHome()
+		io.execute { source.refreshHome() }
 	}
 
 	public fun loadSchedule() {
@@ -227,7 +258,7 @@ public class SchoolViewModel(
 		val range = week
 		val observation = source.observeSchedule(range)
 		observation.observe { scheduleState = it }
-		source.refreshSchedule(range)
+		io.execute { source.refreshSchedule(range) }
 	}
 
 	public fun loadDiary() {
@@ -235,14 +266,35 @@ public class SchoolViewModel(
 		val range = week
 		val observation = source.observeDiary(range)
 		observation.observe { diaryState = it }
-		source.refreshDiary(range)
+		io.execute { source.refreshDiary(range) }
 	}
 
 	public fun loadProfile() {
 		val source = repository ?: run { profileState = null; return }
 		val observation = source.observeProfile()
 		observation.observe { profileState = it }
-		source.refreshProfile()
+		io.execute { source.refreshProfile() }
+	}
+
+	public fun loadGrades(period: String = "1") {
+		val source = repository ?: run { gradesState = null; return }
+		val observation = source.observeGrades(period)
+		observation.observe { gradesState = it }
+		io.execute { source.refreshGrades(period) }
+	}
+
+	public fun loadHomeworks() {
+		val source = repository ?: run { homeworksState = null; return }
+		val observation = source.observeHomeworks()
+		observation.observe { homeworksState = it }
+		io.execute { source.refreshHomeworks() }
+	}
+
+	public fun loadJournal() {
+		val source = repository ?: run { journalState = null; return }
+		val observation = source.observeJournal(week)
+		observation.observe { journalState = it }
+		io.execute { source.refreshJournal(week) }
 	}
 
 	public fun retry(route: AppRoute) {
@@ -251,16 +303,21 @@ public class SchoolViewModel(
 			AppRoute.Schedule -> loadSchedule()
 			AppRoute.Diary -> loadDiary()
 			AppRoute.Profile -> loadProfile()
+			AppRoute.Grades -> loadGrades()
 			else -> Unit
 		}
 	}
 
 	public fun logout() {
+		loginRequest++
 		repository?.logout()
 		homeState = null
 		scheduleState = null
 		diaryState = null
 		profileState = null
+		gradesState = null
+		homeworksState = null
+		journalState = null
 		loginState = LoginUiState.Ready
 	}
 }
@@ -320,7 +377,7 @@ public fun MaterialClassApp(
 	}
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun AppScaffold(
 	navigator: AppNavigator,
@@ -333,14 +390,16 @@ private fun AppScaffold(
 	notifications: Boolean,
 	onLogout: () -> Unit,
 ) {
-	val rootRoutes = listOf(AppRoute.Home, AppRoute.Schedule, AppRoute.Diary, AppRoute.Calculator, AppRoute.Settings)
+	val rootRoutes = listOf(AppRoute.Home, AppRoute.Diary, AppRoute.Schedule, AppRoute.Homework, AppRoute.Journal, AppRoute.Settings)
 	Scaffold(
 		topBar = {
 			TopAppBar(
 				title = { Text(title(navigator.current.titleKey())) },
 				navigationIcon = {
 					if (navigator.current !in rootRoutes) {
-						IconButton(onClick = { navigator.back() }) { Text("‹", modifier = Modifier.testTag("back")) }
+						IconButton(onClick = { navigator.back() }, modifier = Modifier.testTag("back")) {
+							Icon(Icons.Default.ArrowBack, contentDescription = title("back"))
+						}
 					}
 				},
 			)
@@ -352,7 +411,7 @@ private fun AppScaffold(
 						NavigationBarItem(
 							selected = navigator.current == route,
 							onClick = { navigator.go(route) },
-							icon = { Text(route.iconLabel(), modifier = Modifier.semantics { }) },
+							icon = { Icon(route.icon(), contentDescription = null) },
 							label = { Text(title(route.labelKey())) },
 						)
 					}
@@ -364,8 +423,11 @@ private fun AppScaffold(
 		when (navigator.current) {
 			AppRoute.Home -> HomeScreen(padding, title, viewModel, { viewModel.retry(AppRoute.Home) }, { navigator.go(AppRoute.Schedule) })
 			AppRoute.Schedule -> ScheduleScreen(padding, title, viewModel, { navigator.go(AppRoute.LessonDetail) })
+			AppRoute.Grades -> GradesScreen(padding, title, viewModel)
+			AppRoute.Homework -> HomeworkScreen(padding, title, viewModel)
+			AppRoute.Journal -> JournalScreen(padding, title, viewModel)
+			AppRoute.Attendance -> UnsupportedScreen(padding, title, "unsupported")
 			AppRoute.LessonDetail -> UnsupportedScreen(padding, title, "lesson_detail_unavailable")
-			AppRoute.Grades, AppRoute.Attendance -> UnsupportedScreen(padding, title, "unsupported")
 			AppRoute.Diary -> DiaryScreen(padding, title, viewModel, { navigator.go(AppRoute.SubjectDetail) })
 			AppRoute.SubjectDetail -> UnsupportedScreen(padding, title, "subject_detail_unavailable")
 			AppRoute.Calculator -> CalculatorScreen(padding, title)
@@ -385,6 +447,8 @@ private fun AppRoute.titleKey(): String = when (this) {
 	AppRoute.Schedule -> "schedule"
 	AppRoute.LessonDetail -> "lesson_detail"
 	AppRoute.Grades -> "grades"
+	AppRoute.Homework -> "homework"
+	AppRoute.Journal -> "journal"
 	AppRoute.Attendance -> "attendance"
 	AppRoute.Diary -> "diary"
 	AppRoute.SubjectDetail -> "subject_detail"
@@ -397,17 +461,19 @@ private fun AppRoute.labelKey(): String = when (this) {
 	AppRoute.Home -> "home"
 	AppRoute.Schedule -> "schedule"
 	AppRoute.Diary -> "diary"
-	AppRoute.Calculator -> "calculator"
+	AppRoute.Homework -> "homework"
+	AppRoute.Journal -> "journal"
 	AppRoute.Settings -> "settings"
 	else -> titleKey()
 }
 
-private fun AppRoute.iconLabel() = when (this) {
-	AppRoute.Home -> "⌂"
-	AppRoute.Schedule -> "▦"
-	AppRoute.Diary -> "▤"
-	AppRoute.Calculator -> "∑"
-	else -> "⚙"
+private fun AppRoute.icon(): ImageVector = when (this) {
+	AppRoute.Home -> Icons.Default.Home
+	AppRoute.Schedule -> Icons.Default.CalendarMonth
+	AppRoute.Diary -> Icons.Default.MenuBook
+	AppRoute.Homework -> Icons.Default.Home
+	AppRoute.Journal -> Icons.Default.MenuBook
+	else -> Icons.Default.Settings
 }
 
 @Composable
@@ -430,39 +496,49 @@ private fun LoginScreen(title: (String) -> String, viewModel: SchoolViewModel, o
 			else -> Unit
 		}
 		Button(
-			onClick = { viewModel.login(login, password); if (viewModel.loginState == LoginUiState.Confirmed) onConfirmed() },
+			onClick = { viewModel.login(login, password) },
 			modifier = Modifier.fillMaxWidth().testTag("login-button"),
 		) { Text(title("login_action")) }
+		LaunchedEffect(viewModel.loginState) {
+			if (viewModel.loginState == LoginUiState.Confirmed) onConfirmed()
+		}
 	}
 }
 
 @Composable
 private fun HomeScreen(padding: PaddingValues, title: (String) -> String, viewModel: SchoolViewModel, retry: () -> Unit, openSchedule: () -> Unit) {
 	LaunchedEffect(Unit) { viewModel.loadHome() }
-	Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp).testTag("home-screen"), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+	Column(modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp).testTag("home-screen"), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+		Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+			Text(title("home"), style = MaterialTheme.typography.headlineMedium)
+			Text(title("home_description"), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+		}
 		StatePanel(title, viewModel.homeState.toUiState(), retry)
-		Button(onClick = openSchedule) { Text(title("open_schedule")) }
+		Button(onClick = openSchedule, modifier = Modifier.fillMaxWidth()) { Text(title("open_schedule")) }
 	}
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ScheduleScreen(padding: PaddingValues, title: (String) -> String, viewModel: SchoolViewModel, openDetail: () -> Unit) {
 	var weekOffset by rememberSaveable { mutableIntStateOf(0) }
 	var day by rememberSaveable { mutableIntStateOf(0) }
 	LaunchedEffect(weekOffset) { viewModel.loadSchedule() }
-	Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp).testTag("schedule-screen"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-		Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-			OutlinedButton(onClick = { weekOffset-- }) { Text(title("previous_week")) }
-			OutlinedButton(onClick = { weekOffset++ }) { Text(title("next_week")) }
+	Column(modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp).testTag("schedule-screen"), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+		Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+			IconButton(onClick = { weekOffset-- }) { Icon(Icons.Default.ArrowBack, contentDescription = title("previous_week")) }
+			Text(title("week_title"), style = MaterialTheme.typography.titleLarge)
+			IconButton(onClick = { weekOffset++ }) { Icon(Icons.Default.ArrowForward, contentDescription = title("next_week"), modifier = Modifier.size(24.dp)) }
 		}
-		Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-			(0..6).forEach { index ->
-				TextButton(onClick = { day = index }, modifier = Modifier.semantics { role = Role.Tab }) { Text((index + 1).toString()) }
+		FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+			(0..4).forEach { index ->
+				AssistChip(onClick = { day = index }, label = { Text((index + 1).toString()) }, leadingIcon = if (day == index) ({ Icon(Icons.Default.CalendarMonth, null) }) else null)
 			}
 		}
-		Text(title("selected_day") + ": " + (day + 1))
+		Text(title("selected_day") + ": " + (day + 1), style = MaterialTheme.typography.titleMedium)
 		StatePanel(title, viewModel.scheduleState.toUiState(), { viewModel.retry(AppRoute.Schedule) })
-		if (viewModel.scheduleState is DataState.Ready) Button(onClick = openDetail) { Text(title("open_lesson")) }
+		viewModel.scheduleState?.readyValue()?.days?.getOrNull(day)?.lessons?.forEach { lesson -> LessonCard(lesson, openDetail) }
+		if (viewModel.scheduleState is DataState.Ready) Button(onClick = openDetail, modifier = Modifier.fillMaxWidth()) { Text(title("open_lesson")) }
 	}
 }
 
@@ -476,32 +552,128 @@ private fun DiaryScreen(padding: PaddingValues, title: (String) -> String, viewM
 			OutlinedButton(onClick = { weekOffset++ }) { Text(title("next_week")) }
 		}
 		StatePanel(title, viewModel.diaryState.toUiState(), { viewModel.retry(AppRoute.Diary) })
-		if (viewModel.diaryState is DataState.Ready) Button(onClick = openSubject) { Text(title("open_subject")) }
+		viewModel.diaryState?.readyValue()?.days?.forEach { diaryDay ->
+			Card(modifier = Modifier.fillMaxWidth()) {
+				Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+					if (listOfNotNull(diaryDay.dayLabel, diaryDay.dateLabel).isNotEmpty()) Text(listOfNotNull(diaryDay.dayLabel, diaryDay.dateLabel).joinToString(" · "), style = MaterialTheme.typography.titleMedium)
+					diaryDay.subjects.forEach { subject ->
+						subject.label?.let { Text(it, style = MaterialTheme.typography.bodyLarge) }
+						listOfNotNull(subject.timeslot, subject.theme, subject.homework).takeIf { it.isNotEmpty() }?.let { details ->
+							Text(details.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+						}
+					}
+				}
+			}
+		}
+		if (viewModel.diaryState is DataState.Ready) Button(onClick = openSubject, modifier = Modifier.fillMaxWidth()) { Text(title("open_subject")) }
 	}
 }
 
 @Composable
 private fun CalculatorScreen(padding: PaddingValues, title: (String) -> String) {
 	val estimate = remember { GradeCalculator.calculate(emptyList<GradeComponent>()) }
-	Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp).testTag("calculator-screen"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-		Text(title("calculator_intro"))
-		Text(title("calculator_missing"), color = MaterialTheme.colorScheme.error)
-		Text(GradeCategory.entries.joinToString { category -> category.name })
-		Text(if (estimate.percentage == null) title("no_calculation") else estimate.percentage.toString())
+	Column(modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp).testTag("calculator-screen"), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+		Text(title("calculation_title"), style = MaterialTheme.typography.headlineMedium)
+		Text(title("calculation_description"), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+		Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer), modifier = Modifier.fillMaxWidth()) {
+			Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+				Text(title("calculation_estimate"), style = MaterialTheme.typography.labelLarge)
+				Text(if (estimate.percentage == null) title("no_calculation") else estimate.percentage.toString(), style = MaterialTheme.typography.headlineSmall)
+			}
+		}
+		if (estimate.missingCategories.isNotEmpty()) Text(title("calculator_missing"), color = MaterialTheme.colorScheme.error)
+	}
+}
+
+@Composable
+private fun GradesScreen(padding: PaddingValues, title: (String) -> String, viewModel: SchoolViewModel) {
+	LaunchedEffect(Unit) { viewModel.loadGrades() }
+	Column(modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+		Text(title("diary_title"), style = MaterialTheme.typography.headlineMedium)
+		StatePanel(title, viewModel.gradesState.toUiState(), { viewModel.loadGrades() })
+		viewModel.gradesState?.readyValue()?.subjects?.forEach { subject ->
+			Card(modifier = Modifier.fillMaxWidth()) {
+				Row(modifier = Modifier.fillMaxWidth().padding(20.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+					subject.subjectName?.let { Text(it, style = MaterialTheme.typography.titleMedium) }
+					Text(subject.finalScore ?: "-", style = MaterialTheme.typography.headlineSmall)
+				}
+			}
+		}
+	}
+}
+
+@Composable
+private fun HomeworkScreen(padding: PaddingValues, title: (String) -> String, viewModel: SchoolViewModel) {
+	LaunchedEffect(Unit) { viewModel.loadHomeworks() }
+	Column(modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+		Text(title("homework"), style = MaterialTheme.typography.headlineMedium)
+		StatePanel(title, viewModel.homeworksState.toUiState(), { viewModel.loadHomeworks() })
+		viewModel.homeworksState?.readyValue()?.items?.forEach { item ->
+			Card(modifier = Modifier.fillMaxWidth()) {
+				Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+					Text(item.subjectName ?: title("unknown"), style = MaterialTheme.typography.titleMedium)
+					item.theme?.let { Text(it, style = MaterialTheme.typography.bodyLarge) }
+					item.body?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+					item.date?.let { Text(it, style = MaterialTheme.typography.labelMedium) }
+				}
+			}
+		}
+	}
+}
+
+@Composable
+private fun JournalScreen(padding: PaddingValues, title: (String) -> String, viewModel: SchoolViewModel) {
+	LaunchedEffect(Unit) { viewModel.loadJournal() }
+	Column(modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+		Text(title("journal"), style = MaterialTheme.typography.headlineMedium)
+		StatePanel(title, viewModel.journalState.toUiState(), { viewModel.loadJournal() })
+		viewModel.journalState?.readyValue()?.grades?.forEach { grade ->
+			Card(modifier = Modifier.fillMaxWidth()) {
+				Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+					Text(grade.scheduleUuid ?: title("unknown"), style = MaterialTheme.typography.titleMedium)
+					grade.mark?.let { Text("$it/${grade.markMax ?: "?"}") }
+					grade.attendance?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+				}
+			}
+		}
+	}
+}
+
+@Composable
+private fun LessonCard(lesson: org.materialclass.data.ScheduleLesson, onClick: () -> Unit) {
+	val label = lesson.label ?: return
+	Card(onClick = onClick, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
+		Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+			Text(label, style = MaterialTheme.typography.titleMedium)
+			listOfNotNull(lesson.timeslot, lesson.cabinet, lesson.teacher).takeIf { it.isNotEmpty() }?.let { details ->
+				Text(details.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+			}
+			lesson.homework?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+		}
 	}
 }
 
 @Composable
 private fun ProfileScreen(padding: PaddingValues, title: (String) -> String, viewModel: SchoolViewModel) {
 	LaunchedEffect(Unit) { viewModel.loadProfile() }
-	Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp).testTag("profile-screen")) {
+	Column(modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp).testTag("profile-screen"), verticalArrangement = Arrangement.spacedBy(16.dp)) {
 		StatePanel(title, viewModel.profileState.toUiState(), { viewModel.retry(AppRoute.Profile) })
+		viewModel.profileState?.readyValue()?.let { profile ->
+			Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+				Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+					profile.fullName?.let { Text(it, style = MaterialTheme.typography.headlineSmall) }
+					listOfNotNull(profile.groupLabel, profile.schoolLabel, profile.region).takeIf { it.isNotEmpty() }?.let { details ->
+						Text(details.joinToString("\n"), style = MaterialTheme.typography.bodyLarge)
+					}
+				}
+			}
+		}
 	}
 }
 
 @Composable
 private fun SettingsScreen(padding: PaddingValues, title: (String) -> String, navigator: AppNavigator, onLogout: () -> Unit) {
-	LazyColumn(modifier = Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+	LazyColumn(modifier = Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 		item { SettingsButton(title("language"), title("settings_language")) { navigator.go(AppRoute.SettingsLanguage) } }
 		item { SettingsButton(title("theme"), title("settings_theme")) { navigator.go(AppRoute.SettingsTheme) } }
 		item { SettingsButton(title("notifications"), title("settings_notifications")) { navigator.go(AppRoute.SettingsNotifications) } }
@@ -571,3 +743,5 @@ private fun <T> DataState<T>?.toUiState(): UiContent = when (this) {
 	is DataState.Stale -> UiContent.Stale
 	is DataState.Error -> if (error == AppError.UnsupportedContract) UiContent.Unsupported else UiContent.Error
 }
+
+private fun <T> DataState<T>?.readyValue(): T? = (this as? DataState.Ready<T>)?.snapshot?.value
