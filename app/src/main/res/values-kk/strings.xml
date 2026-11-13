@@ -117,6 +117,10 @@
 	<string name="background_work_enabled">Фонда жұмыс істеу</string>
 	<string name="update_check_frequency">Жаңартуларды тексеру жиілігі</string>
 	<string name="update_interval_6h">6 сағат</string>
+	<string name="update_interval_15m">15 минут</string>
+	<string name="update_interval_30m">30 минут</string>
+	<string name="update_interval_1h">1 сағат</string>
+	<string name="update_interval_2h">2 сағат</string>
 	<string name="school">Мектеп</string>
 	<string name="class_name">Сынып</string>
 	<string name="school_year">Оқу жылы</string>

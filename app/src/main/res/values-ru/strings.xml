@@ -117,6 +117,10 @@
 	<string name="background_work_enabled">Работать в фоне</string>
 	<string name="update_check_frequency">Как часто проверять обновления</string>
 	<string name="update_interval_6h">6 часов</string>
+	<string name="update_interval_15m">15 минут</string>
+	<string name="update_interval_30m">30 минут</string>
+	<string name="update_interval_1h">1 час</string>
+	<string name="update_interval_2h">2 часа</string>
 	<string name="school">Школа</string>
 	<string name="class_name">Класс</string>
 	<string name="school_year">Учебный год</string>

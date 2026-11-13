@@ -117,6 +117,10 @@
 	<string name="background_work_enabled">Run in the background</string>
 	<string name="update_check_frequency">How often to check for updates</string>
 	<string name="update_interval_6h">6 hours</string>
+	<string name="update_interval_15m">15 minutes</string>
+	<string name="update_interval_30m">30 minutes</string>
+	<string name="update_interval_1h">1 hour</string>
+	<string name="update_interval_2h">2 hours</string>
 	<string name="school">School</string>
 	<string name="class_name">Class</string>
 	<string name="school_year">School year</string>

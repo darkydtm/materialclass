@@ -21,6 +21,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Person
@@ -207,7 +209,7 @@ class AppPreferences(context: Context) {
 	fun newGradeNotifications(): Boolean = preferences.getBoolean(NEW_GRADE_NOTIFICATIONS, false)
 	fun homeworkNotifications(): Boolean = preferences.getBoolean(HOMEWORK_NOTIFICATIONS, false)
 	fun backgroundWork(): Boolean = preferences.getBoolean(BACKGROUND_WORK, false)
-	fun backgroundInterval(): Float = preferences.getInt(BACKGROUND_INTERVAL, 4).toFloat()
+	fun backgroundInterval(): Float = preferences.getInt(BACKGROUND_INTERVAL, 30).toFloat()
 	fun setLanguage(value: AppLanguage) { preferences.edit().putString(LANGUAGE, value.name).apply() }
 	fun setTheme(value: ThemeMode) { preferences.edit().putString(THEME, value.name).apply() }
 	fun setNewGradeNotifications(value: Boolean) { preferences.edit().putBoolean(NEW_GRADE_NOTIFICATIONS, value).apply() }
@@ -490,12 +492,26 @@ private fun LoginStateScreen(title: String, body: String, text: (String) -> Stri
 		verticalArrangement = Arrangement.Center,
 		horizontalAlignment = Alignment.CenterHorizontally,
 	) {
-		Card(modifier = Modifier.fillMaxWidth()) {
+		val isLoading = title == text("login_checking")
+		val isError = title == text("login_failed") || title == text("login_connection_error")
+		Card(
+			colors = CardDefaults.cardColors(
+				containerColor = when {
+					isError -> MaterialTheme.colorScheme.errorContainer
+					isLoading -> MaterialTheme.colorScheme.tertiaryContainer
+					else -> MaterialTheme.colorScheme.secondaryContainer
+				},
+			),
+			modifier = Modifier.fillMaxWidth(),
+		) {
 			Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+				if (isLoading) CircularProgressIndicator(modifier = Modifier.size(32.dp))
+				else Icon(if (isError) Icons.Default.Error else Icons.Default.Check, contentDescription = null)
+				Text(text("login"), style = MaterialTheme.typography.labelLarge)
 				Text(title, style = MaterialTheme.typography.headlineMedium)
-				Text(body)
-				if (title == text("login_checking")) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-				else Button(onClick = reset, modifier = Modifier.fillMaxWidth()) { Text(text(if (title == text("login_connection_error")) "login_try_again" else "login_again")) }
+				Text(body, color = MaterialTheme.colorScheme.onSurfaceVariant)
+				if (isLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+				else Button(onClick = reset, modifier = Modifier.fillMaxWidth()) { Text(text(if (isError && title == text("login_connection_error")) "login_try_again" else "login_again")) }
 			}
 		}
 	}
@@ -573,7 +589,12 @@ private fun AppScaffold(
 			AppRoute.SubjectDetail -> SubjectDetailScreen(padding, text, viewModel, selectedSubject, navigator)
 			AppRoute.Calculator -> CalculatorScreen(padding, text, viewModel, selectedSubject, false)
 			AppRoute.CalculatorMissing -> CalculatorScreen(padding, text, viewModel, selectedSubject, true)
-			AppRoute.Settings -> SettingsScreen(padding, text, navigator)
+			AppRoute.Settings -> SettingsScreen(
+				padding,
+				text,
+				navigator,
+				backgroundWork = backgroundWork,
+			)
 			AppRoute.SettingsLanguage -> ChoiceScreen(padding, text, "language", AppLanguage.entries, onLanguage) { text("language_${it.tag}") }
 			AppRoute.SettingsTheme -> ChoiceScreen(padding, text, "theme", ThemeMode.entries, onTheme) { mode ->
 				val key = if (mode == ThemeMode.BLACK) "theme_amoled" else "theme_${mode.name.lowercase(Locale.ROOT)}"
@@ -631,6 +652,7 @@ private fun HomeScreen(
 	val schedule = viewModel.scheduleState.readyValue()
 	val today = schedule?.days?.firstOrNull { it.isCurrent } ?: schedule?.days?.firstOrNull()
 	val homeState = viewModel.scheduleState.toUiState()
+	val completedLessons = today?.lessons?.count { it.theme != null } ?: 0
 	LazyColumn(
 		modifier = Modifier.fillMaxSize().padding(padding).testTag("home-screen"),
 		contentPadding = PaddingValues(20.dp),
@@ -647,10 +669,15 @@ private fun HomeScreen(
 			Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
 				Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 					Text(text("day_progress"), style = MaterialTheme.typography.labelLarge)
-					Text(if (today == null) text("no_data") else "${today.lessons.size}", style = MaterialTheme.typography.displaySmall)
+					Text(if (today == null) text("no_data") else "$completedLessons / ${today.lessons.size}", style = MaterialTheme.typography.displaySmall)
+					if (today != null) LinearProgressIndicator(
+						progress = { if (today.lessons.isEmpty()) 0f else completedLessons.toFloat() / today.lessons.size },
+						modifier = Modifier.fillMaxWidth(),
+					)
 				}
 			}
 		}
+		item { Text(text("lessons_today"), style = MaterialTheme.typography.titleLarge) }
 		if (today == null) {
 			item { StatePanel(text, homeState, { viewModel.retry(AppRoute.Schedule) }) }
 		} else {
@@ -691,6 +718,7 @@ private fun ScheduleScreen(
 		item {
 			Card {
 				Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+					Text(schedule?.days?.firstOrNull()?.dateLabel ?: text("no_data"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 					Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
 						IconButton(onClick = { weekOffset-- }) { Icon(Icons.Default.ArrowBack, contentDescription = text("previous_week")) }
 						Text(schedule?.days?.firstOrNull()?.dateLabel ?: text("no_data"), style = MaterialTheme.typography.titleMedium)
@@ -812,7 +840,7 @@ private fun SubjectCard(subject: GradeSubject, text: (String) -> String, onClick
 			}
 			Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
 				listOf(subject.quarter1, subject.quarter2, subject.quarter3, subject.quarter4).forEach { score ->
-					Text(score ?: "-", modifier = Modifier.width(42.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+					Text(score ?: text("no_data"), modifier = Modifier.width(42.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
 				}
 			}
 		}
@@ -840,6 +868,9 @@ private fun SubjectDetailScreen(padding: PaddingValues, text: (String) -> String
 		}
 		Text(text("calculation"), style = MaterialTheme.typography.titleMedium)
 		Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+			if (subject.schedules.isEmpty()) {
+				Text(text("no_data"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+			}
 			subject.schedules.forEach { schedule ->
 				Card(modifier = Modifier.fillMaxWidth()) {
 					Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -889,7 +920,12 @@ private fun CalculatorScreen(padding: PaddingValues, text: (String) -> String, v
 }
 
 @Composable
-private fun SettingsScreen(padding: PaddingValues, text: (String) -> String, navigator: AppNavigator) {
+private fun SettingsScreen(
+	padding: PaddingValues,
+	text: (String) -> String,
+	navigator: AppNavigator,
+	backgroundWork: Boolean,
+) {
 	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
 		Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
 			Text(text("nav_settings"), style = MaterialTheme.typography.headlineMedium)
@@ -899,7 +935,7 @@ private fun SettingsScreen(padding: PaddingValues, text: (String) -> String, nav
 			SettingRow(text("language"), text("language_description")) { navigator.go(AppRoute.SettingsLanguage) }
 			SettingRow(text("theme"), text("theme_description")) { navigator.go(AppRoute.SettingsTheme) }
 			SettingRow(text("notifications"), text("notifications_description")) { navigator.go(AppRoute.SettingsNotifications) }
-			SettingRow(text("background_work"), text("update_check_frequency")) { navigator.go(AppRoute.BackgroundWork) }
+			SettingRow(text("background_work"), text(if (backgroundWork) "notifications_on" else "notifications_off")) { navigator.go(AppRoute.BackgroundWork) }
 		}
 	}
 }
@@ -922,7 +958,12 @@ private fun <T> ChoiceScreen(padding: PaddingValues, text: (String) -> String, k
 	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
 		Text(text(kind), style = MaterialTheme.typography.headlineMedium)
 		values.forEach { value ->
-			Button(onClick = { onValue(value) }, modifier = Modifier.fillMaxWidth()) { Text(label(value)) }
+			Card(onClick = { onValue(value) }, modifier = Modifier.fillMaxWidth()) {
+				Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+					Text(label(value))
+					Icon(Icons.Default.Check, contentDescription = null)
+				}
+			}
 		}
 	}
 }
@@ -963,6 +1004,8 @@ private fun BackgroundWorkScreen(
 	interval: Float,
 	onInterval: (Float) -> Unit,
 ) {
+	val intervals = listOf(15, 30, 60, 120, 360)
+	val intervalIndex = intervals.indexOf(interval.toInt()).coerceAtLeast(0)
 	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
 		Text(text("background_work"), style = MaterialTheme.typography.headlineMedium)
 		Card(modifier = Modifier.fillMaxWidth()) {
@@ -972,11 +1015,19 @@ private fun BackgroundWorkScreen(
 					Switch(checked = enabled, onCheckedChange = onEnabled)
 				}
 				Text(text("update_check_frequency"), style = MaterialTheme.typography.labelLarge)
-				Slider(value = interval, onValueChange = onInterval, valueRange = 0f..4f, steps = 3, enabled = enabled)
-				Text(text("update_interval_6h"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+				Slider(value = intervalIndex.toFloat(), onValueChange = { onInterval(intervals[it.toInt()].toFloat()) }, valueRange = 0f..4f, steps = 3, enabled = enabled)
+				Text(text("update_interval_${intervals[intervalIndex].suffix()}"), color = MaterialTheme.colorScheme.onSurfaceVariant)
 			}
 		}
 	}
+}
+
+private fun Int.suffix(): String = when (this) {
+	15 -> "15m"
+	30 -> "30m"
+	60 -> "1h"
+	120 -> "2h"
+	else -> "6h"
 }
 
 @Composable
@@ -1019,7 +1070,7 @@ private fun DetailRow(label: String, value: String) {
 private fun StateScreen(padding: PaddingValues, text: (String) -> String, bar: String, title: String, body: String, retry: () -> Unit) {
 	Column(modifier = Modifier.fillMaxSize().padding(padding).padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
 		Text(text(bar), color = MaterialTheme.colorScheme.onSurfaceVariant)
-		Card(modifier = Modifier.fillMaxWidth()) {
+		Card(colors = CardDefaults.cardColors(containerColor = if (title == text("empty_day")) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer), modifier = Modifier.fillMaxWidth()) {
 			Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
 				Text(text(title), style = MaterialTheme.typography.headlineSmall)
 				Text(text(body), color = MaterialTheme.colorScheme.onSurfaceVariant)
