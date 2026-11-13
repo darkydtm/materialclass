@@ -99,9 +99,10 @@ internal fun AppScaffold(
 						)
 					}
 				}
+			}
 		},
 		snackbarHost = { SnackbarHost(snackbarHostState) },
-		content = { padding ->
+	) { padding ->
 			when (navigator.current) {
 				AppRoute.Home -> HomeScreen(padding, text, viewModel, navigator, onLessonSelected)
 				AppRoute.HomeError -> StateScreen(padding, text, "nav_home", "error_load", "error_load_body") { viewModel.retry(AppRoute.HomeError) }
@@ -133,8 +134,7 @@ internal fun AppScaffold(
 				AppRoute.Profile -> ProfileScreen(padding, text, viewModel, onLogout)
 				else -> Unit
 			}
-		},
-	)
+		}
 }
 
 private fun AppRoute.labelKey(): String = when (this) {
