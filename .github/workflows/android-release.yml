@@ -43,12 +43,13 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: ./gradlew --no-daemon assembleRelease
+        run: ./gradlew --no-daemon clean assembleRelease
 
       - name: Verify APK signature
         run: |
           apksigner="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           test -n "$apksigner"
+          test ! -e app/build/outputs/apk/release/app-release-unsigned.apk
           "$apksigner" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk
 
       - name: Upload release APK
