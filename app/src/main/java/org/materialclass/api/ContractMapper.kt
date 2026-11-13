@@ -51,7 +51,7 @@ object ContractMapper {
 		val days = data.requiredArray("days")
 		if (days.any { it !is JsonValue.ObjectValue }) throw IllegalArgumentException("unsupported day shape")
 		if (days.isEmpty()) GatewayReadResult.Empty else GatewayReadResult.Success(
-			DiaryModel(days.size, data["date"]?.asText(), days.mapNotNull { value ->
+			DiaryModel(days.size, null, days.mapNotNull { value ->
 				(value as JsonValue.ObjectValue).values.takeIf { it.isNotEmpty() }?.toDiaryDay()
 			}),
 		)
@@ -81,7 +81,9 @@ object ContractMapper {
 		val scheduledDays = days.count { it is JsonValue.ObjectValue && it.values["schedule"] is JsonValue.ArrayValue }
 		if (days.isEmpty()) GatewayReadResult.Empty else GatewayReadResult.Success(
 			ScheduleModel(days.size, scheduledDays, days.mapNotNull { value ->
-				(value as JsonValue.ObjectValue).values.takeIf { it.isNotEmpty() }?.toScheduleDay()
+				(value as JsonValue.ObjectValue).values.takeIf { item ->
+					item.keys.any { it != "schedule" } || (item["schedule"] as? JsonValue.ArrayValue)?.values?.isNotEmpty() == true
+				}?.toScheduleDay()
 			}),
 		)
 	} catch (_: Exception) {
