@@ -6,8 +6,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.materialclass.data.AccountId
 import org.materialclass.data.ActiveSession
+import org.materialclass.data.AttendanceModel
 import org.materialclass.data.Generation
+import org.materialclass.data.GradesModel
 import org.materialclass.data.PeriodsModel
+import org.materialclass.data.SubjectDetailsModel
 import org.materialclass.data.SubjectsModel
 
 class GradesSourcesTest {
