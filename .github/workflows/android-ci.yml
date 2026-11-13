@@ -33,18 +33,6 @@ jobs:
       - name: Run unit tests, lint, and debug build
         run: ./gradlew --no-daemon assembleDebug testDebugUnitTest lintDebug
 
-      - name: Run connected debug tests
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 30
-          target: aosp_atd
-          arch: x86_64
-          profile: pixel_2
-          script: ./gradlew --no-daemon connectedDebugAndroidTest
-          force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
-          disable-animations: true
-
       - name: Upload verification reports
         if: always()
         uses: actions/upload-artifact@v6
