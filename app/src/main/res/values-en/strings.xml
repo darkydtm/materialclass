@@ -128,7 +128,9 @@
 	<string name="error_load_body">Check your connection and try again.</string>
 	<string name="empty_day">No lessons today</string>
 	<string name="empty_day_body">There are no lessons on this day.</string>
+	<string name="empty_hint">The schedule will appear here. Try opening another week.</string>
 	<string name="offline_title">Latest data</string>
-	<string name="offline_body">Showing the last saved version.</string>
+	<string name="offline_body">The latest saved version is shown.</string>
+	<string name="offline_hint">Try refreshing the data later.</string>
 	<string name="calculator_missing">Missing components are shown explicitly</string>
 </resources>

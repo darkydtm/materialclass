@@ -128,7 +128,9 @@
 	<string name="error_load_body">Проверьте подключение и попробуйте снова.</string>
 	<string name="empty_day">Сегодня занятий нет</string>
 	<string name="empty_day_body">В этот день занятий нет.</string>
+	<string name="empty_hint">Расписание появится здесь. Попробуйте открыть другую неделю.</string>
 	<string name="offline_title">Последние данные</string>
 	<string name="offline_body">Показана последняя сохранённая версия.</string>
+	<string name="offline_hint">Попробуйте обновить данные позже.</string>
 	<string name="calculator_missing">Недостающие компоненты показываются явно</string>
 </resources>

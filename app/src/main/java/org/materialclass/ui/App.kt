@@ -9,10 +9,12 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -38,10 +40,12 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Divider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
@@ -52,6 +56,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -87,6 +92,12 @@ import org.materialclass.data.SchoolRepository
 import org.materialclass.grades.GradeCalculator
 import org.materialclass.grades.GradeComponent
 import org.materialclass.ui.theme.MaterialClassTheme
+
+private val CardShape = RoundedCornerShape(24.dp)
+private val RowShape = RoundedCornerShape(16.dp)
+private val LessonShape = RoundedCornerShape(22.dp)
+private val NotificationShape = RoundedCornerShape(18.dp)
+private val BackgroundShape = RoundedCornerShape(20.dp)
 
 enum class AppRoute {
 	Login,
@@ -443,52 +454,58 @@ private fun LoginScreen(text: (String) -> String, viewModel: SchoolViewModel) {
 	var password by rememberSaveable { mutableStateOf("") }
 	var passwordVisible by rememberSaveable { mutableStateOf(false) }
 	Column(
-		modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp).testTag("login-screen"),
+		modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 24.dp).testTag("login-screen"),
 		verticalArrangement = Arrangement.Center,
 		horizontalAlignment = Alignment.CenterHorizontally,
 	) {
-		Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-			Text(text("login"), style = MaterialTheme.typography.headlineSmall)
-			Text(text("login_description"), color = MaterialTheme.colorScheme.onSurfaceVariant)
-			OutlinedTextField(
-				value = login,
-				onValueChange = { login = it },
-				label = { Text(text("username")) },
-				modifier = Modifier.fillMaxWidth(),
-				singleLine = true,
-			)
-			OutlinedTextField(
-				value = password,
-				onValueChange = { password = it },
-				label = { Text(text("password")) },
-				modifier = Modifier.fillMaxWidth(),
-				singleLine = true,
-				visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-				trailingIcon = {
-					IconButton(onClick = { passwordVisible = !passwordVisible }) {
-						Icon(
-							if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-							contentDescription = text(if (passwordVisible) "login_hide_password" else "login_show_password"),
-						)
-					}
-				},
-			)
-			when (viewModel.loginState) {
-				LoginUiState.InvalidCredentials -> Text(text("login_invalid"), color = MaterialTheme.colorScheme.error)
-				LoginUiState.ConnectionError -> Text(text("login_connection_error_body"), color = MaterialTheme.colorScheme.error)
-				LoginUiState.Unsupported -> Text(text("unsupported"), color = MaterialTheme.colorScheme.error)
-				LoginUiState.Loading -> LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-				else -> Unit
+		Column(modifier = Modifier.width(340.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+			Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+				Text(text("login"), style = MaterialTheme.typography.headlineLarge)
+				Text(text("login_description"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 			}
-			Button(
-				onClick = { viewModel.login(login, password) },
-				modifier = Modifier.fillMaxWidth().testTag("login-button"),
-			) { Text(text("sign_in")) }
-			Text(text("login_connection_error_body").substringBefore('.'), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+			Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.76f)), modifier = Modifier.fillMaxWidth()) {
+				Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+					OutlinedTextField(
+						value = login,
+						onValueChange = { login = it },
+						label = { Text(text("username")) },
+						modifier = Modifier.fillMaxWidth(),
+						singleLine = true,
+					)
+					OutlinedTextField(
+						value = password,
+						onValueChange = { password = it },
+						label = { Text(text("password")) },
+						modifier = Modifier.fillMaxWidth(),
+						singleLine = true,
+						visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+						trailingIcon = {
+							IconButton(onClick = { passwordVisible = !passwordVisible }) {
+								Icon(
+									if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+									contentDescription = text(if (passwordVisible) "login_hide_password" else "login_show_password"),
+								)
+							}
+						},
+					)
+					when (viewModel.loginState) {
+						LoginUiState.InvalidCredentials -> Text(text("login_invalid"), color = MaterialTheme.colorScheme.error)
+						LoginUiState.ConnectionError -> Text(text("login_connection_error_body"), color = MaterialTheme.colorScheme.error)
+						LoginUiState.Unsupported -> Text(text("unsupported"), color = MaterialTheme.colorScheme.error)
+						LoginUiState.Loading -> LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+						else -> Unit
+					}
+					Button(
+						onClick = { viewModel.login(login, password) },
+						modifier = Modifier.fillMaxWidth().testTag("login-button"),
+						shape = RowShape,
+					) { Text(text("sign_in")) }
+				}
+			}
 		}
+		Text(text("login_connection_error_body").substringBefore('.'), modifier = Modifier.width(340.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 	}
 }
-
 @Composable
 private fun LoginStateScreen(title: String, body: String, text: (String) -> String, reset: () -> Unit) {
 	Column(
@@ -499,6 +516,7 @@ private fun LoginStateScreen(title: String, body: String, text: (String) -> Stri
 		val isLoading = title == text("login_checking")
 		val isError = title == text("login_failed") || title == text("login_connection_error")
 		Card(
+			shape = CardShape,
 			colors = CardDefaults.cardColors(
 				containerColor = when {
 					isError -> MaterialTheme.colorScheme.errorContainer
@@ -515,7 +533,7 @@ private fun LoginStateScreen(title: String, body: String, text: (String) -> Stri
 				Text(title, style = MaterialTheme.typography.headlineMedium)
 				Text(body, color = MaterialTheme.colorScheme.onSurfaceVariant)
 				if (isLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-				else Button(onClick = reset, modifier = Modifier.fillMaxWidth()) { Text(text(if (isError && title == text("login_connection_error")) "login_try_again" else "login_again")) }
+				else Button(onClick = reset, shape = RowShape, modifier = Modifier.fillMaxWidth()) { Text(text(if (isError && title == text("login_connection_error")) "login_try_again" else "login_again")) }
 			}
 		}
 	}
@@ -551,6 +569,7 @@ private fun AppScaffold(
 	Scaffold(
 		topBar = {
 			TopAppBar(
+				colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
 				title = { Text(text(titleKey)) },
 				navigationIcon = {
 					if (navigator.current !in rootRoutes) {
@@ -570,13 +589,24 @@ private fun AppScaffold(
 		},
 		bottomBar = {
 				if (navigator.current in rootRoutes) {
-					NavigationBar(modifier = Modifier.navigationBarsPadding()) {
+					NavigationBar(
+						modifier = Modifier.navigationBarsPadding(),
+						containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+						tonalElevation = 0.dp,
+					) {
 						rootRoutes.forEach { route ->
 							NavigationBarItem(
 								selected = navigator.current == route,
 								onClick = { navigator.go(route) },
 								icon = { Icon(route.icon(), contentDescription = null) },
 								label = { Text(text(route.labelKey())) },
+								colors = NavigationBarItemDefaults.colors(
+									selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+									selectedTextColor = MaterialTheme.colorScheme.onPrimaryContainer,
+									indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+									unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+									unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+								),
 							)
 						}
 					}
@@ -676,8 +706,8 @@ private fun HomeScreen(
 			}
 		}
 		item {
-			Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-				Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+			Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+				Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 					Text(text("day_progress"), style = MaterialTheme.typography.labelLarge)
 					Text(if (today == null) text("no_data") else "$completedLessons / ${today.lessons.size}", style = MaterialTheme.typography.displaySmall)
 					if (today != null) LinearProgressIndicator(
@@ -724,7 +754,7 @@ private fun ScheduleScreen(
 	} ?: text("no_data")
 	LazyColumn(
 		modifier = Modifier.fillMaxSize().padding(padding).testTag("schedule-screen"),
-		contentPadding = PaddingValues(20.dp),
+		contentPadding = PaddingValues(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 24.dp),
 		verticalArrangement = Arrangement.spacedBy(16.dp),
 	) {
 		item {
@@ -734,8 +764,8 @@ private fun ScheduleScreen(
 			}
 		}
 		item {
-			Card {
-				Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+			Card(shape = CardShape) {
+				Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
 					Text(rangeLabel, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 					Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
 						IconButton(onClick = { weekOffset-- }) { Icon(Icons.Default.ArrowBack, contentDescription = text("previous_week")) }
@@ -745,6 +775,7 @@ private fun ScheduleScreen(
 					Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
 						(0..4).forEach { index ->
 							FilterChip(
+								shape = RoundedCornerShape(999.dp),
 								selected = safeSelectedDay == index,
 								onClick = { selectedDay = index },
 								label = { Text((index + 1).toString()) },
@@ -772,15 +803,21 @@ private fun ScheduleScreen(
 
 @Composable
 private fun LessonCard(lesson: ScheduleLesson, onClick: () -> Unit) {
-	Card(onClick = onClick, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh), modifier = Modifier.fillMaxWidth()) {
+	Card(onClick = onClick, shape = LessonShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer), modifier = Modifier.fillMaxWidth()) {
 		Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
 			Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
 				Text(lesson.timeslot ?: "", style = MaterialTheme.typography.titleMedium)
 				lesson.cabinet?.let { AssistChip(onClick = {}, label = { Text(it) }) }
 			}
-			Text(lesson.label ?: "", style = MaterialTheme.typography.headlineSmall)
-			lesson.theme?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-			lesson.homework?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+			Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+				Text(lesson.label ?: "", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+				lesson.type?.let { AssistChip(onClick = {}, label = { Text(it) }) }
+			}
+			lesson.homework?.let {
+				Row(modifier = Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
+					Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+				}
+			}
 		}
 	}
 }
@@ -797,16 +834,16 @@ private fun LessonDetailScreen(padding: PaddingValues, text: (String) -> String,
 			Text(lesson.label.orEmpty(), style = MaterialTheme.typography.headlineLarge)
 			Text(text("lesson_description"), color = MaterialTheme.colorScheme.onSurfaceVariant)
 		}
-		Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-			Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+		Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+			Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 				Text(text("lesson_topic"), style = MaterialTheme.typography.labelLarge)
 				Text(lesson.theme ?: text("no_data"), style = MaterialTheme.typography.headlineSmall)
 				Text(text("homework"), style = MaterialTheme.typography.labelLarge)
 				Text(lesson.homework ?: text("no_data"))
 			}
 		}
-		Card {
-			Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+		Card(shape = CardShape) {
+			Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
 				Text(text("attachments"), style = MaterialTheme.typography.titleMedium)
 				Text(text("attachments_empty"), color = MaterialTheme.colorScheme.onSurfaceVariant)
 			}
@@ -827,9 +864,16 @@ private fun DiaryScreen(padding: PaddingValues, text: (String) -> String, viewMo
 			}
 		}
 		item {
-			Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-				(0..3).forEach { index ->
-					FilterChip(selected = quarter == index, onClick = { quarter = index }, label = { Text((index + 1).toString()) })
+			Card(shape = NotificationShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer), modifier = Modifier.fillMaxWidth()) {
+				Row(modifier = Modifier.padding(5.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+					(0..3).forEach { index ->
+						FilterChip(
+							selected = quarter == index,
+							onClick = { quarter = index },
+							shape = RoundedCornerShape(14.dp),
+							label = { Text((index + 1).toString()) },
+						)
+					}
 				}
 			}
 		}
@@ -850,12 +894,13 @@ private fun DiaryScreen(padding: PaddingValues, text: (String) -> String, viewMo
 
 @Composable
 private fun SubjectCard(subject: GradeSubject, text: (String) -> String, onClick: () -> Unit) {
-	Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
-		Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+	Card(onClick = onClick, shape = RowShape, modifier = Modifier.fillMaxWidth()) {
+		Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 			Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
 				Text(subject.subjectName ?: text("unknown"), style = MaterialTheme.typography.titleLarge)
-				Text(subject.finalScore ?: text("no_data"), style = MaterialTheme.typography.headlineSmall)
+				Text(subject.finalScore ?: text("no_data"), style = MaterialTheme.typography.titleMedium)
 			}
+			Divider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 1.dp)
 			Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
 				listOf(subject.quarter1, subject.quarter2, subject.quarter3, subject.quarter4).forEach { score ->
 					Text(score ?: text("no_data"), modifier = Modifier.width(42.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -878,8 +923,8 @@ private fun SubjectDetailScreen(padding: PaddingValues, text: (String) -> String
 			Text(subject.subjectName.orEmpty(), style = MaterialTheme.typography.headlineLarge)
 			Text(text("subject_description"), color = MaterialTheme.colorScheme.onSurfaceVariant)
 		}
-		Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-			Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+		Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+			Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
 				Text(text("final_grade"), style = MaterialTheme.typography.labelLarge)
 				Text(subject.finalScore ?: text("no_data"), style = MaterialTheme.typography.displaySmall)
 			}
@@ -890,7 +935,7 @@ private fun SubjectDetailScreen(padding: PaddingValues, text: (String) -> String
 				Text(text("no_data"), color = MaterialTheme.colorScheme.onSurfaceVariant)
 			}
 			subject.schedules.forEach { schedule ->
-				Card(modifier = Modifier.fillMaxWidth()) {
+				Card(shape = RowShape, modifier = Modifier.fillMaxWidth()) {
 					Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
 						Text(schedule.type ?: text("unknown"))
 						Text(schedule.markMax?.toString() ?: "-")
@@ -921,8 +966,8 @@ private fun CalculatorScreen(padding: PaddingValues, text: (String) -> String, v
 			Text(text("calculation_title"), style = MaterialTheme.typography.headlineMedium)
 			Text(text("calculation_description"), color = MaterialTheme.colorScheme.onSurfaceVariant)
 		}
-		Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer), modifier = Modifier.fillMaxWidth()) {
-			Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+		Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer), modifier = Modifier.fillMaxWidth()) {
+			Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
 				Text(text("calculation_estimate"), style = MaterialTheme.typography.labelLarge)
 				Text(if (estimate.percentage == null) text("no_data") else "${estimate.percentage.toInt()}%", style = MaterialTheme.typography.displaySmall)
 				Text(text("calculation_disclaimer"), color = MaterialTheme.colorScheme.onTertiaryContainer)
@@ -930,7 +975,7 @@ private fun CalculatorScreen(padding: PaddingValues, text: (String) -> String, v
 		}
 		Text(text(if (estimate.missingCategories.isEmpty()) "calculation_complete" else "calculation_missing"), color = MaterialTheme.colorScheme.onSurfaceVariant)
 		if (missing || subject?.schedules.isNullOrEmpty()) {
-			Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+			Card(shape = RowShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
 				Text(text("calculator_missing"), modifier = Modifier.padding(20.dp), color = MaterialTheme.colorScheme.onErrorContainer)
 			}
 		}
@@ -964,11 +1009,11 @@ private fun SettingsScreen(
 
 @Composable
 private fun SettingRow(label: String, supporting: String, onClick: () -> Unit) {
-	Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
-		Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+	Card(onClick = onClick, shape = RowShape, modifier = Modifier.fillMaxWidth()) {
+		Row(modifier = Modifier.padding(horizontal = 20.dp).height(58.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
 			Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-				Text(label, style = MaterialTheme.typography.titleMedium)
-				Text(supporting, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+				Text(label, style = MaterialTheme.typography.labelLarge)
+				Text(supporting, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 			}
 			Icon(Icons.Default.ArrowForward, contentDescription = null)
 		}
@@ -980,7 +1025,7 @@ private fun <T> ChoiceScreen(padding: PaddingValues, text: (String) -> String, k
 	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
 		Text(text(kind), style = MaterialTheme.typography.headlineMedium)
 		values.forEach { value ->
-			Card(onClick = { onValue(value) }, modifier = Modifier.fillMaxWidth()) {
+			Card(onClick = { onValue(value) }, shape = RowShape, modifier = Modifier.fillMaxWidth()) {
 				Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
 					Text(label(value))
 					Icon(Icons.Default.Check, contentDescription = null)
@@ -1002,16 +1047,19 @@ private fun NotificationsScreen(
 	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 		Text(text("notifications_title"), style = MaterialTheme.typography.headlineMedium)
 		Text(text("notifications_description"), color = MaterialTheme.colorScheme.onSurfaceVariant)
-		NotificationRow(text("notification_new_grade"), newGradeNotifications, onNewGradeNotifications)
-		NotificationRow(text("notification_homework"), homeworkNotifications, onHomeworkNotifications)
+		NotificationRow(text, text("notification_new_grade"), newGradeNotifications, onNewGradeNotifications)
+		NotificationRow(text, text("notification_homework"), homeworkNotifications, onHomeworkNotifications)
 	}
 }
 
 @Composable
-private fun NotificationRow(label: String, enabled: Boolean, onChange: (Boolean) -> Unit) {
-	Card(modifier = Modifier.fillMaxWidth()) {
-		Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-			Text(label, modifier = Modifier.weight(1f))
+private fun NotificationRow(text: (String) -> String, label: String, enabled: Boolean, onChange: (Boolean) -> Unit) {
+	Card(shape = RowShape, modifier = Modifier.fillMaxWidth()) {
+		Row(modifier = Modifier.padding(start = 20.dp, top = 12.dp, end = 16.dp, bottom = 12.dp).height(48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+			Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+				Text(label, style = MaterialTheme.typography.bodyMedium)
+				Text(text("notifications_title"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+			}
 			Switch(checked = enabled, onCheckedChange = onChange)
 		}
 	}
@@ -1030,15 +1078,15 @@ private fun BackgroundWorkScreen(
 	val intervalIndex = intervals.indexOf(interval.toInt()).coerceAtLeast(0)
 	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
 		Text(text("background_work"), style = MaterialTheme.typography.headlineMedium)
-		Card(modifier = Modifier.fillMaxWidth()) {
-			Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+		Card(shape = BackgroundShape, modifier = Modifier.fillMaxWidth()) {
+			Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
 				Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-					Text(text("background_work_enabled"), modifier = Modifier.weight(1f))
+					Text(text("background_work_enabled"), style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
 					Switch(checked = enabled, onCheckedChange = onEnabled)
 				}
 				Text(text("update_check_frequency"), style = MaterialTheme.typography.labelLarge)
 				Slider(value = intervalIndex.toFloat(), onValueChange = { onInterval(intervals[it.toInt()].toFloat()) }, valueRange = 0f..4f, steps = 3, enabled = enabled)
-				Text(text("update_interval_${intervals[intervalIndex].suffix()}"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+				Text(text("update_interval_${intervals[intervalIndex].suffix()}"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 			}
 		}
 	}
@@ -1060,10 +1108,10 @@ private fun ProfileScreen(padding: PaddingValues, text: (String) -> String, view
 		Surface(modifier = Modifier.size(80.dp), shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.secondaryContainer) {
 			BoxCenter { Text(profile?.fullName?.firstOrNull()?.toString() ?: text("no_data"), style = MaterialTheme.typography.headlineLarge) }
 		}
-		Text(profile?.fullName ?: text("student_name"), style = MaterialTheme.typography.headlineMedium)
-		Text(profile?.groupLabel ?: text("student_context"), color = MaterialTheme.colorScheme.onSurfaceVariant)
-		Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer), modifier = Modifier.fillMaxWidth()) {
-			Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+		Text(profile?.fullName ?: text("student_name"), style = MaterialTheme.typography.headlineLarge)
+		Text(profile?.groupLabel ?: text("student_context"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+		Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer), modifier = Modifier.fillMaxWidth()) {
+			Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 				Text(text("school"), style = MaterialTheme.typography.labelLarge)
 				Text(profile?.schoolLabel ?: text("no_data"), style = MaterialTheme.typography.headlineSmall)
 				profile?.region?.let { Text(it) }
@@ -1071,7 +1119,7 @@ private fun ProfileScreen(padding: PaddingValues, text: (String) -> String, view
 				profile?.schoolYear?.let { DetailRow(text("school_year"), it.toString()) }
 			}
 		}
-		Button(onClick = onLogout, modifier = Modifier.fillMaxWidth()) { Text(text("logout")) }
+		Button(onClick = onLogout, shape = RowShape, modifier = Modifier.fillMaxWidth()) { Text(text("logout")) }
 	}
 }
 
@@ -1091,20 +1139,26 @@ private fun DetailRow(label: String, value: String) {
 @Composable
 private fun StateScreen(padding: PaddingValues, text: (String) -> String, bar: String, title: String, body: String, retry: () -> Unit) {
 	Column(modifier = Modifier.fillMaxSize().padding(padding).padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-		Text(text(bar), color = MaterialTheme.colorScheme.onSurfaceVariant)
-		Card(colors = CardDefaults.cardColors(containerColor = if (title == text("empty_day")) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer), modifier = Modifier.fillMaxWidth()) {
-			Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-				Text(text(title), style = MaterialTheme.typography.headlineSmall)
-				Text(text(body), color = MaterialTheme.colorScheme.onSurfaceVariant)
-				Button(onClick = retry) { Text(text("retry")) }
+		Column(modifier = Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+				Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+					Text(text(title), style = MaterialTheme.typography.headlineLarge)
+					Text(text(body), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+				}
+				Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = if (title == text("empty_day")) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer), modifier = Modifier.fillMaxWidth()) {
+					Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+						if (title == text("empty_day")) Text("-", style = MaterialTheme.typography.displaySmall)
+						Text(if (title == text("empty_day")) text("empty_hint") else text("offline_hint"), style = MaterialTheme.typography.titleLarge)
+						if (title != text("empty_day")) Text(text("offline_hint"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+					}
+				}
+				if (title == text("error_load")) Button(onClick = retry, shape = RowShape, modifier = Modifier.fillMaxWidth()) { Text(text("retry")) }
 			}
-		}
 	}
 }
 
 @Composable
 private fun StatePanel(text: (String) -> String, state: UiContent, retry: (() -> Unit)? = null) {
-	Card(modifier = Modifier.fillMaxWidth()) {
+	Card(shape = RowShape, modifier = Modifier.fillMaxWidth()) {
 		Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
 			when (state) {
 				UiContent.Loading -> CircularProgressIndicator(modifier = Modifier.size(32.dp))

@@ -127,8 +127,10 @@
 	<string name="error_load">Жүктеу мүмкін болмады</string>
 	<string name="error_load_body">Қосылымды тексеріп, қайталап көріңіз.</string>
 	<string name="empty_day">Бүгін сабақ жоқ</string>
-	<string name="empty_day_body">Бұл күнге сабақтар жоқ.</string>
+	<string name="empty_day_body">Бұл күні сабақ жоқ.</string>
+	<string name="empty_hint">Кесте осында көрсетіледі. Басқа аптаны ашып көріңіз.</string>
 	<string name="offline_title">Соңғы деректер</string>
 	<string name="offline_body">Соңғы сақталған нұсқа көрсетілуде.</string>
+	<string name="offline_hint">Деректерді кейінірек жаңартып көріңіз.</string>
 	<string name="calculator_missing">Жетіспейтін компоненттер ашық көрсетіледі</string>
 </resources>
