@@ -4,7 +4,6 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.expressiveLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
@@ -37,7 +36,7 @@ fun MaterialClassTheme(themeMode: ThemeMode, content: @Composable () -> Unit) {
 			background = Color.Black, surface = Color.Black, surfaceContainerLowest = Color.Black, surfaceContainerLow = Color(0xFF090C09), surfaceContainer = Color(0xFF101410), surfaceContainerHigh = Color(0xFF1A1E1A), surfaceContainerHighest = Color(0xFF252925),
 			onBackground = Color(0xFFE1E4DF), onSurface = Color(0xFFE1E4DF), onSurfaceVariant = Color(0xFFC2C9BF), outline = Color(0xFF8C938A), outlineVariant = Color(0xFF424940),
 		)
-		ThemeMode.LIGHT, ThemeMode.SYSTEM -> expressiveLightColorScheme(
+		ThemeMode.LIGHT, ThemeMode.SYSTEM -> lightColorScheme(
 			primary = Color(0xFF4F6354), onPrimary = Color.White, primaryContainer = Color(0xFFD1E8D2), onPrimaryContainer = Color(0xFF0C1F13),
 			secondary = Color(0xFF535F52), onSecondary = Color.White, secondaryContainer = Color(0xFFD6E8D3), onSecondaryContainer = Color(0xFF111F14),
 			tertiary = Color(0xFF39656F), onTertiary = Color.White, tertiaryContainer = Color(0xFFBDEAF5), onTertiaryContainer = Color(0xFF001F26),
