@@ -111,9 +111,16 @@
 	<string name="theme_description">Choose the app appearance.</string>
 	<string name="notifications_title">Notifications</string>
 	<string name="notifications_description">Choose which changes you want to hear about.</string>
+	<string name="notifications_on">Enabled</string>
+	<string name="notifications_off">Disabled</string>
 	<string name="notification_new_grade_setting">When a new grade is added</string>
+	<string name="notification_new_grade_description">Notify me when a new grade appears in the diary.</string>
 	<string name="notification_homework_setting">When homework is posted</string>
+	<string name="notification_homework_description">Notify me about new homework.</string>
 	<string name="background_work">Background work</string>
+	<string name="background_work_description">Check schedule and grade updates in the background.</string>
+	<string name="background_work_on">Enabled</string>
+	<string name="background_work_off">Disabled</string>
 	<string name="background_work_enabled">Run in the background</string>
 	<string name="update_check_frequency">How often to check for updates</string>
 	<string name="update_interval_6h">6 hours</string>

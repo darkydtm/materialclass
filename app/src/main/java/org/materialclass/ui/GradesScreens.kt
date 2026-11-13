@@ -44,12 +44,6 @@ internal fun DiaryScreen(padding: PaddingValues, text: (String) -> String, viewM
 	val grades = viewModel.gradesState.readyValue()
 	LazyColumn(modifier = Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
 		item {
-			Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-				Text(text("diary_title"), style = MaterialTheme.typography.headlineMedium)
-				Text(text("diary_description"), color = MaterialTheme.colorScheme.onSurfaceVariant)
-			}
-		}
-		item {
 			Card(shape = NotificationShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer), modifier = Modifier.fillMaxWidth()) {
 				Row(modifier = Modifier.padding(5.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
 					(0..3).forEach { index ->
@@ -105,10 +99,7 @@ internal fun SubjectDetailScreen(padding: PaddingValues, text: (String) -> Strin
 		return
 	}
 	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-		Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-			Text(subject.subjectName.orEmpty(), style = MaterialTheme.typography.headlineLarge)
-			Text(text("subject_description"), color = MaterialTheme.colorScheme.onSurfaceVariant)
-		}
+		Text(subject.subjectName.orEmpty(), style = MaterialTheme.typography.headlineLarge)
 		Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
 			Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
 				Text(text("final_grade"), style = MaterialTheme.typography.labelLarge)
@@ -148,10 +139,6 @@ internal fun CalculatorScreen(padding: PaddingValues, text: (String) -> String, 
 	}
 	val estimate = remember(components) { GradeCalculator.calculate(components) }
 	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-		Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-			Text(text("calculation_title"), style = MaterialTheme.typography.headlineMedium)
-			Text(text("calculation_description"), color = MaterialTheme.colorScheme.onSurfaceVariant)
-		}
 		Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer), modifier = Modifier.fillMaxWidth()) {
 			Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
 				Text(text("calculation_estimate"), style = MaterialTheme.typography.labelLarge)

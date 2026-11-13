@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import java.time.LocalDate
+import java.util.Locale
 import java.util.concurrent.Executors
 import org.materialclass.api.AppError
 import org.materialclass.api.GatewayLoginResult
@@ -83,6 +84,14 @@ enum class ThemeMode {
 	DARK,
 	BLACK,
 }
+
+internal fun displayNameFromFullName(fullName: String?): String? = fullName
+	?.trim()
+	?.split(Regex("\\s+"))
+	?.getOrNull(1)
+	?.takeIf { it.isNotBlank() }
+	?.lowercase(Locale.ROOT)
+	?.replaceFirstChar { it.titlecase(Locale.ROOT) }
 
 enum class DataStateKind {
 	Loading,

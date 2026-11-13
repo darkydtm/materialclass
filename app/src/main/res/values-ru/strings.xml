@@ -111,9 +111,16 @@
 	<string name="theme_description">Выберите оформление приложения.</string>
 	<string name="notifications_title">Уведомления</string>
 	<string name="notifications_description">Выберите, о каких изменениях сообщать.</string>
+	<string name="notifications_on">Включены</string>
+	<string name="notifications_off">Выключены</string>
 	<string name="notification_new_grade_setting">При получении новой оценки</string>
+	<string name="notification_new_grade_description">Сообщать, когда в дневнике появляется новая оценка.</string>
 	<string name="notification_homework_setting">При публикации домашнего задания</string>
+	<string name="notification_homework_description">Сообщать о новых домашних заданиях.</string>
 	<string name="background_work">Фоновая работа</string>
+	<string name="background_work_description">Проверять обновления расписания и оценок в фоне.</string>
+	<string name="background_work_on">Включена</string>
+	<string name="background_work_off">Выключена</string>
 	<string name="background_work_enabled">Работать в фоне</string>
 	<string name="update_check_frequency">Как часто проверять обновления</string>
 	<string name="update_interval_6h">6 часов</string>

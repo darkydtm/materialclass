@@ -268,9 +268,10 @@ private fun Map<String, JsonValue>.toScheduleDay(): ScheduleDay {
 			uuid = item.textValue("scheduleUuid", "uuid"),
 			label = item.textValue("subject", "lesson", "label"),
 			timeslot = item.textValue("time", "timeslot"),
-			cabinet = item.textValue("cabinet"),
+			cabinet = item.textValue("cabinetNumber", "roomNumber", "classroom", "room", "cabinet")
+				?.takeUnless { it.equals("regular", ignoreCase = true) },
 			teacher = item.textValue("teacher", "teacherFio"),
-			type = item["type"]?.asText(),
+			type = item["type"]?.textValue(),
 			theme = item["theme"]?.asText(),
 			homework = item.textValue("homeworkBody", "homework", "body"),
 		)

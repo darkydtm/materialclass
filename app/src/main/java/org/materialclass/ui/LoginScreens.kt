@@ -77,10 +77,6 @@ private fun LoginScreen(text: (String) -> String, viewModel: SchoolViewModel) {
 		horizontalAlignment = Alignment.CenterHorizontally,
 	) {
 		Column(modifier = Modifier.width(340.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-			Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-				Text(text("login"), style = MaterialTheme.typography.headlineLarge)
-				Text(text("login_description"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-			}
 			Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.76f)), modifier = Modifier.fillMaxWidth()) {
 				Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 					OutlinedTextField(

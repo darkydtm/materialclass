@@ -47,15 +47,11 @@ internal fun SettingsScreen(
 	backgroundWork: Boolean,
 ) {
 	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-		Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-			Text(text("nav_settings"), style = MaterialTheme.typography.headlineMedium)
-			Text(text("settings_description"), color = MaterialTheme.colorScheme.onSurfaceVariant)
-		}
 		Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
 			SettingRow(text("language"), text("language_${language.tag}")) { navigator.go(AppRoute.SettingsLanguage) }
 			SettingRow(text("theme"), text(if (theme == ThemeMode.BLACK) "theme_amoled" else "theme_${theme.name.lowercase(Locale.ROOT)}")) { navigator.go(AppRoute.SettingsTheme) }
-			SettingRow(text("notifications"), text(if (newGradeNotifications || homeworkNotifications) "notifications_on" else "notifications_off")) { navigator.go(AppRoute.SettingsNotifications) }
-			SettingRow(text("background_work"), text(if (backgroundWork) "notifications_on" else "notifications_off")) { navigator.go(AppRoute.BackgroundWork) }
+			SettingRow(text("notifications"), text("notifications_description")) { navigator.go(AppRoute.SettingsNotifications) }
+			SettingRow(text("background_work"), text("background_work_description")) { navigator.go(AppRoute.BackgroundWork) }
 		}
 	}
 }
@@ -98,20 +94,19 @@ internal fun NotificationsScreen(
 	onHomeworkNotifications: (Boolean) -> Unit,
 ) {
 	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-		Text(text("notifications_title"), style = MaterialTheme.typography.headlineMedium)
 		Text(text("notifications_description"), color = MaterialTheme.colorScheme.onSurfaceVariant)
-		NotificationRow(text, text("notification_new_grade_setting"), newGradeNotifications, onNewGradeNotifications)
-		NotificationRow(text, text("notification_homework_setting"), homeworkNotifications, onHomeworkNotifications)
+		NotificationRow(text, text("notification_new_grade_setting"), text("notification_new_grade_description"), newGradeNotifications, onNewGradeNotifications)
+		NotificationRow(text, text("notification_homework_setting"), text("notification_homework_description"), homeworkNotifications, onHomeworkNotifications)
 	}
 }
 
 @Composable
-private fun NotificationRow(text: (String) -> String, label: String, enabled: Boolean, onChange: (Boolean) -> Unit) {
+private fun NotificationRow(text: (String) -> String, label: String, description: String, enabled: Boolean, onChange: (Boolean) -> Unit) {
 	Card(shape = RowShape, modifier = Modifier.fillMaxWidth()) {
 		Row(modifier = Modifier.padding(start = 20.dp, top = 12.dp, end = 16.dp, bottom = 12.dp).height(48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
 			Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
 				Text(label, style = MaterialTheme.typography.bodyMedium)
-				Text(text("notifications_title"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+				Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 			}
 			Switch(checked = enabled, onCheckedChange = onChange)
 		}
@@ -130,7 +125,7 @@ internal fun BackgroundWorkScreen(
 	val intervals = listOf(15, 30, 60, 120, 360)
 	val intervalIndex = intervals.indexOf(interval.toInt()).coerceAtLeast(0)
 	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-		Text(text("background_work"), style = MaterialTheme.typography.headlineMedium)
+		Text(text("background_work_description"), color = MaterialTheme.colorScheme.onSurfaceVariant)
 		Card(shape = BackgroundShape, modifier = Modifier.fillMaxWidth()) {
 			Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
 				Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
@@ -159,9 +154,9 @@ internal fun ProfileScreen(padding: PaddingValues, text: (String) -> String, vie
 	val profile = viewModel.profileState.readyValue()
 	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
 		Surface(modifier = Modifier.size(80.dp), shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.secondaryContainer) {
-			BoxCenter { Text(profile?.fullName?.firstOrNull()?.toString() ?: text("no_data"), style = MaterialTheme.typography.headlineLarge) }
+			BoxCenter { Text(displayNameFromFullName(profile?.fullName)?.firstOrNull()?.toString() ?: text("no_data"), style = MaterialTheme.typography.headlineLarge) }
 		}
-		Text(profile?.fullName ?: text("student_name"), style = MaterialTheme.typography.headlineLarge)
+		Text(displayNameFromFullName(profile?.fullName) ?: text("student_name"), style = MaterialTheme.typography.headlineLarge)
 		Text(profile?.groupLabel ?: text("student_context"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 		Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer), modifier = Modifier.fillMaxWidth()) {
 			Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {

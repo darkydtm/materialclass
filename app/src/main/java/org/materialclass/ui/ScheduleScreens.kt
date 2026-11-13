@@ -1,6 +1,9 @@
 package org.materialclass.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -16,12 +19,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -32,7 +33,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -66,7 +66,7 @@ internal fun HomeScreen(
 		item {
 			Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
 				Text(text("greeting_day"), color = MaterialTheme.colorScheme.onSurfaceVariant)
-				Text(profile?.fullName ?: text("student_name"), style = MaterialTheme.typography.headlineLarge)
+				Text(displayNameFromFullName(profile?.fullName) ?: text("student_name"), style = MaterialTheme.typography.headlineLarge)
 				Text(profile?.groupLabel ?: text("student_context"), color = MaterialTheme.colorScheme.onSurfaceVariant)
 			}
 		}
@@ -123,15 +123,8 @@ internal fun ScheduleScreen(
 		verticalArrangement = Arrangement.spacedBy(16.dp),
 	) {
 		item {
-			Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-				Text(text("week_title"), style = MaterialTheme.typography.headlineMedium)
-				Text(text("week_description"), color = MaterialTheme.colorScheme.onSurfaceVariant)
-			}
-		}
-		item {
-			Card(shape = CardShape) {
+			Card(shape = WeekPickerShape) {
 				Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-					Text(rangeLabel, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 					Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
 						IconButton(onClick = { weekOffset-- }) { Icon(Icons.Default.ArrowBack, contentDescription = text("previous_week")) }
 						Text(rangeLabel, style = MaterialTheme.typography.titleMedium)
@@ -139,12 +132,16 @@ internal fun ScheduleScreen(
 					}
 					Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
 						(0..4).forEach { index ->
-							FilterChip(
+							val selected = safeSelectedDay == index
+							Surface(
+								modifier = Modifier.size(width = 54.dp, height = 45.dp).clickable { selectedDay = index },
 								shape = RoundedCornerShape(999.dp),
-								selected = safeSelectedDay == index,
-								onClick = { selectedDay = index },
-								label = { Text((index + 1).toString()) },
-							)
+								color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+								contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+								border = if (selected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+							) {
+								Box(contentAlignment = Alignment.Center) { Text((index + 1).toString()) }
+							}
 						}
 					}
 				}
@@ -172,7 +169,9 @@ private fun LessonCard(lesson: ScheduleLesson, onClick: () -> Unit) {
 		Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
 			Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
 				Text(lesson.timeslot ?: "", style = MaterialTheme.typography.titleMedium)
-				lesson.cabinet?.let { AssistChip(onClick = {}, label = { Text(it) }) }
+				lesson.cabinet?.let(::formatCabinet)?.takeIf(String::isNotBlank)?.let { cabinet ->
+					AssistChip(onClick = {}, label = { Text(cabinet) })
+				}
 			}
 			Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
 				Text(lesson.label ?: "", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
@@ -187,6 +186,10 @@ private fun LessonCard(lesson: ScheduleLesson, onClick: () -> Unit) {
 	}
 }
 
+private fun formatCabinet(cabinet: String): String = cabinet.trim()
+	.takeUnless { it.equals("regular", ignoreCase = true) }
+	.orEmpty()
+
 @Composable
 internal fun LessonDetailScreen(padding: PaddingValues, text: (String) -> String, viewModel: SchoolViewModel, selectedLesson: String) {
 	val lesson = viewModel.scheduleState.readyValue()?.days.orEmpty().flatMap { it.lessons }.firstOrNull { it.uuid == selectedLesson }
@@ -197,7 +200,6 @@ internal fun LessonDetailScreen(padding: PaddingValues, text: (String) -> String
 	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
 		Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
 			Text(lesson.label.orEmpty(), style = MaterialTheme.typography.headlineLarge)
-			Text(text("lesson_description"), color = MaterialTheme.colorScheme.onSurfaceVariant)
 		}
 		Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
 			Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
