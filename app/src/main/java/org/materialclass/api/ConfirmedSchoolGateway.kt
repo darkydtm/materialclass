@@ -1,6 +1,8 @@
 package org.materialclass.api
 
 import java.time.Instant
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import org.materialclass.data.AccountId
 import org.materialclass.data.ActiveSession
 import org.materialclass.data.DiaryModel
@@ -250,16 +252,12 @@ class ConfirmedSchoolGateway(
 		when {
 			key.startsWith("diary:") -> {
 				val date = key.substringAfter(':').substringBefore(':')
-				parameters["date"] = runCatching {
-					java.time.LocalDate.parse(date).format(java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy"))
-				}.getOrDefault(date)
+				parameters["date"] = formatRequestDate(date)
 				user.groupId?.let { parameters["groupId"] = it }
 			}
 			key.startsWith("schedule:") -> {
 				val date = key.substringAfter(':').substringBefore(':')
-				parameters["date"] = runCatching {
-					java.time.LocalDate.parse(date).format(java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy"))
-				}.getOrDefault(date)
+				parameters["date"] = formatRequestDate(date)
 				user.studentSchoolUuid?.let { parameters["studentSchoolUuid"] = it }
 			}
 			key.startsWith("subjects:") -> {
@@ -288,5 +286,11 @@ class ConfirmedSchoolGateway(
 		return ReadContext(token, parameters.filterValues { it.isNotBlank() }, user.chatToken)
 	}
 
+	private fun formatRequestDate(value: String): String = runCatching {
+		LocalDate.parse(value).format(requestDateFormatter)
+	}.getOrDefault(value)
+
 	private fun <T> unsupported(): GatewayReadResult<T> = GatewayReadResult.Failure(AppError.UnsupportedContract)
 }
+
+private val requestDateFormatter = DateTimeFormatter.ofPattern("dd.MM.yyyy")

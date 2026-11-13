@@ -140,11 +140,11 @@ class AppPreferences(context: Context) {
 	private val preferences: SharedPreferences = context.getSharedPreferences(NAME, Context.MODE_PRIVATE)
 
 	fun language(): AppLanguage = runCatching {
-		AppLanguage.valueOf(preferences.getString(LANGUAGE, AppLanguage.RU.name)!!)
+		AppLanguage.valueOf(preferences.getString(LANGUAGE, AppLanguage.RU.name) ?: AppLanguage.RU.name)
 	}.getOrDefault(AppLanguage.RU)
 
 	fun theme(): ThemeMode = runCatching {
-		ThemeMode.valueOf(preferences.getString(THEME, ThemeMode.SYSTEM.name)!!)
+		ThemeMode.valueOf(preferences.getString(THEME, ThemeMode.SYSTEM.name) ?: ThemeMode.SYSTEM.name)
 	}.getOrDefault(ThemeMode.SYSTEM)
 
 	fun newGradeNotifications(): Boolean = preferences.getBoolean(NEW_GRADE_NOTIFICATIONS, false)
