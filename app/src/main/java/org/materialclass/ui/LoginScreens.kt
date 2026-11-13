@@ -143,7 +143,6 @@ private fun LoginStateScreen(title: String, body: String, text: (String) -> Stri
 			Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
 				if (isLoading) CircularProgressIndicator(modifier = Modifier.size(32.dp))
 				else Icon(if (isError) Icons.Default.Error else Icons.Default.Check, contentDescription = null)
-				Text(text("login"), style = MaterialTheme.typography.labelLarge)
 				Text(title, style = MaterialTheme.typography.headlineMedium)
 				Text(body, color = MaterialTheme.colorScheme.onSurfaceVariant)
 				if (isLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
