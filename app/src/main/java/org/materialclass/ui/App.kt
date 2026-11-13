@@ -246,11 +246,11 @@ class SchoolViewModel(
 	var gradesState: DataState<GradesModel>? by mutableStateOf(null)
 		private set
 
-	private val week: DateRange
-		get() {
+	private fun week(offset: Int = 0): DateRange {
 			val today = LocalDate.now()
 			val monday = today.minusDays((today.dayOfWeek.value - 1).toLong())
-			return DateRange(monday, monday.plusDays(6))
+			val shiftedMonday = monday.plusWeeks(offset.toLong())
+			return DateRange(shiftedMonday, shiftedMonday.plusDays(6))
 		}
 
 	fun login(login: String, password: String) {
@@ -276,18 +276,20 @@ class SchoolViewModel(
 		}
 	}
 
-	fun loadSchedule() {
+	fun loadSchedule(weekOffset: Int = 0) {
 		val source = repository ?: run { scheduleState = null; return }
-		val observation = source.observeSchedule(week)
+		val range = week(weekOffset)
+		val observation = source.observeSchedule(range)
 		observation.observe { scheduleState = it }
-		io.execute { source.refreshSchedule(week) }
+		io.execute { source.refreshSchedule(range) }
 	}
 
 	fun loadDiary() {
 		val source = repository ?: run { diaryState = null; return }
-		val observation = source.observeDiary(week)
+		val range = week()
+		val observation = source.observeDiary(range)
 		observation.observe { diaryState = it }
-		io.execute { source.refreshDiary(week) }
+		io.execute { source.refreshDiary(range) }
 	}
 
 	fun loadGrades(period: String = "1") {
@@ -701,9 +703,17 @@ private fun ScheduleScreen(
 ) {
 	var weekOffset by rememberSaveable { mutableIntStateOf(0) }
 	var selectedDay by rememberSaveable { mutableIntStateOf(0) }
-	LaunchedEffect(weekOffset) { viewModel.loadSchedule() }
+	LaunchedEffect(weekOffset) { viewModel.loadSchedule(weekOffset) }
 	val schedule = viewModel.scheduleState.readyValue()
-	val day = schedule?.days?.getOrNull(selectedDay)
+	val safeSelectedDay = selectedDay.coerceIn(0, (schedule?.days?.lastIndex ?: 0).coerceAtLeast(0))
+	val day = schedule?.days?.getOrNull(safeSelectedDay)
+	val rangeLabel = schedule?.days?.mapNotNull { it.dateLabel }?.let { labels ->
+		when {
+			labels.isEmpty() -> text("no_data")
+			labels.size == 1 -> labels.first()
+			else -> "${labels.first()} - ${labels.last()}"
+		}
+	} ?: text("no_data")
 	LazyColumn(
 		modifier = Modifier.fillMaxSize().padding(padding).testTag("schedule-screen"),
 		contentPadding = PaddingValues(20.dp),
@@ -718,16 +728,16 @@ private fun ScheduleScreen(
 		item {
 			Card {
 				Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-					Text(schedule?.days?.firstOrNull()?.dateLabel ?: text("no_data"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+					Text(rangeLabel, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 					Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
 						IconButton(onClick = { weekOffset-- }) { Icon(Icons.Default.ArrowBack, contentDescription = text("previous_week")) }
-						Text(schedule?.days?.firstOrNull()?.dateLabel ?: text("no_data"), style = MaterialTheme.typography.titleMedium)
+						Text(rangeLabel, style = MaterialTheme.typography.titleMedium)
 						IconButton(onClick = { weekOffset++ }) { Icon(Icons.Default.ArrowForward, contentDescription = text("next_week")) }
 					}
 					Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
 						(0..4).forEach { index ->
 							FilterChip(
-								selected = selectedDay == index,
+								selected = safeSelectedDay == index,
 								onClick = { selectedDay = index },
 								label = { Text((index + 1).toString()) },
 							)
