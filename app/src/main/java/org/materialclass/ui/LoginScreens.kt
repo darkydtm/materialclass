@@ -12,7 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Error
+
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
@@ -77,7 +77,7 @@ private fun LoginScreen(text: (String) -> String, viewModel: SchoolViewModel) {
 		horizontalAlignment = Alignment.CenterHorizontally,
 	) {
 		Column(modifier = Modifier.width(340.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-			Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.76f)), modifier = Modifier.fillMaxWidth()) {
+			Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer), modifier = Modifier.fillMaxWidth()) {
 				Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 					OutlinedTextField(
 						value = login,

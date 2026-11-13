@@ -23,17 +23,21 @@ import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import java.util.Locale
 
+private val rootRoutes = listOf(AppRoute.Home, AppRoute.Diary, AppRoute.Schedule, AppRoute.Settings)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun AppScaffold(
 	navigator: AppNavigator,
 	text: (String) -> String,
+	routeTitle: String,
 	viewModel: SchoolViewModel,
 	snackbarHostState: SnackbarHostState,
 	language: AppLanguage,
@@ -54,12 +58,20 @@ internal fun AppScaffold(
 	onBackgroundInterval: (Float) -> Unit,
 	onLogout: () -> Unit,
 ) {
-	val rootRoutes = listOf(AppRoute.Home, AppRoute.Diary, AppRoute.Schedule, AppRoute.Settings)
+	val languageChoices = remember(text) {
+		AppLanguage.entries.map { ChoiceRow(it.name, it, text("language_${it.tag}")) }
+	}
+	val themeChoices = remember(text) {
+		ThemeMode.entries.map { mode ->
+			val key = if (mode == ThemeMode.BLACK) "theme_amoled" else "theme_${mode.name.lowercase(Locale.ROOT)}"
+			ChoiceRow(mode.name, mode, text(key))
+		}
+	}
 	Scaffold(
 		topBar = {
 			CenterAlignedTopAppBar(
 				colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-				title = { Text(text(navigator.current.titleKey())) },
+				title = { Text(routeTitle) },
 				navigationIcon = {
 					if (navigator.current !in rootRoutes) {
 						IconButton(onClick = { navigator.back() }, modifier = Modifier.testTag("back")) {
@@ -80,7 +92,7 @@ internal fun AppScaffold(
 			if (navigator.current in rootRoutes) {
 				NavigationBar(
 					modifier = Modifier.navigationBarsPadding(),
-					containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+					containerColor = MaterialTheme.colorScheme.surfaceContainer,
 					tonalElevation = 0.dp,
 				) {
 					rootRoutes.forEach { route ->
@@ -124,11 +136,8 @@ internal fun AppScaffold(
 					homeworkNotifications = homeworkNotifications,
 					backgroundWork = backgroundWork,
 				)
-				AppRoute.SettingsLanguage -> ChoiceScreen(padding, text, "language", AppLanguage.entries, onLanguage) { text("language_${it.tag}") }
-				AppRoute.SettingsTheme -> ChoiceScreen(padding, text, "theme", ThemeMode.entries, onTheme) { mode ->
-					val key = if (mode == ThemeMode.BLACK) "theme_amoled" else "theme_${mode.name.lowercase(Locale.ROOT)}"
-					text(key)
-				}
+				AppRoute.SettingsLanguage -> ChoiceScreen(padding, text, "language", languageChoices, onLanguage)
+				AppRoute.SettingsTheme -> ChoiceScreen(padding, text, "theme", themeChoices, onTheme)
 				AppRoute.SettingsNotifications -> NotificationsScreen(padding, text, newGradeNotifications, onNewGradeNotifications, homeworkNotifications, onHomeworkNotifications)
 				AppRoute.BackgroundWork -> BackgroundWorkScreen(padding, text, backgroundWork, onBackgroundWork, backgroundInterval, onBackgroundInterval)
 				AppRoute.Profile -> ProfileScreen(padding, text, viewModel, onLogout)

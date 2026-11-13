@@ -16,6 +16,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import java.util.HashMap
 import java.util.Locale
 import org.materialclass.api.AppError
 import org.materialclass.api.GatewayLoginResult
@@ -50,7 +51,7 @@ fun MaterialClassApp(
 	}
 	val text: (String) -> String = remember(localizedContext) {
 		val values = HashMap<String, String>()
-		{ key ->
+		return@remember { key: String ->
 			values.getOrPut(key) {
 				localizedContext.resources.getIdentifier(key, "string", localizedContext.packageName)
 					.takeIf { it != 0 }
@@ -59,6 +60,7 @@ fun MaterialClassApp(
 			}
 		}
 	}
+	val routeTitle = remember(navigator.current, text) { text(navigator.current.titleKey()) }
 	val snackbarHostState = remember { SnackbarHostState() }
 
 	BackHandler(enabled = navigator.current !in loginRoutes && navigator.canGoBack()) {
@@ -78,6 +80,7 @@ fun MaterialClassApp(
 				AppScaffold(
 					navigator = navigator,
 					text = text,
+					routeTitle = routeTitle,
 					viewModel = viewModel,
 					snackbarHostState = snackbarHostState,
 					language = language,

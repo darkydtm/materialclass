@@ -9,13 +9,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Settings
+
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -35,6 +35,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import java.util.Locale
 
+private val backgroundIntervals = listOf(15, 30, 60, 120, 360)
+
+internal data class ChoiceRow<T>(val key: String, val value: T, val label: String)
+
+internal data class SettingsItem(val key: String, val label: String, val supporting: String)
+
 @Composable
 internal fun SettingsScreen(
 	padding: PaddingValues,
@@ -46,12 +52,26 @@ internal fun SettingsScreen(
 	homeworkNotifications: Boolean,
 	backgroundWork: Boolean,
 ) {
-	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-		Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-			SettingRow(text("language"), text("language_${language.tag}")) { navigator.go(AppRoute.SettingsLanguage) }
-			SettingRow(text("theme"), text(if (theme == ThemeMode.BLACK) "theme_amoled" else "theme_${theme.name.lowercase(Locale.ROOT)}")) { navigator.go(AppRoute.SettingsTheme) }
-			SettingRow(text("notifications"), text("notifications_description")) { navigator.go(AppRoute.SettingsNotifications) }
-			SettingRow(text("background_work"), text("background_work_description")) { navigator.go(AppRoute.BackgroundWork) }
+	val rows = remember(language, theme, text) {
+		listOf(
+			SettingsItem("language", text("language"), text("language_${language.tag}")),
+			SettingsItem("theme", text("theme"), text(if (theme == ThemeMode.BLACK) "theme_amoled" else "theme_${theme.name.lowercase(Locale.ROOT)}")),
+			SettingsItem("notifications", text("notifications"), text("notifications_description")),
+			SettingsItem("background_work", text("background_work"), text("background_work_description")),
+		)
+	}
+	LazyColumn(modifier = Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+		items(rows, key = { it.key }, contentType = { "setting" }) { row ->
+			SettingRow(row.label, row.supporting) {
+				navigator.go(
+					when (row.key) {
+						"language" -> AppRoute.SettingsLanguage
+						"theme" -> AppRoute.SettingsTheme
+						"notifications" -> AppRoute.SettingsNotifications
+						else -> AppRoute.BackgroundWork
+					},
+				)
+			}
 		}
 	}
 }
@@ -70,13 +90,15 @@ private fun SettingRow(label: String, supporting: String, onClick: () -> Unit) {
 }
 
 @Composable
-internal fun <T> ChoiceScreen(padding: PaddingValues, text: (String) -> String, kind: String, values: List<T>, onValue: (T) -> Unit, label: (T) -> String) {
-	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-		Text(text(kind), style = MaterialTheme.typography.headlineMedium)
-		values.forEach { value ->
-			Card(onClick = { onValue(value) }, shape = RowShape, modifier = Modifier.fillMaxWidth()) {
+internal fun <T> ChoiceScreen(padding: PaddingValues, text: (String) -> String, kind: String, rows: List<ChoiceRow<T>>, onValue: (T) -> Unit) {
+	LazyColumn(modifier = Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+		item(key = "choice:title", contentType = "choice-header") {
+			Text(text(kind), style = MaterialTheme.typography.headlineMedium)
+		}
+		items(rows, key = { row -> row.key }, contentType = { "choice" }) { row ->
+			Card(onClick = { onValue(row.value) }, shape = RowShape, modifier = Modifier.fillMaxWidth()) {
 				Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-					Text(label(value))
+					Text(row.label)
 					Icon(Icons.Default.Check, contentDescription = null)
 				}
 			}
@@ -93,15 +115,21 @@ internal fun NotificationsScreen(
 	homeworkNotifications: Boolean,
 	onHomeworkNotifications: (Boolean) -> Unit,
 ) {
-	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-		Text(text("notifications_description"), color = MaterialTheme.colorScheme.onSurfaceVariant)
-		NotificationRow(text, text("notification_new_grade_setting"), text("notification_new_grade_description"), newGradeNotifications, onNewGradeNotifications)
-		NotificationRow(text, text("notification_homework_setting"), text("notification_homework_description"), homeworkNotifications, onHomeworkNotifications)
+	LazyColumn(modifier = Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+		item(key = "notifications:description", contentType = "description") {
+			Text(text("notifications_description"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+		}
+		item(key = "notifications:new-grade", contentType = "notification") {
+			NotificationRow(text("notification_new_grade_setting"), text("notification_new_grade_description"), newGradeNotifications, onNewGradeNotifications)
+		}
+		item(key = "notifications:homework", contentType = "notification") {
+			NotificationRow(text("notification_homework_setting"), text("notification_homework_description"), homeworkNotifications, onHomeworkNotifications)
+		}
 	}
 }
 
 @Composable
-private fun NotificationRow(text: (String) -> String, label: String, description: String, enabled: Boolean, onChange: (Boolean) -> Unit) {
+private fun NotificationRow(label: String, description: String, enabled: Boolean, onChange: (Boolean) -> Unit) {
 	Card(shape = RowShape, modifier = Modifier.fillMaxWidth()) {
 		Row(modifier = Modifier.padding(start = 20.dp, top = 12.dp, end = 16.dp, bottom = 12.dp).height(48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
 			Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -122,20 +150,23 @@ internal fun BackgroundWorkScreen(
 	interval: Float,
 	onInterval: (Float) -> Unit,
 ) {
-	val intervals = listOf(15, 30, 60, 120, 360)
-	val intervalIndex = intervals.indexOf(interval.toInt()).coerceAtLeast(0)
-	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-		Text(text("background_work_description"), color = MaterialTheme.colorScheme.onSurfaceVariant)
-		Card(shape = BackgroundShape, modifier = Modifier.fillMaxWidth()) {
-			Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+	val intervalIndex = backgroundIntervals.indexOf(interval.toInt()).coerceAtLeast(0)
+	LazyColumn(modifier = Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+		item(key = "background-work:description", contentType = "description") {
+			Text(text("background_work_description"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+		}
+		item(key = "background-work:controls", contentType = "background-controls") {
+			Card(shape = BackgroundShape, modifier = Modifier.fillMaxWidth()) {
+				Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
 				Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
 					Text(text("background_work_enabled"), style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
 					Switch(checked = enabled, onCheckedChange = onEnabled)
 				}
 				Text(text("update_check_frequency"), style = MaterialTheme.typography.labelLarge)
-				Slider(value = intervalIndex.toFloat(), onValueChange = { onInterval(intervals[it.toInt()].toFloat()) }, valueRange = 0f..4f, steps = 3, enabled = enabled)
-				Text(text("update_interval_${intervals[intervalIndex].suffix()}"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+				Slider(value = intervalIndex.toFloat(), onValueChange = { onInterval(backgroundIntervals[it.toInt()].toFloat()) }, valueRange = 0f..4f, steps = 3, enabled = enabled)
+				Text(text("update_interval_${backgroundIntervals[intervalIndex].suffix()}"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 			}
+		}
 		}
 	}
 }
@@ -152,22 +183,32 @@ private fun Int.suffix(): String = when (this) {
 internal fun ProfileScreen(padding: PaddingValues, text: (String) -> String, viewModel: SchoolViewModel, onLogout: () -> Unit) {
 	LaunchedEffect(Unit) { viewModel.loadProfile() }
 	val profile = viewModel.profileState.readyValue()
-	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-		Surface(modifier = Modifier.size(80.dp), shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.secondaryContainer) {
-			BoxCenter { Text(displayNameFromFullName(profile?.fullName)?.firstOrNull()?.toString() ?: text("no_data"), style = MaterialTheme.typography.headlineLarge) }
-		}
-		Text(displayNameFromFullName(profile?.fullName) ?: text("student_name"), style = MaterialTheme.typography.headlineLarge)
-		Text(profile?.groupLabel ?: text("student_context"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-		Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer), modifier = Modifier.fillMaxWidth()) {
-			Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-				Text(text("school"), style = MaterialTheme.typography.labelLarge)
-				Text(profile?.schoolLabel ?: text("no_data"), style = MaterialTheme.typography.headlineSmall)
-				profile?.region?.let { Text(it) }
-				profile?.groupLabel?.let { DetailRow(text("class_name"), it) }
-				profile?.schoolYear?.let { DetailRow(text("school_year"), it.toString()) }
+	val displayName = displayNameFromFullName(profile?.fullName) ?: text("student_name")
+	val initials = displayName.firstOrNull()?.toString() ?: text("no_data")
+	LazyColumn(modifier = Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+		item(key = "profile:avatar", contentType = "profile-header") {
+			Surface(modifier = Modifier.size(80.dp), shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.secondaryContainer) {
+				BoxCenter { Text(initials, style = MaterialTheme.typography.headlineLarge) }
 			}
 		}
-		Button(onClick = onLogout, shape = RowShape, modifier = Modifier.fillMaxWidth()) { Text(text("logout")) }
+		item(key = "profile:name", contentType = "profile-header") {
+			Text(displayName, style = MaterialTheme.typography.headlineLarge)
+			Text(profile?.groupLabel ?: text("student_context"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+		}
+		item(key = "profile:details", contentType = "profile-details") {
+			Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer), modifier = Modifier.fillMaxWidth()) {
+				Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+					Text(text("school"), style = MaterialTheme.typography.labelLarge)
+					Text(profile?.schoolLabel ?: text("no_data"), style = MaterialTheme.typography.headlineSmall)
+					profile?.region?.let { Text(it) }
+					profile?.groupLabel?.let { DetailRow(text("class_name"), it) }
+					profile?.schoolYear?.let { DetailRow(text("school_year"), it.toString()) }
+				}
+			}
+		}
+		item(key = "profile:logout", contentType = "profile-action") {
+			Button(onClick = onLogout, shape = RowShape, modifier = Modifier.fillMaxWidth()) { Text(text("logout")) }
+		}
 	}
 }
 
