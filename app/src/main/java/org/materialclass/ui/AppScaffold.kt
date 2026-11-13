@@ -54,7 +54,6 @@ internal fun AppScaffold(
 	onBackgroundInterval: (Float) -> Unit,
 	onLogout: () -> Unit,
 ) {
-	val rootRoutes = listOf(AppRoute.Home, AppRoute.Diary, AppRoute.Schedule, AppRoute.Settings)
 	Scaffold(
 		topBar = {
 			CenterAlignedTopAppBar(
@@ -101,7 +100,7 @@ internal fun AppScaffold(
 				}
 		},
 		snackbarHost = { SnackbarHost(snackbarHostState) },
-	) { padding ->
+		content = { padding ->
 		when (navigator.current) {
 			AppRoute.Home -> HomeScreen(padding, text, viewModel, navigator, onLessonSelected)
 			AppRoute.HomeError -> StateScreen(padding, text, "nav_home", "error_load", "error_load_body") { viewModel.retry(AppRoute.HomeError) }
@@ -133,7 +132,8 @@ internal fun AppScaffold(
 			AppRoute.Profile -> ProfileScreen(padding, text, viewModel, onLogout)
 			else -> Unit
 		}
-	}
+		},
+	)
 }
 
 private val ROOT_ROUTES = listOf(
