@@ -101,37 +101,37 @@ internal fun AppScaffold(
 		},
 		snackbarHost = { SnackbarHost(snackbarHostState) },
 		content = { padding ->
-		when (navigator.current) {
-			AppRoute.Home -> HomeScreen(padding, text, viewModel, navigator, onLessonSelected)
-			AppRoute.HomeError -> StateScreen(padding, text, "nav_home", "error_load", "error_load_body") { viewModel.retry(AppRoute.HomeError) }
-			AppRoute.HomeEmpty -> StateScreen(padding, text, "nav_home", "empty_day", "empty_day_body") { navigator.go(AppRoute.Schedule) }
-			AppRoute.Schedule -> ScheduleScreen(padding, text, viewModel, navigator, onLessonSelected)
-			AppRoute.ScheduleOffline -> StateScreen(padding, text, "week_title", "offline_title", "offline_body") { viewModel.retry(AppRoute.Schedule) }
-			AppRoute.LessonDetail -> LessonDetailScreen(padding, text, viewModel, selectedLesson)
-			AppRoute.Diary -> DiaryScreen(padding, text, viewModel, navigator, onSubjectSelected)
-			AppRoute.SubjectDetail -> SubjectDetailScreen(padding, text, viewModel, selectedSubject, navigator)
-			AppRoute.Calculator -> CalculatorScreen(padding, text, viewModel, selectedSubject, false)
-			AppRoute.CalculatorMissing -> CalculatorScreen(padding, text, viewModel, selectedSubject, true)
-			AppRoute.Settings -> SettingsScreen(
-				padding,
-				text,
-				navigator,
-				language = language,
-				theme = theme,
-				newGradeNotifications = newGradeNotifications,
-				homeworkNotifications = homeworkNotifications,
-				backgroundWork = backgroundWork,
-			)
-			AppRoute.SettingsLanguage -> ChoiceScreen(padding, text, "language", AppLanguage.entries, onLanguage) { text("language_${it.tag}") }
-			AppRoute.SettingsTheme -> ChoiceScreen(padding, text, "theme", ThemeMode.entries, onTheme) { mode ->
-				val key = if (mode == ThemeMode.BLACK) "theme_amoled" else "theme_${mode.name.lowercase(Locale.ROOT)}"
-				text(key)
+			when (navigator.current) {
+				AppRoute.Home -> HomeScreen(padding, text, viewModel, navigator, onLessonSelected)
+				AppRoute.HomeError -> StateScreen(padding, text, "nav_home", "error_load", "error_load_body") { viewModel.retry(AppRoute.HomeError) }
+				AppRoute.HomeEmpty -> StateScreen(padding, text, "nav_home", "empty_day", "empty_day_body") { navigator.go(AppRoute.Schedule) }
+				AppRoute.Schedule -> ScheduleScreen(padding, text, viewModel, navigator, onLessonSelected)
+				AppRoute.ScheduleOffline -> StateScreen(padding, text, "week_title", "offline_title", "offline_body") { viewModel.retry(AppRoute.Schedule) }
+				AppRoute.LessonDetail -> LessonDetailScreen(padding, text, viewModel, selectedLesson)
+				AppRoute.Diary -> DiaryScreen(padding, text, viewModel, navigator, onSubjectSelected)
+				AppRoute.SubjectDetail -> SubjectDetailScreen(padding, text, viewModel, selectedSubject, navigator)
+				AppRoute.Calculator -> CalculatorScreen(padding, text, viewModel, selectedSubject, false)
+				AppRoute.CalculatorMissing -> CalculatorScreen(padding, text, viewModel, selectedSubject, true)
+				AppRoute.Settings -> SettingsScreen(
+					padding,
+					text,
+					navigator,
+					language = language,
+					theme = theme,
+					newGradeNotifications = newGradeNotifications,
+					homeworkNotifications = homeworkNotifications,
+					backgroundWork = backgroundWork,
+				)
+				AppRoute.SettingsLanguage -> ChoiceScreen(padding, text, "language", AppLanguage.entries, onLanguage) { text("language_${it.tag}") }
+				AppRoute.SettingsTheme -> ChoiceScreen(padding, text, "theme", ThemeMode.entries, onTheme) { mode ->
+					val key = if (mode == ThemeMode.BLACK) "theme_amoled" else "theme_${mode.name.lowercase(Locale.ROOT)}"
+					text(key)
+				}
+				AppRoute.SettingsNotifications -> NotificationsScreen(padding, text, newGradeNotifications, onNewGradeNotifications, homeworkNotifications, onHomeworkNotifications)
+				AppRoute.BackgroundWork -> BackgroundWorkScreen(padding, text, backgroundWork, onBackgroundWork, backgroundInterval, onBackgroundInterval)
+				AppRoute.Profile -> ProfileScreen(padding, text, viewModel, onLogout)
+				else -> Unit
 			}
-			AppRoute.SettingsNotifications -> NotificationsScreen(padding, text, newGradeNotifications, onNewGradeNotifications, homeworkNotifications, onHomeworkNotifications)
-			AppRoute.BackgroundWork -> BackgroundWorkScreen(padding, text, backgroundWork, onBackgroundWork, backgroundInterval, onBackgroundInterval)
-			AppRoute.Profile -> ProfileScreen(padding, text, viewModel, onLogout)
-			else -> Unit
-		}
 		},
 	)
 }
