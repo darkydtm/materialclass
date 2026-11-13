@@ -61,14 +61,14 @@ internal fun AppScaffold(
 				colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
 				title = { Text(text("app_name")) },
 				navigationIcon = {
-					if (navigator.current !in rootRoutes) {
+					if (navigator.current !in ROOT_ROUTES) {
 						IconButton(onClick = { navigator.back() }, modifier = Modifier.testTag("back")) {
 							Icon(Icons.Default.ArrowBack, contentDescription = text("back"))
 						}
 					}
 				},
 				actions = {
-					if (navigator.current in rootRoutes) {
+					if (navigator.current in ROOT_ROUTES) {
 						IconButton(onClick = { navigator.go(AppRoute.Profile) }) {
 							Icon(Icons.Default.AccountCircle, contentDescription = text("profile"))
 						}
@@ -77,27 +77,26 @@ internal fun AppScaffold(
 			)
 		},
 		bottomBar = {
-				if (navigator.current in rootRoutes) {
-					NavigationBar(
-						modifier = Modifier.navigationBarsPadding(),
-						containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
-						tonalElevation = 0.dp,
-					) {
-						rootRoutes.forEach { route ->
-							NavigationBarItem(
-								selected = navigator.current == route,
-								onClick = { navigator.go(route) },
-								icon = { Icon(route.icon(), contentDescription = null) },
-								label = { Text(text(route.labelKey())) },
-								colors = NavigationBarItemDefaults.colors(
-									selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
-									selectedTextColor = MaterialTheme.colorScheme.onPrimaryContainer,
-									indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-									unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-									unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-								),
-							)
-						}
+			if (navigator.current in ROOT_ROUTES) {
+				NavigationBar(
+					modifier = Modifier.navigationBarsPadding(),
+					containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+					tonalElevation = 0.dp,
+				) {
+					ROOT_ROUTES.forEach { route ->
+						NavigationBarItem(
+							selected = navigator.current == route,
+							onClick = { navigator.go(route) },
+							icon = { Icon(route.icon(), contentDescription = null) },
+							label = { Text(text(route.labelKey())) },
+							colors = NavigationBarItemDefaults.colors(
+								selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+								selectedTextColor = MaterialTheme.colorScheme.onPrimaryContainer,
+								indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+								unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+								unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+							),
+						)
 					}
 				}
 		},
@@ -137,6 +136,12 @@ internal fun AppScaffold(
 	}
 }
 
+private val ROOT_ROUTES = listOf(
+	AppRoute.Home,
+	AppRoute.Diary,
+	AppRoute.Schedule,
+	AppRoute.Settings,
+)
 private fun AppRoute.labelKey(): String = when (this) {
 	AppRoute.Home -> "nav_home"
 	AppRoute.Diary -> "nav_diary"

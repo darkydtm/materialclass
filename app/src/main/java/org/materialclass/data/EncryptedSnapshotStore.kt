@@ -11,18 +11,70 @@ class EncryptedSnapshotStore(
 	override fun read(session: ActiveSession): SnapshotStoreRead {
 		if (sessions.currentSession() != session) return SnapshotStoreRead.Unavailable
 		return when (val result = cache.read(session)) {
-			is CacheRead.Hit -> try { SnapshotStoreRead.Hit(decode(result.payload)) } catch (_: Exception) { SnapshotStoreRead.Unavailable }
+			is CacheRead.Hit -> runCatching { SnapshotStoreRead.Hit(decode(result.payload)) }
+				.getOrDefault(SnapshotStoreRead.Unavailable)
 			CacheRead.Missing -> SnapshotStoreRead.Missing
 			CacheRead.Unavailable -> SnapshotStoreRead.Unavailable
 		}
 	}
-	override fun write(session: ActiveSession, slices: Map<String, CachedSlice>): Boolean = sessions.currentSession() == session && cache.write(session, encode(slices))
-	private fun encode(slices: Map<String, CachedSlice>): ByteArray = java.io.ByteArrayOutputStream().also { output -> java.io.DataOutputStream(output).use { data -> data.writeInt(MAGIC); data.writeInt(slices.size); slices.toSortedMap().forEach { (key, slice) -> data.writeUTF(key); data.writeLong(slice.capturedAt.toEpochMilli()); data.writeInt(slice.payload.size); data.write(slice.payload) } } }.toByteArray()
+	override fun write(session: ActiveSession, slices: Map<String, CachedSlice>): Boolean {
+		if (sessions.currentSession() != session) return false
+		return runCatching { cache.write(session, encode(slices)) }.getOrDefault(false)
+	}
+
+	private fun encode(slices: Map<String, CachedSlice>): ByteArray {
+		validateSlices(slices)
+		return java.io.ByteArrayOutputStream().also { output ->
+			java.io.DataOutputStream(output).use { data ->
+				data.writeInt(MAGIC)
+				data.writeInt(slices.size)
+				slices.toSortedMap().forEach { (key, slice) ->
+					data.writeUTF(key)
+					data.writeLong(slice.capturedAt.toEpochMilli())
+					data.writeInt(slice.payload.size)
+					data.write(slice.payload)
+				}
+			}
+		}.toByteArray()
+	}
+
 	private fun decode(bytes: ByteArray): Map<String, CachedSlice> = java.io.DataInputStream(bytes.inputStream()).use { data ->
 		if (data.readInt() != MAGIC) throw IllegalArgumentException("snapshot header")
 		val count = data.readInt()
 		if (count < 0 || count > MAX_SLICES) throw IllegalArgumentException("snapshot count")
-		buildMap { repeat(count) { val key = data.readUTF(); val timestamp = Instant.ofEpochMilli(data.readLong()); val length = data.readInt(); if (length < 0 || length > MAX_SLICE_BYTES) throw IllegalArgumentException("snapshot size"); put(key, CachedSlice(ByteArray(length).also(data::readFully), timestamp)) } }
+		val slices = LinkedHashMap<String, CachedSlice>(count)
+		var totalBytes = 0L
+		repeat(count) {
+			val key = data.readUTF()
+			if (key.isBlank() || slices.containsKey(key)) throw IllegalArgumentException("snapshot key")
+			val timestamp = Instant.ofEpochMilli(data.readLong())
+			val length = data.readInt()
+			if (length < 0 || length > MAX_SLICE_BYTES) throw IllegalArgumentException("snapshot size")
+			totalBytes += length
+			if (totalBytes > MAX_TOTAL_SLICE_BYTES) throw IllegalArgumentException("snapshot total size")
+			slices[key] = CachedSlice(ByteArray(length).also(data::readFully), timestamp)
+		}
+		if (data.available() != 0) throw IllegalArgumentException("snapshot trailing data")
+		slices
 	}
-	private companion object { const val MAGIC = 0x4D435332; const val MAX_SLICES = 64; const val MAX_SLICE_BYTES = 4 * 1024 * 1024 }
+
+	private fun validateSlices(slices: Map<String, CachedSlice>) {
+		if (slices.size > MAX_SLICES) throw IllegalArgumentException("snapshot count")
+		var totalBytes = 0L
+		for ((key, slice) in slices) {
+			if (key.isBlank()) throw IllegalArgumentException("snapshot key")
+			if (key.toByteArray(Charsets.UTF_8).size > MAX_UTF_BYTES) throw IllegalArgumentException("snapshot key")
+			if (slice.payload.size > MAX_SLICE_BYTES) throw IllegalArgumentException("snapshot size")
+			totalBytes += slice.payload.size
+		}
+		if (totalBytes > MAX_TOTAL_SLICE_BYTES) throw IllegalArgumentException("snapshot total size")
+	}
+
+	private companion object {
+		const val MAGIC = 0x4D435332
+		const val MAX_SLICES = 64
+		const val MAX_SLICE_BYTES = 4 * 1024 * 1024
+		const val MAX_TOTAL_SLICE_BYTES = 16 * 1024 * 1024
+		const val MAX_UTF_BYTES = 65_535
+	}
 }

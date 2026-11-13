@@ -61,13 +61,16 @@ class SessionStore(
 				if (length <= 0 || length > MAX_RECORD_BYTES) return null
 				val encrypted = ByteArray(length)
 				data.readFully(encrypted)
-				val decrypted = DataInputStream(ByteArrayInputStream(cipher.decrypt(keys.tokenKey(), encrypted)))
-				val (token, refreshToken, userInfo) = decrypted.use { input ->
+				if (data.available() != 0) return null
+				val (token, refreshToken, userInfo, hasTrailingData) = DataInputStream(
+					ByteArrayInputStream(cipher.decrypt(keys.tokenKey(), encrypted)),
+				).use { input ->
 					if (input.readInt() != PAYLOAD_MAGIC) throw IllegalArgumentException("unsupported session payload")
 					val token = input.readUTF()
 					val refreshToken = input.readUTF().takeIf(String::isNotEmpty)
-					Triple(token, refreshToken, input.readUserInfo())
+					DecodedPayload(token, refreshToken, input.readUserInfo(), input.available() != 0)
 				}
+				if (hasTrailingData) return null
 				if (token.isEmpty()) return null
 				StoredSession(ActiveSession(account, generation), token, refreshToken, expiresAt, userInfo)
 			}
@@ -84,6 +87,13 @@ class SessionStore(
 		const val MAX_RECORD_BYTES = 1024 * 1024
 	}
 }
+
+private data class DecodedPayload(
+	val token: String,
+	val refreshToken: String?,
+	val userInfo: UserInfo?,
+	val hasTrailingData: Boolean,
+)
 
 data class StoredSession(
 	val session: ActiveSession,
