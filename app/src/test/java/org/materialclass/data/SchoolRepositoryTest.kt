@@ -19,6 +19,20 @@ class SchoolRepositoryTest {
 	private val capturedAt = Instant.parse("2026-01-02T03:04:05Z")
 
 	@Test
+	fun cachedScheduleSurvivesRepositoryRecreation() {
+		val fixture = Fixture()
+		val model = ScheduleModel(1, 1, listOf(ScheduleDay("Monday", false, false, listOf(ScheduleLesson("id", "Math", "09:00", "12", null, null, null, null)))))
+		fixture.gateway.scheduleResult = GatewayReadResult.Success(model)
+		fixture.repository.refreshSchedule(range)
+		fixture.gateway.scheduleResult = GatewayReadResult.Failure(AppError.Offline)
+		val restarted = SchoolRepositoryImpl(fixture.gateway, fixture.sessions, fixture.store, { capturedAt })
+		restarted.refreshSchedule(range)
+		val state = restarted.observeSchedule(range).current as DataState.Error
+		assertEquals(model, state.snapshot?.value)
+		assertEquals(capturedAt, state.snapshot?.capturedAt)
+	}
+
+	@Test
 	fun cachedOfflineDataIsStaleAndRetainsItsLastSuccessTimestamp() {
 		val fixture = Fixture()
 		fixture.gateway.diaryResult = GatewayReadResult.Success(DiaryModel(3))

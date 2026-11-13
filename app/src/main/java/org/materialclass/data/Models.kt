@@ -5,7 +5,7 @@ import java.time.LocalDate
 import org.materialclass.api.AppError
 
 @JvmInline
-value class AccountId(val value: String) {
+value class AccountId(val value: String) : java.io.Serializable {
 	init {
 		require(value.isNotBlank()) { "AccountId must not be blank" }
 	}
@@ -70,13 +70,13 @@ fun <T> Outcome<T>.toState(): DataState<T> = when (this) {
 	}
 }
 
-data object HomeModel
+data object HomeModel : java.io.Serializable
 
 data class DiaryModel(
 	val dayCount: Int,
 	val rangeLabel: String? = null,
 	val days: List<DiaryDay> = emptyList(),
-) {
+) : java.io.Serializable {
 	init {
 		require(dayCount >= 0) { "Diary day count must not be negative" }
 	}
@@ -87,7 +87,7 @@ data class DiaryDay(
 	val dateLabel: String?,
 	val isHoliday: Boolean,
 	val subjects: List<DiarySubject>,
-)
+) : java.io.Serializable
 
 data class DiarySubject(
 	val scheduleUuid: String?,
@@ -100,7 +100,7 @@ data class DiarySubject(
 	val homework: String?,
 	val hasFiles: Boolean,
 	val hasBooks: Boolean,
-)
+) : java.io.Serializable
 
 data class DiaryWeeksModel(
 	val weekCount: Int,
@@ -132,7 +132,7 @@ data class ScheduleModel(
 	val dayCount: Int,
 	val daysWithSchedule: Int = 0,
 	val days: List<ScheduleDay> = emptyList(),
-) {
+) : java.io.Serializable {
 	init {
 		require(dayCount >= 0) { "Schedule day count must not be negative" }
 		require(daysWithSchedule in 0..dayCount) { "Scheduled day count must fit the day count" }
@@ -144,7 +144,7 @@ data class ScheduleDay(
 	val isCurrent: Boolean,
 	val isHoliday: Boolean,
 	val lessons: List<ScheduleLesson>,
-)
+) : java.io.Serializable
 
 data class ScheduleLesson(
 	val uuid: String?,
@@ -155,14 +155,14 @@ data class ScheduleLesson(
 	val type: String?,
 	val theme: String?,
 	val homework: String?,
-)
+) : java.io.Serializable
 
 data object LessonDetailModel
 
 data class GradesModel(
 	val subjectCount: Int,
 	val subjects: List<GradeSubject> = emptyList(),
-) {
+) : java.io.Serializable {
 	init {
 		require(subjectCount >= 0) { "Grade subject count must not be negative" }
 	}
@@ -178,7 +178,7 @@ data class GradeSubject(
 	val quarter4: String? = null,
 	val yearScore: String? = null,
 	val totalMissCount: Int? = null,
-)
+) : java.io.Serializable
 
 data class JournalGrade(
 	val scheduleUuid: String?,
@@ -190,13 +190,13 @@ data class JournalGrade(
 	val mark: String? = null,
 	val markMax: String? = null,
 	val comment: String? = null,
-)
+) : java.io.Serializable
 
 data class JournalGradesModel(
 	val grades: List<JournalGrade>,
 	val groupsSucceeded: Int,
 	val groupsFailed: Int,
-)
+) : java.io.Serializable
 
 data class HomeworkItem(
 	val uuid: String?,
@@ -205,9 +205,9 @@ data class HomeworkItem(
 	val body: String?,
 	val date: String?,
 	val hasFiles: Boolean?,
-)
+) : java.io.Serializable
 
-data class HomeworksModel(val items: List<HomeworkItem>)
+data class HomeworksModel(val items: List<HomeworkItem>) : java.io.Serializable
 
 data class HomeworkDetailModel(
 	val subjectName: String?,
@@ -230,7 +230,7 @@ data class GradeSchedule(
 	val timeStart: String?,
 	val markMax: Int?,
 	val type: String?,
-)
+) : java.io.Serializable
 
 data object AttendanceModel
 
@@ -243,7 +243,7 @@ data class ProfileModel(
 	val fullName: String? = null,
 	val region: String? = null,
 	val schoolYear: Int? = null,
-) {
+) : java.io.Serializable {
 	init {
 		require(schoolLabel?.isNotBlank() != false) { "School label must not be blank" }
 		require(groupLabel?.isNotBlank() != false) { "Group label must not be blank" }

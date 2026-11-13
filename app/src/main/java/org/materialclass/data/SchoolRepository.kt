@@ -118,6 +118,11 @@ class SchoolRepositoryImpl(
 
 	private fun <T> refresh(key: String, call: (ReadContext) -> GatewayReadResult<T>) {
 		val session = sessions.currentSession() ?: return publishFailure(key, AppError.LoginRequired)
+		sessions.withSessionLock {
+			synchronized(lock) {
+				if (sessions.currentSession() == session && states[key] == null) restoreSlice<T>(key, session)
+			}
+		}
 		val token = sessions.tokenFor(session) ?: return publishFailure(key, AppError.LoginRequired)
 		val result = try { call(context(token, key)) } catch (_: Exception) { GatewayReadResult.Failure(AppError.Network) }
 		sessions.withSessionLock {
@@ -166,12 +171,44 @@ class SchoolRepositoryImpl(
 
 	private fun <T> commit(key: String, session: ActiveSession, value: T) {
 		val snapshot = Snapshot(session.accountId, session.generation, value, now())
-		if (!writeSlices(session, key, CachedSlice("$key:$value".toByteArray(), snapshot.capturedAt))) {
+		val payload = runCatching {
+			java.io.ByteArrayOutputStream().also { output -> java.io.ObjectOutputStream(output).use { it.writeObject(value) } }.toByteArray()
+		}.getOrNull()
+		if (payload == null || !writeSlices(session, key, CachedSlice(payload, snapshot.capturedAt))) {
 			handleFailure(key, AppError.Network)
 			return
 		}
 		states[key] = DataState.Ready(snapshot)
 		update(key, DataState.Ready(snapshot))
+	}
+
+	@Suppress("UNCHECKED_CAST")
+	private fun <T> restoreSlice(key: String, session: ActiveSession) {
+		val slice = (store.read(session) as? SnapshotStoreRead.Hit)?.slices?.get(key) ?: return
+		if (slice.payload.contentEquals(EMPTY_PAYLOAD)) {
+			states[key] = DataState.Empty
+			update(key, DataState.Empty)
+			return
+		}
+		val value = runCatching {
+			java.io.ObjectInputStream(slice.payload.inputStream()).use { input ->
+				val decoded = input.readObject()
+				val valid = when {
+					key == HOME -> decoded is HomeModel
+					key == PROFILE -> decoded is ProfileModel
+					key == HOMEWORKS -> decoded is HomeworksModel
+					key.startsWith("diary:") -> decoded is DiaryModel
+					key.startsWith("schedule:") -> decoded is ScheduleModel
+					key.startsWith("grades:") -> decoded is GradesModel
+					key.startsWith("journal:") -> decoded is JournalGradesModel
+					else -> false
+				}
+				if (valid) decoded as T else null
+			}
+		}.getOrNull() ?: return
+		val state = DataState.Stale(Snapshot(session.accountId, session.generation, value, slice.capturedAt))
+		states[key] = state
+		update(key, state)
 	}
 
 	private fun writeSlices(session: ActiveSession, key: String, slice: CachedSlice): Boolean {
