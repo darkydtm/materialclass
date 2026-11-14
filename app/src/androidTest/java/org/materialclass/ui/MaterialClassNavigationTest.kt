@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import org.materialclass.api.GatewayLoginResult
@@ -274,6 +275,31 @@ class MaterialClassNavigationTest {
 		}
 		composeRule.waitForIdle()
 		check(loads == 1) { "Returning to previous screen restarted its effect: $loads" }
+	}
+
+	@Test
+	fun actualBackButtonReturnsFromThemeToSettings() {
+		composeRule.activity.setContent { MaterialClassApp(startAuthenticated = true) }
+		val context = composeRule.activity
+		val settings = context.getString(org.materialclass.R.string.nav_settings)
+		val theme = context.getString(org.materialclass.R.string.theme)
+		composeRule.onNodeWithText(settings).performClick()
+		composeRule.onNodeWithText(theme).performClick()
+		composeRule.onNodeWithTag("back").performClick()
+		composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag("back").fetchSemanticsNodes().isEmpty() }
+		composeRule.onNodeWithText(settings).assertIsDisplayed()
+	}
+
+	@Test
+	fun selectingPrimaryRouteClearsSecondaryHistory() {
+		val navigator = AppNavigator(AppRoute.Settings)
+		navigator.go(AppRoute.SettingsTheme)
+		navigator.go(AppRoute.Schedule)
+		check(navigator.current == AppRoute.Schedule)
+		check(!navigator.canGoBack())
+		check(navigator.previousOrNull() == null)
+		check(navigator.handlePrimaryBack())
+		check(navigator.current == AppRoute.Home)
 	}
 
 	@Test
