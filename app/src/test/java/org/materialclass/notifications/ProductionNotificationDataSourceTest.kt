@@ -180,6 +180,29 @@ class ProductionNotificationDataSourceTest {
 	}
 
 	@Test
+	fun periodBaselinesRemainIsolatedAcrossAccountsAndGenerations() {
+		val published = mutableListOf<NotificationItem>()
+		val runner = NotificationWorkerRunner(source, NotificationProcessor(InMemoryNotificationStateStore(), object : NotificationPublisher {
+			override fun publish(item: NotificationItem): NotificationPublishResult {
+				published += item
+				return NotificationPublishResult.PUBLISHED
+			}
+			override fun cancelAll() = Unit
+		}, sessions), { sessions.currentSession() == it })
+		val enabled = NotificationPreferences(newGradeEnabled = true)
+		grades = GatewayReadResult.Success(JournalGradesModel(listOf(grade("first", "5")), 1, 0))
+		assertEquals(NotificationRunStatus.BASELINE, runner.run(session, enabled, true).status)
+		val replacement = ActiveSession(AccountId("other-synthetic"), Generation(1))
+		current = replacement
+		grades = GatewayReadResult.Success(JournalGradesModel(listOf(grade("second", "4")), 1, 0))
+		assertEquals(NotificationRunStatus.BASELINE, runner.run(NotificationSession(replacement, true), enabled, true).status)
+		val renewed = active.copy(generation = Generation(2))
+		current = renewed
+		assertEquals(NotificationRunStatus.BASELINE, runner.run(NotificationSession(renewed, true), enabled, true).status)
+		assertTrue(published.isEmpty())
+	}
+
+	@Test
 	fun periodChangesDuringJournalReadDiscardResultsEvenAfterSwitchBack() {
 		val lock = Any()
 		var epoch = 0
