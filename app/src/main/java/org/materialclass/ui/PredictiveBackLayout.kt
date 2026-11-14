@@ -29,6 +29,7 @@ internal class PredictiveBackLayout(
 	private val edgeSize = (24 * resources.displayMetrics.density).roundToInt()
 	private val shadowWidth = (24 * resources.displayMetrics.density).roundToInt()
 	private var edgeGesture = false
+	private var cancellingGesture = false
 	private var recovering = false
 	private var closeDispatched = false
 	private var currentRoute: AppRoute? = null
@@ -218,7 +219,9 @@ internal class PredictiveBackLayout(
 	override fun onTouchEvent(event: MotionEvent): Boolean {
 		return try {
 			if (!gestureEnabled) return false
+			cancellingGesture = event.actionMasked == MotionEvent.ACTION_CANCEL
 			dragHelper.processTouchEvent(event)
+			cancellingGesture = false
 			resetEdgeGesture(event)
 			true
 		} catch (_: RuntimeException) {
@@ -304,7 +307,7 @@ internal class PredictiveBackLayout(
 
 		override fun onViewReleased(releasedChild: View, xvel: Float, yvel: Float) {
 			val fastHorizontalSwipe = xvel >= minFlingVelocity() && xvel > abs(yvel)
-			val target = if (releasedChild.left >= currentWidth * 0.35f || fastHorizontalSwipe) currentWidth else 0
+			val target = if (!cancellingGesture && (releasedChild.left >= currentWidth * 0.35f || fastHorizontalSwipe)) currentWidth else 0
 			if (!dragHelper.settleCapturedViewAt(target, 0)) {
 				lastLaidOutLeft = target
 				releasedChild.offsetLeftAndRight(target - releasedChild.left)
