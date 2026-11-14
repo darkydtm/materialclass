@@ -48,8 +48,8 @@ internal class PredictiveBackLayout(
 			GradientDrawable.Orientation.LEFT_RIGHT,
 			intArrayOf(Color.TRANSPARENT, "#99000000".toColorInt()),
 		)
-		addView(previousLayer)
 		addView(backgroundLayer)
+		addView(previousLayer)
 		addView(shadowLayer)
 		addView(contentLayer)
 	}
