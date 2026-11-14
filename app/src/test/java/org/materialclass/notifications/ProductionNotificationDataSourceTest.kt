@@ -41,6 +41,24 @@ class ProductionNotificationDataSourceTest {
 	private fun available(result: CategoryReadResult) = (result as CategoryReadResult.Available).items
 
 	@Test
+	fun missingPeriodFailsWithoutCreatingBaselineOrCallingJournal() {
+		var journalCalled = false
+		val missing = ProductionNotificationDataSource(sessions, { token, _ -> ReadContext(token) }, { null }, {
+			journalCalled = true
+			GatewayReadResult.Empty
+		}, { GatewayReadResult.Empty })
+		val state = InMemoryNotificationStateStore()
+		val processor = NotificationProcessor(state, object : NotificationPublisher {
+			override fun publish(item: NotificationItem) = NotificationPublishResult.PUBLISHED
+			override fun cancelAll() = Unit
+		}, sessions)
+		val result = missing.readNewGrades(session)
+		assertEquals(NotificationRunStatus.FAILED, processor.process(session, NotificationPreferences(newGradeEnabled = true), true, mapOf(NotificationCategory.NEW_GRADE to result)).status)
+		assertFalse(journalCalled)
+		assertFalse(state.hasBaseline(active.accountId.value, active.generation, NotificationCategory.NEW_GRADE))
+	}
+
+	@Test
 	fun productionSourceImplementsNotificationContract() {
 		assertTrue(source is NotificationDataSource)
 	}
