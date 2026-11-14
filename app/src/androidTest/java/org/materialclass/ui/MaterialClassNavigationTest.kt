@@ -154,6 +154,29 @@ class MaterialClassNavigationTest {
 	}
 
 	@Test
+	fun nonPredictiveSystemBackDoesNotPopBeforeClosingAnimation() {
+		lateinit var layout: PredictiveBackLayout
+		var closes = 0
+		composeRule.setContent {
+			AndroidView(
+				modifier = Modifier.fillMaxSize(),
+				factory = { PredictiveBackLayout(it).also { view -> layout = view } },
+				update = { view ->
+					view.updateLayers(android.graphics.Color.BLACK, true, AppRoute.Settings, AppRoute.SettingsTheme,
+						{ Box(Modifier.fillMaxSize().background(Color.Blue)) },
+						{ Box(Modifier.fillMaxSize().background(Color.Yellow)) }) { closes++ }
+				},
+			)
+		}
+		composeRule.waitForIdle()
+		composeRule.runOnUiThread {
+			layout.commitPredictiveBack()
+			check(closes == 0) { "Back popped immediately instead of animating the outgoing screen" }
+		}
+		composeRule.waitUntil(5_000) { closes == 1 }
+	}
+
+	@Test
 	fun openingSecondaryScreenStartsAtRightEdge() {
 		lateinit var layout: PredictiveBackLayout
 		composeRule.setContent {
