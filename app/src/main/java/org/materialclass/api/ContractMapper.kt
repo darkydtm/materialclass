@@ -346,7 +346,7 @@ private fun Map<String, JsonValue>.score(name: String): String? = when (val valu
 
 private fun JsonValue.scoreValue(): String? = when (this) {
 	JsonValue.NullValue -> null
-	is JsonValue.StringValue, is JsonValue.NumberValue -> asText()?.takeIf { it.isNotBlank() }
+	is JsonValue.StringValue, is JsonValue.NumberValue -> asText()
 	is JsonValue.ObjectValue -> values["mark"]?.asText() ?: values["value"]?.asText()
 	else -> null
 }
