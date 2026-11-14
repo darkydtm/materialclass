@@ -1,8 +1,21 @@
 package org.materialclass.app
 
 import android.app.Application
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.app.NotificationManagerCompat
 import java.time.Instant
 import java.time.LocalDate
+import org.materialclass.data.DateRange
+import org.materialclass.notifications.AndroidNotificationPublisher
+import org.materialclass.notifications.NotificationPreferences
+import org.materialclass.notifications.NotificationProcessor
+import org.materialclass.notifications.NotificationRunResult
+import org.materialclass.notifications.NotificationRunStatus
+import org.materialclass.notifications.NotificationSession
+import org.materialclass.notifications.NotificationWorkerRunner
+import org.materialclass.notifications.ProductionNotificationDataSource
+import org.materialclass.notifications.SharedPreferencesNotificationStateStore
 import org.materialclass.notifications.NotificationScheduler
 import org.materialclass.ui.AppPreferences
 import org.materialclass.api.ConfirmedSchoolGateway
@@ -30,6 +43,9 @@ class ApplicationRuntime(application: Application) {
 	private val sessionCoordinator: SessionCoordinator
 	private val preferences = AppPreferences(application)
 	private val applicationContext = application
+	private val notificationState = SharedPreferencesNotificationStateStore(application)
+	private val notificationPublisher = AndroidNotificationPublisher(application)
+	private val notificationRunner: NotificationWorkerRunner
 	val startAuthenticated: Boolean get() = sessionCoordinator.currentSession() != null
 
 	init {
@@ -38,7 +54,11 @@ class ApplicationRuntime(application: Application) {
 		val cipher = KeystoreCipher(keys)
 		val sessionStore = SessionStore(files, keys, cipher)
 		sessionCoordinator = SessionCoordinator(sessionStore, files, keys, cipher, object : SessionTaskRegistry {
-			override fun cancelAll() = NotificationScheduler(application).cancel()
+			override fun cancelAll() {
+				NotificationScheduler(application).cancel()
+				notificationState.clear()
+				notificationPublisher.cancelAll()
+			}
 		})
 		sessionCoordinator.restore(Instant.now())
 		val confirmedGateway = ConfirmedSchoolGateway(
@@ -63,13 +83,35 @@ class ApplicationRuntime(application: Application) {
 			context = confirmedGateway::readContext,
 		)
 		gateway = confirmedGateway
+		notificationRunner = NotificationWorkerRunner(
+			ProductionNotificationDataSource(sessionCoordinator, gateway) {
+				val today = LocalDate.now()
+				DateRange(today.minusMonths(3), today)
+			},
+			NotificationProcessor(notificationState, notificationPublisher, sessionCoordinator),
+			{ sessionCoordinator.currentSession() == it },
+		)
 	}
+
+	fun changeNotificationSettings(change: () -> Unit) = sessionCoordinator.withSessionLock(change)
 
 	fun updateBackgroundSchedule() {
 		sessionCoordinator.withSessionLock {
 			val scheduler = NotificationScheduler(applicationContext, preferences.backgroundInterval().toLong())
 			if (preferences.backgroundWork() && sessionCoordinator.currentSession() != null) scheduler.schedule() else scheduler.cancel()
 		}
+	}
+
+	private fun notificationPreferences(): NotificationPreferences = if (preferences.backgroundWork()) {
+		NotificationPreferences(preferences.newGradeNotifications(), preferences.homeworkNotifications())
+	} else NotificationPreferences()
+
+	fun runBackgroundNotifications(): NotificationRunResult {
+		val session = sessionCoordinator.currentSession()
+		val notificationSession = session?.let { NotificationSession(it, !sessionCoordinator.tokenFor(it).isNullOrBlank()) }
+		val granted = (android.os.Build.VERSION.SDK_INT < 33 || applicationContext.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) &&
+			NotificationManagerCompat.from(applicationContext).areNotificationsEnabled()
+		return notificationRunner.run(notificationSession, notificationPreferences(), granted, ::notificationPreferences)
 	}
 
 	fun refreshBackgroundCache(): Boolean = BackgroundCacheRefresh(

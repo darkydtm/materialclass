@@ -165,9 +165,11 @@ class NotificationProcessor(
 		preferences: NotificationPreferences,
 		permissionGranted: Boolean,
 		reads: Map<NotificationCategory, CategoryReadResult>,
+		currentPreferences: () -> NotificationPreferences = { preferences },
 	): NotificationRunResult = sessions.withSessionLock {
 		if (sessions.currentSession() != session.activeSession) return@withSessionLock NotificationRunResult(NotificationRunStatus.STALE_GENERATION)
-		val enabledReads = reads.filterKeys { preferences.isEnabled(it) }
+		val effectivePreferences = currentPreferences()
+		val enabledReads = reads.filterKeys { preferences.isEnabled(it) && effectivePreferences.isEnabled(it) }
 		if (enabledReads.values.any { it is CategoryReadResult.Failed }) return@withSessionLock NotificationRunResult(NotificationRunStatus.FAILED)
 		if (enabledReads.values.any { it is CategoryReadResult.Offline }) return@withSessionLock NotificationRunResult(NotificationRunStatus.OFFLINE)
 		if (enabledReads.values.any { it is CategoryReadResult.Unsupported }) return@withSessionLock NotificationRunResult(NotificationRunStatus.UNSUPPORTED)
@@ -182,8 +184,7 @@ class NotificationProcessor(
 		var sawUnsupported = false
 		var sawAvailable = false
 		var denied = false
-		for ((category, result) in reads) {
-			if (!preferences.isEnabled(category)) continue
+		for ((category, result) in enabledReads) {
 			when (result) {
 				is CategoryReadResult.Available -> {
 					sawAvailable = true
@@ -233,7 +234,7 @@ class NotificationWorkerRunner(
 	private val processor: NotificationProcessor,
 	private val isCurrentGeneration: (ActiveSession) -> Boolean,
 ) {
-	fun run(session: NotificationSession?, preferences: NotificationPreferences, permissionGranted: Boolean): NotificationRunResult {
+	fun run(session: NotificationSession?, preferences: NotificationPreferences, permissionGranted: Boolean, currentPreferences: () -> NotificationPreferences = { preferences }): NotificationRunResult {
 		if (session == null) return NotificationRunResult(NotificationRunStatus.NO_SESSION)
 		if (!session.tokenPresent) return NotificationRunResult(NotificationRunStatus.NO_TOKEN)
 		if (!preferences.newGradeEnabled && !preferences.homeworkEnabled) return NotificationRunResult(NotificationRunStatus.PROCESSED)
@@ -243,7 +244,7 @@ class NotificationWorkerRunner(
 			if (preferences.homeworkEnabled) put(NotificationCategory.HOMEWORK, source.readHomework(session))
 		}
 		if (!isCurrentGeneration(session.activeSession)) return NotificationRunResult(NotificationRunStatus.STALE_GENERATION)
-		return processor.process(session, preferences, permissionGranted, reads)
+		return processor.process(session, preferences, permissionGranted, reads, currentPreferences)
 	}
 }
 

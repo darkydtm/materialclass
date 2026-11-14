@@ -38,6 +38,7 @@ fun MaterialClassApp(
 	loginHandler: (LoginCredentials) -> GatewayLoginResult = { GatewayLoginResult.Failure(AppError.Network) },
 	startAuthenticated: Boolean = false,
 	onBackgroundSettingsChanged: () -> Unit = {},
+	onNotificationSettingsChange: (() -> Unit) -> Unit = { it() },
 ) {
 	val context = LocalContext.current
 	val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -110,11 +111,11 @@ fun MaterialClassApp(
 					onLanguage = { actualPreferences.setLanguage(it) },
 					onTheme = { theme = it; actualPreferences.setTheme(it) },
 					newGradeNotifications = newGradeNotifications,
-					onNewGradeNotifications = { newGradeNotifications = it; actualPreferences.setNewGradeNotifications(it); if (it) requestNotificationPermission() },
+					onNewGradeNotifications = { newGradeNotifications = it; onNotificationSettingsChange { actualPreferences.setNewGradeNotifications(it) }; if (it) requestNotificationPermission() },
 					homeworkNotifications = homeworkNotifications,
-					onHomeworkNotifications = { homeworkNotifications = it; actualPreferences.setHomeworkNotifications(it); if (it) requestNotificationPermission() },
+					onHomeworkNotifications = { homeworkNotifications = it; onNotificationSettingsChange { actualPreferences.setHomeworkNotifications(it) }; if (it) requestNotificationPermission() },
 					backgroundWork = backgroundWork,
-					onBackgroundWork = { backgroundWork = it; actualPreferences.setBackgroundWork(it); onBackgroundSettingsChanged() },
+					onBackgroundWork = { backgroundWork = it; onNotificationSettingsChange { actualPreferences.setBackgroundWork(it) }; onBackgroundSettingsChanged() },
 					backgroundInterval = backgroundInterval,
 					onBackgroundInterval = { backgroundInterval = it; actualPreferences.setBackgroundInterval(it); onBackgroundSettingsChanged() },
 					onLogout = { viewModel.logout(); navigator.reset(AppRoute.Login) },

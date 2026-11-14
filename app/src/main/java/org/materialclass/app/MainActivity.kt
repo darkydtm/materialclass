@@ -17,6 +17,7 @@ class MainActivity : ComponentActivity() {
 					runtime.gateway.loginForUi(credentials).also { if (it is GatewayLoginResult.Success) runtime.updateBackgroundSchedule() }
 				},
 				onBackgroundSettingsChanged = runtime::updateBackgroundSchedule,
+				onNotificationSettingsChange = runtime::changeNotificationSettings,
 				startAuthenticated = runtime.startAuthenticated,
 			)
 		}
