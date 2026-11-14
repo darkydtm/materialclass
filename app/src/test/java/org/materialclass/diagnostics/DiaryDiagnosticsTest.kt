@@ -31,6 +31,24 @@ class DiaryDiagnosticsTest {
 		}
 	}
 	@Test
+	fun onlySubjects426TriggersSafeUpgradeDiagnostics() {
+		val messages = mutableListOf<String>()
+		val previous = DiaryDiagnostics.sink
+		try {
+			DiaryDiagnostics.sink = { messages.add(it) }
+			val gateway = SchoolGateway({ HttpResponseData(426, "text/html", "private-secret upgrade tls") })
+			assertEquals(GatewayReadResult.Failure<Any>(AppError.HttpStatus(426)), gateway.subjects(ReadContext("private-token")))
+			assertTrue(messages.any { it == "upgrade426 empty=false json=false html=true cloudflare=false tls=true version=false upgrade=true message=false error=false" })
+			assertFalse(messages.joinToString().contains("private"))
+			messages.clear()
+			gateway.diary(ReadContext("private-token"))
+			assertTrue(messages.none { it.startsWith("upgrade426") })
+		} finally {
+			DiaryDiagnostics.sink = previous
+		}
+	}
+
+	@Test
 	fun exceptionMessagesAndDynamicClassNamesNeverEnterLogs() {
 		val secret = "private-token-https://example.test/?account=private"
 		val exception = object : RuntimeException(secret) {}

@@ -197,6 +197,7 @@ class SchoolGateway(
 		return try {
 			val response = transport.execute(request)
 			if (diagnostic) DiaryDiagnostics.record(DiaryStage.SUBJECTS, DiaryOutcome.SUCCESS, status = response.status)
+			if (diagnostic && response.status == 426) DiaryDiagnostics.upgradeRequired(response.contentType, response.body)
 			when {
 				response.status == 401 -> GatewayReadResult.Failure(AppError.Unauthorized)
 				response.status == 403 -> GatewayReadResult.Failure(AppError.Forbidden)
