@@ -123,6 +123,39 @@ class MaterialClassNavigationTest {
 	}
 
 	@Test
+	fun returningToPreviousScreenDoesNotRestartItsEffect() {
+		lateinit var layout: PredictiveBackLayout
+		var loads = 0
+		val previous: @Composable () -> Unit = {
+			LaunchedEffect(Unit) { loads++ }
+			Box(Modifier.fillMaxSize().background(Color.Blue))
+		}
+		composeRule.setContent {
+			AndroidView(
+				modifier = Modifier.fillMaxSize(),
+				factory = { PredictiveBackLayout(it).also { view -> layout = view } },
+				update = { view ->
+					view.updateLayers(android.graphics.Color.BLACK, false, null, AppRoute.Settings, null, previous) { }
+				},
+			)
+		}
+		composeRule.waitForIdle()
+		composeRule.runOnUiThread {
+			layout.updateLayers(
+				android.graphics.Color.BLACK, true, AppRoute.Settings, AppRoute.SettingsTheme,
+				previous, { Box(Modifier.fillMaxSize().background(Color.Yellow)) },
+			) { }
+		}
+		composeRule.waitForIdle()
+		composeRule.runOnUiThread {
+			layout.commitPredictiveBack()
+			layout.updateLayers(android.graphics.Color.BLACK, false, null, AppRoute.Settings, null, previous) { }
+		}
+		composeRule.waitForIdle()
+		check(loads == 1) { "Returning to previous screen restarted its effect: $loads" }
+	}
+
+	@Test
 	fun loginFailureShowsLocalizedValidation() {
 		composeRule.activity.setContent {
 			MaterialClassApp(loginHandler = { GatewayLoginResult.Failure(org.materialclass.api.AppError.InvalidCredentials) })
