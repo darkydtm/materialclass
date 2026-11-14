@@ -70,7 +70,7 @@ class NotificationWorkManagerTest {
 		var completed = false
 		while (System.nanoTime() < end) {
 			val current = manager.getWorkInfoById(info.id).get(10, TimeUnit.SECONDS)
-			if (current.state == WorkInfo.State.ENQUEUED && current.nextScheduleTimeMillis > System.currentTimeMillis()) {
+			if (current != null && current.state == WorkInfo.State.ENQUEUED && current.nextScheduleTimeMillis > System.currentTimeMillis()) {
 				completed = true
 				break
 			}
@@ -80,7 +80,7 @@ class NotificationWorkManagerTest {
 		AppPreferences(context).setBackgroundWork(false)
 		runtime.updateBackgroundSchedule()
 		val cancelEnd = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
-		while (manager.getWorkInfoById(info.id).get(10, TimeUnit.SECONDS).state != WorkInfo.State.CANCELLED && System.nanoTime() < cancelEnd) Thread.sleep(50)
-		assertEquals(WorkInfo.State.CANCELLED, manager.getWorkInfoById(info.id).get(10, TimeUnit.SECONDS).state)
+		while (manager.getWorkInfoById(info.id).get(10, TimeUnit.SECONDS)?.state != WorkInfo.State.CANCELLED && System.nanoTime() < cancelEnd) Thread.sleep(50)
+		assertEquals(WorkInfo.State.CANCELLED, manager.getWorkInfoById(info.id).get(10, TimeUnit.SECONDS)?.state)
 	}
 }
