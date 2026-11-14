@@ -6,6 +6,17 @@ import org.junit.Test
 
 class UiModelTest {
 	@Test
+	fun selectingQuarterUpdatesAuthoritativePeriod() {
+		val viewModel = SchoolViewModel()
+		val method = viewModel.javaClass.methods.firstOrNull { it.name == "selectGradesPeriod" }
+		assertTrue("Quarter selection must update the shared period", method != null)
+		listOf("2", "3", "4", "1").forEach { period ->
+			method!!.invoke(viewModel, period)
+			assertEquals(period, viewModel.gradesPeriod)
+		}
+	}
+
+	@Test
 	fun staleScreenCannotOpenAnotherDestination() {
 		val navigator = AppNavigator(AppRoute.Settings)
 		var selections = 0
