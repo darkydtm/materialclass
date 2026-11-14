@@ -122,14 +122,14 @@ class SchoolRepositoryImpl(
 
 	private fun <T> refresh(key: String, expectedSession: ActiveSession? = null, call: (ReadContext) -> GatewayReadResult<T>) {
 		if (key.startsWith("grades:")) DiaryDiagnostics.record(DiaryStage.REPOSITORY, DiaryOutcome.START)
-		val session = sessions.currentSession() ?: return if (expectedSession == null) publishFailure(key, AppError.LoginRequired) else Unit
+		val session = sessions.currentSession() ?: return if (expectedSession == null) publishFailureIfCurrent(key, null, AppError.LoginRequired) else Unit
 		if (expectedSession != null && session != expectedSession) return
 		sessions.withSessionLock {
 			synchronized(lock) {
 				if (sessions.currentSession() == session && states[key] == null) restoreSlice<T>(key, session)
 			}
 		}
-		val token = sessions.tokenFor(session) ?: return if (expectedSession == null && sessions.currentSession() == session) publishFailure(key, AppError.LoginRequired) else Unit
+		val token = sessions.tokenFor(session) ?: return if (expectedSession == null) publishFailureIfCurrent(key, session, AppError.LoginRequired) else Unit
 		val result = try { call(context(token, key)) } catch (exception: Exception) {
 			if (key.startsWith("grades:")) DiaryDiagnostics.record(DiaryStage.REPOSITORY, DiaryOutcome.FAILURE, error = AppError.Network, exception = exception)
 			GatewayReadResult.Failure(AppError.Network)
@@ -142,8 +142,8 @@ class SchoolRepositoryImpl(
 		}
 	}
 
-	private fun publishFailure(key: String, error: AppError) = sessions.withSessionLock {
-		synchronized(lock) { handleFailure(key, error) }
+	private fun publishFailureIfCurrent(key: String, session: ActiveSession?, error: AppError) = sessions.withSessionLock {
+		if (sessions.currentSession() == session) synchronized(lock) { handleFailure(key, error) }
 	}
 	private fun <T> handleResult(key: String, session: ActiveSession, result: GatewayReadResult<T>) {
 		when (result) {
