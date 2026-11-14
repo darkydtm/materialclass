@@ -10,8 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.platform.setContent
+import androidx.compose.ui.platform.AbstractComposeView
 import androidx.core.graphics.toColorInt
 import androidx.customview.widget.ViewDragHelper
 import kotlin.math.abs
@@ -250,11 +249,12 @@ internal class PredictiveBackLayout(
 		}
 	}
 
-	private class ComposeLayer(context: Context) : ComposeView(context) {
+	private class ComposeLayer(context: Context) : AbstractComposeView(context) {
 		private var content: (@Composable () -> Unit)? by mutableStateOf(null)
 
-		init {
-			setContent { content?.invoke() }
+		@Composable
+		override fun Content() {
+			content?.invoke()
 		}
 
 		fun updateContent(value: (@Composable () -> Unit)?) {

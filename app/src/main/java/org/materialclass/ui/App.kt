@@ -62,6 +62,7 @@ fun MaterialClassApp(
 	}
 
 	MaterialClassTheme(theme) {
+		val backgroundColor = MaterialTheme.colorScheme.background.toArgb()
 		val currentRoute = navigator.current
 		val previousRoute = navigator.previousOrNull()
 		val renderRoute: @Composable (AppRoute) -> Unit = { route ->
@@ -99,7 +100,7 @@ fun MaterialClassApp(
 			factory = { PredictiveBackLayout(it) },
 			update = { layout ->
 				layout.updateLayers(
-					backgroundColor = MaterialTheme.colorScheme.background.toArgb(),
+					backgroundColor = backgroundColor,
 					gestureEnabled = navigator.canGoBack() && previousRoute != null,
 					previousRoute = previousRoute,
 					currentRoute = currentRoute,
