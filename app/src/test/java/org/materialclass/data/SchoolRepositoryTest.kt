@@ -20,6 +20,33 @@ class SchoolRepositoryTest {
 	private val capturedAt = Instant.parse("2026-01-02T03:04:05Z")
 
 	@Test
+	fun olderGradesResponseCannotOverwriteNewerPeriodRequest() {
+		val fixture = Fixture()
+		val started = CountDownLatch(1)
+		val release = CountDownLatch(1)
+		val calls = java.util.concurrent.atomic.AtomicInteger()
+		fixture.gateway.gradesCall = {
+			if (calls.incrementAndGet() == 1) {
+				started.countDown()
+				check(release.await(5, TimeUnit.SECONDS))
+				GatewayReadResult.Success(GradesModel(1))
+			} else GatewayReadResult.Success(GradesModel(2))
+		}
+		val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+		try {
+			val old = executor.submit { fixture.repository.refreshGrades("2") }
+			assertTrue(started.await(5, TimeUnit.SECONDS))
+			fixture.repository.refreshGrades("2")
+			release.countDown()
+			old.get(5, TimeUnit.SECONDS)
+			assertEquals(2, (fixture.repository.observeGrades("2").current as DataState.Ready).snapshot.value.subjectCount)
+		} finally {
+			release.countDown()
+			executor.shutdownNow()
+		}
+	}
+
+	@Test
 	fun missingSessionFailureCannotOverwriteReplacementAccount() {
 		val replacement = ActiveSession(AccountId("synthetic-replacement"), Generation(2))
 		val sessions = object : SessionAccess {

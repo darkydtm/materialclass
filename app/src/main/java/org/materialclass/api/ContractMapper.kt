@@ -383,6 +383,8 @@ private fun Map<String, JsonValue>.toJournalGrade(scheduleUuid: String): Journal
 		mark = score,
 		markMax = formatted?.get("markMax")?.scoreValue(),
 		comment = formatted?.get("comment")?.asText(),
+		sorMax = (get("sor") as? JsonValue.ObjectValue)?.values?.get("markMax")?.scoreValue(),
+		sochMax = (get("soch") as? JsonValue.ObjectValue)?.values?.get("markMax")?.scoreValue(),
 	)
 }
 

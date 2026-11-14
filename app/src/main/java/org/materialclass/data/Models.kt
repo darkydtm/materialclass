@@ -209,6 +209,8 @@ data class JournalGrade(
 	val mark: String? = null,
 	val markMax: String? = null,
 	val comment: String? = null,
+	val sorMax: String? = null,
+	val sochMax: String? = null,
 ) : java.io.Serializable
 
 data class JournalGradesModel(
@@ -256,6 +258,10 @@ data class GradeSchedule(
 	val type: String?,
 	val score: String? = null,
 	val attendance: String? = null,
+	val sor: String? = null,
+	val sorMax: String? = null,
+	val soch: String? = null,
+	val sochMax: String? = null,
 ) : java.io.Serializable
 
 data object AttendanceModel

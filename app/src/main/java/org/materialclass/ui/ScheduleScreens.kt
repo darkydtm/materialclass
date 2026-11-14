@@ -34,6 +34,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 
@@ -151,7 +152,7 @@ internal fun ScheduleScreen(
 						(0..4).forEach { index ->
 							val selected = safeSelectedDay == index
 							Surface(
-								modifier = Modifier.size(width = 58.dp, height = 58.dp).clickable { selectedDay = index },
+								modifier = Modifier.size(width = 58.dp, height = 58.dp).clip(RoundedCornerShape(999.dp)).clickable { selectedDay = index },
 								shape = RoundedCornerShape(999.dp),
 								color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainer,
 								contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -168,7 +169,7 @@ internal fun ScheduleScreen(
 		}
 		item { Text(day?.dateLabel ?: text("no_data"), style = MaterialTheme.typography.titleLarge) }
 		if (day == null) {
-			item { StatePanel(text, viewModel.scheduleState.toUiState(), { viewModel.retry(AppRoute.Schedule) }) }
+			item { StatePanel(text, viewModel.scheduleState.toUiState(), { viewModel.loadSchedule(weekOffset) }) }
 		} else if (day.lessons.isEmpty()) {
 			item { StatePanel(text, UiContent.Empty) { navigator.goFrom(AppRoute.Schedule, AppRoute.HomeEmpty) {} } }
 		} else {

@@ -88,6 +88,7 @@ class SchoolRepositoryImpl(
 	private val lock = Any()
 	private val states = mutableMapOf<String, DataState<*>>()
 	private val observations = mutableMapOf<String, RepositoryObservation<*>>()
+	private val revisions = mutableMapOf<String, Long>()
 	private val events = RepositoryEvents()
 	fun events(): RepositoryEvents = events
 	override fun observeHome() = observation<HomeModel>(HOME)
@@ -130,6 +131,7 @@ class SchoolRepositoryImpl(
 			return false
 		}
 		if (expectedSession != null && session != expectedSession) return false
+		val revision = synchronized(lock) { (revisions[key] ?: 0L).plus(1).also { revisions[key] = it } }
 		sessions.withSessionLock {
 			synchronized(lock) {
 				if (sessions.currentSession() == session && states[key] == null) restoreSlice<T>(key, session)
@@ -150,7 +152,7 @@ class SchoolRepositoryImpl(
 		}
 		return sessions.withSessionLock {
 			synchronized(lock) {
-				if (sessions.currentSession() != session || Thread.currentThread().isInterrupted) false
+				if (sessions.currentSession() != session || Thread.currentThread().isInterrupted || revisions[key] != revision) false
 				else handleResult(key, session, result)
 			}
 		}

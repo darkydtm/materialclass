@@ -127,6 +127,13 @@ internal fun displayNameFromFullName(fullName: String?): String? = fullName
 	?.lowercase(Locale.ROOT)
 	?.replaceFirstChar { it.titlecase(Locale.ROOT) }
 
+internal fun normalizedFullName(fullName: String?): String? = fullName
+	?.trim()
+	?.split(Regex("\\s+"))
+	?.filter(String::isNotBlank)
+	?.joinToString(" ") { part -> part.lowercase(Locale.ROOT).replaceFirstChar { it.titlecase(Locale.ROOT) } }
+	?.takeIf(String::isNotBlank)
+
 enum class DataStateKind {
 	Loading,
 	Ready,
@@ -214,6 +221,8 @@ class SchoolViewModel(
 ) {
 	private val io = Executors.newCachedThreadPool()
 	private var loginRequest = 0L
+	private var scheduleRequest = 0L
+	private var gradesRequest = 0L
 	var loginState: LoginUiState by mutableStateOf(LoginUiState.Ready)
 		private set
 
@@ -262,8 +271,9 @@ class SchoolViewModel(
 	fun loadSchedule(weekOffset: Int = 0) {
 		val source = repository ?: run { scheduleState = null; return }
 		val range = week(weekOffset, nextWeekOnWeekend = true)
+		val request = ++scheduleRequest
 		val observation = source.observeSchedule(range)
-		observation.observe { scheduleState = it }
+		observation.observe { if (scheduleRequest == request) scheduleState = it }
 		io.execute { source.refreshSchedule(range) }
 	}
 
@@ -279,8 +289,9 @@ class SchoolViewModel(
 		DiaryDiagnostics.record(DiaryStage.LOAD, DiaryOutcome.START)
 		if (period != gradesPeriod) return
 		val source = repository ?: run { gradesState = null; return }
+		val request = ++gradesRequest
 		val observation = source.observeGrades(period)
-		observation.observe { if (gradesPeriod == period) gradesState = it }
+		observation.observe { if (gradesRequest == request && gradesPeriod == period) gradesState = it }
 		io.execute { source.refreshGrades(period) }
 	}
 
@@ -311,6 +322,8 @@ class SchoolViewModel(
 
 	fun logout() {
 		loginRequest++
+		scheduleRequest++
+		gradesRequest++
 		repository?.logout()
 		scheduleState = null
 		diaryState = null

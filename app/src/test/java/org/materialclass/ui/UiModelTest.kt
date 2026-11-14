@@ -6,6 +6,12 @@ import org.junit.Test
 
 class UiModelTest {
 	@Test
+	fun profileNameNormalizesEveryPart() {
+		assertEquals("Иванов Иван Иванович", normalizedFullName("  ИВАНОВ   иВАН ИВАНОВИЧ "))
+		assertEquals(null, normalizedFullName("  "))
+	}
+
+	@Test
 	fun selectingQuarterUpdatesAuthoritativePeriod() {
 		val viewModel = SchoolViewModel()
 		val method = viewModel.javaClass.methods.firstOrNull { it.name == "selectGradesPeriod" }

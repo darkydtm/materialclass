@@ -165,7 +165,7 @@ internal fun ProfileScreen(padding: PaddingValues, text: (String) -> String, vie
 		Surface(modifier = Modifier.size(80.dp), shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.secondaryContainer) {
 			BoxCenter { Text(displayNameFromFullName(profile?.fullName)?.firstOrNull()?.toString() ?: text("no_data"), style = MaterialTheme.typography.headlineLarge) }
 		}
-		Text(displayNameFromFullName(profile?.fullName) ?: text("student_name"), style = MaterialTheme.typography.headlineLarge)
+		Text(normalizedFullName(profile?.fullName) ?: text("student_name"), style = MaterialTheme.typography.headlineLarge)
 		Text(profile?.groupLabel ?: text("student_context"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 		Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer), modifier = Modifier.fillMaxWidth()) {
 			Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {

@@ -38,6 +38,8 @@
 	<string name="error">Не удалось загрузить раздел</string>
 	<string name="retry">Повторить</string>
 	<string name="back">Назад</string>
+	<string name="grade_comparison">Сравнение оценок</string>
+	<string name="grade_comparison_unavailable">Данные об оценках одноклассников недоступны.</string>
 	<string name="open_schedule">Открыть расписание</string>
 	<string name="open_lesson">Открыть урок</string>
 	<string name="open_subject">Открыть предмет</string>

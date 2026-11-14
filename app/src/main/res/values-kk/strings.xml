@@ -38,6 +38,8 @@
 	<string name="error">Бөлімді жүктеу мүмкін болмады</string>
 	<string name="retry">Қайталау</string>
 	<string name="back">Артқа</string>
+	<string name="grade_comparison">Бағаларды салыстыру</string>
+	<string name="grade_comparison_unavailable">Сыныптастардың бағалары қолжетімсіз.</string>
 	<string name="open_schedule">Кестені ашу</string>
 	<string name="open_lesson">Сабақты ашу</string>
 	<string name="open_subject">Пәнді ашу</string>
