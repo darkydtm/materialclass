@@ -79,6 +79,15 @@ class NotificationLifecycleTest {
 	}
 
 	@Test
+	fun failedReadIsNotReportedAsProcessed() {
+		val processor = NotificationProcessor(InMemoryNotificationStateStore(), RecordingNotificationPublisher())
+
+		val result = processor.process(session, settings, true, mapOf(NotificationCategory.NEW_GRADE to CategoryReadResult.Failed))
+
+		assertTrue(result.status != NotificationRunStatus.PROCESSED)
+	}
+
+	@Test
 	fun deniedPermissionSuppressesPublishingButStillDeduplicatesObservedItems() {
 		val publisher = RecordingNotificationPublisher()
 		val processor = NotificationProcessor(InMemoryNotificationStateStore(), publisher)
