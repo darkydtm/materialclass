@@ -1,5 +1,6 @@
 package org.materialclass.ui
 
+import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
@@ -38,6 +39,7 @@ internal class PredictiveBackLayout(
 	private var awaitingContentSwap = false
 	private var contentSwapPending = false
 	private var swapPreviousContent: (@Composable () -> Unit)? = null
+	private var openingAnimator: ValueAnimator? = null
 
 	init {
 		setWillNotDraw(false)
@@ -67,6 +69,9 @@ internal class PredictiveBackLayout(
 		this.gestureEnabled = gestureEnabled
 		backgroundLayer.setBackgroundColor(backgroundColor)
 		if (this.currentRoute != currentRoute) {
+			val opening = this.currentRoute != null && previousRoute == this.currentRoute && gestureEnabled && !awaitingContentSwap && width > 0
+			openingAnimator?.cancel()
+			openingAnimator = null
 			val swapAfterClose = awaitingContentSwap
 			awaitingContentSwap = false
 			contentSwapPending = false
@@ -98,6 +103,14 @@ internal class PredictiveBackLayout(
 				contentLayer.updateContent(currentContent)
 				previousLayer.visibility = if (previousContent == null) INVISIBLE else VISIBLE
 				contentLayer.visibility = VISIBLE
+				if (opening) {
+					setPredictiveProgress(1f)
+					openingAnimator = ValueAnimator.ofFloat(1f, 0f).apply {
+						duration = 300L
+						addUpdateListener { setPredictiveProgress(it.animatedValue as Float) }
+						start()
+					}
+				}
 			}
 		} else {
 			contentSwapPending = false
