@@ -56,6 +56,42 @@ class MaterialClassNavigationTest {
 	}
 
 	@Test
+	fun openingSecondaryScreenStartsAtRightEdge() {
+		lateinit var layout: PredictiveBackLayout
+		composeRule.setContent {
+			AndroidView(
+				modifier = Modifier.fillMaxSize(),
+				factory = { PredictiveBackLayout(it).also { view -> layout = view } },
+				update = { view ->
+					view.updateLayers(
+						backgroundColor = android.graphics.Color.BLACK,
+						gestureEnabled = false,
+						previousRoute = null,
+						currentRoute = AppRoute.Settings,
+						previousContent = null,
+						currentContent = { Box(Modifier.fillMaxSize().background(Color.Blue)) },
+						onClose = {},
+					)
+				},
+			)
+		}
+		composeRule.waitForIdle()
+		composeRule.runOnUiThread {
+			layout.updateLayers(
+				backgroundColor = android.graphics.Color.BLACK,
+				gestureEnabled = true,
+				previousRoute = AppRoute.Settings,
+				currentRoute = AppRoute.SettingsTheme,
+				previousContent = { Box(Modifier.fillMaxSize().background(Color.Blue)) },
+				currentContent = { Box(Modifier.fillMaxSize().background(Color.Yellow)) },
+				onClose = {},
+			)
+			check(layout.width > 0)
+			check(layout.getChildAt(3).left == layout.width) { "Opening screen must start at the right edge" }
+		}
+	}
+
+	@Test
 	fun loginFailureShowsLocalizedValidation() {
 		composeRule.activity.setContent {
 			MaterialClassApp(loginHandler = { GatewayLoginResult.Failure(org.materialclass.api.AppError.InvalidCredentials) })
