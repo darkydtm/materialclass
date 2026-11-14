@@ -8,12 +8,19 @@ import org.junit.Test
 import org.materialclass.data.AccountId
 import org.materialclass.data.ActiveSession
 import org.materialclass.data.Generation
+import org.materialclass.data.SessionAccess
 
 class NotificationLifecycleTest {
 	private val session = NotificationSession(
 		activeSession = ActiveSession(AccountId("synthetic-account"), Generation(4)),
 		tokenPresent = true,
 	)
+	private var current = session.activeSession
+	private val sessions = object : SessionAccess {
+		override fun currentSession() = current
+		override fun tokenFor(session: ActiveSession) = if (current == session) "token" else null
+		override fun <T> withSessionLock(block: () -> T) = synchronized(this) { block() }
+	}
 	private val settings = NotificationPreferences(newGradeEnabled = true, homeworkEnabled = true)
 
 	@Test
@@ -29,7 +36,7 @@ class NotificationLifecycleTest {
 	@Test
 	fun firstAvailableReadCreatesBaselineWithoutPublishingOldItems() {
 		val publisher = RecordingNotificationPublisher()
-		val processor = NotificationProcessor(InMemoryNotificationStateStore(), publisher)
+		val processor = NotificationProcessor(InMemoryNotificationStateStore(), publisher, sessions)
 		val result = processor.process(
 			session = session,
 			preferences = settings,
@@ -49,7 +56,7 @@ class NotificationLifecycleTest {
 	@Test
 	fun laterItemsArePublishedOnceAndDuplicateItemsAreSuppressed() {
 		val publisher = RecordingNotificationPublisher()
-		val processor = NotificationProcessor(InMemoryNotificationStateStore(), publisher)
+		val processor = NotificationProcessor(InMemoryNotificationStateStore(), publisher, sessions)
 		val baseline = NotificationItem(NotificationCategory.HOMEWORK, "homework-1", "Homework", "First")
 		val later = NotificationItem(NotificationCategory.HOMEWORK, "homework-2", "Homework", "Second")
 
@@ -67,7 +74,7 @@ class NotificationLifecycleTest {
 	fun offlineReadDoesNotPublishOrAdvanceBaseline() {
 		val publisher = RecordingNotificationPublisher()
 		val state = InMemoryNotificationStateStore()
-		val processor = NotificationProcessor(state, publisher)
+		val processor = NotificationProcessor(state, publisher, sessions)
 		val item = NotificationItem(NotificationCategory.NEW_GRADE, "grade-1", "Grade", "Changed")
 
 		val offline = processor.process(session, settings, true, mapOf(NotificationCategory.NEW_GRADE to CategoryReadResult.Offline))
@@ -81,7 +88,7 @@ class NotificationLifecycleTest {
 	@Test
 	fun partialReadDoesNotCreateAnyBaseline() {
 		val state = InMemoryNotificationStateStore()
-		val processor = NotificationProcessor(state, RecordingNotificationPublisher())
+		val processor = NotificationProcessor(state, RecordingNotificationPublisher(), sessions)
 		val item = NotificationItem(NotificationCategory.NEW_GRADE, "grade-1", "Grade", "Changed")
 
 		val result = processor.process(session, settings, true, mapOf(
@@ -95,7 +102,7 @@ class NotificationLifecycleTest {
 
 	@Test
 	fun failedReadIsNotReportedAsProcessed() {
-		val processor = NotificationProcessor(InMemoryNotificationStateStore(), RecordingNotificationPublisher())
+		val processor = NotificationProcessor(InMemoryNotificationStateStore(), RecordingNotificationPublisher(), sessions)
 
 		val result = processor.process(session, settings, true, mapOf(NotificationCategory.NEW_GRADE to CategoryReadResult.Failed))
 
@@ -105,7 +112,7 @@ class NotificationLifecycleTest {
 	@Test
 	fun deniedPermissionRetainsUnpublishedItemsUntilPermissionIsGranted() {
 		val publisher = RecordingNotificationPublisher()
-		val processor = NotificationProcessor(InMemoryNotificationStateStore(), publisher)
+		val processor = NotificationProcessor(InMemoryNotificationStateStore(), publisher, sessions)
 		val baseline = NotificationItem(NotificationCategory.NEW_GRADE, "grade-1", "Grade", "First")
 		val later = NotificationItem(NotificationCategory.NEW_GRADE, "grade-2", "Grade", "Second")
 
@@ -116,6 +123,94 @@ class NotificationLifecycleTest {
 		assertEquals(NotificationRunStatus.PERMISSION_DENIED, denied.status)
 		assertEquals(1, allowed.publishedCount)
 		assertEquals(listOf(later), publisher.items)
+	}
+
+	@Test
+	fun publicationFailureAndRevokedPermissionRetainItemForRetry() {
+		val state = InMemoryNotificationStateStore()
+		var outcome = NotificationPublishResult.PERMISSION_DENIED
+		val publisher = object : NotificationPublisher {
+			override fun publish(item: NotificationItem) = outcome
+			override fun cancelAll() = Unit
+		}
+		val processor = NotificationProcessor(state, publisher, sessions)
+		val item = NotificationItem(NotificationCategory.NEW_GRADE, "new", "Grade", "5")
+		val reads = mapOf(NotificationCategory.NEW_GRADE to CategoryReadResult.Available(listOf(item)))
+		processor.process(session, settings, true, mapOf(NotificationCategory.NEW_GRADE to CategoryReadResult.Available(emptyList())))
+		assertEquals(NotificationRunStatus.PERMISSION_DENIED, processor.process(session, settings, true, reads).status)
+		outcome = NotificationPublishResult.FAILED
+		assertEquals(NotificationRunStatus.FAILED, processor.process(session, settings, true, reads).status)
+		assertFalse(state.hasSeen(session.activeSession.accountId.value, session.activeSession.generation, NotificationCategory.NEW_GRADE, item.stableId))
+		outcome = NotificationPublishResult.PUBLISHED
+		assertEquals(1, processor.process(session, settings, true, reads).publishedCount)
+		assertEquals(0, processor.process(session, settings, true, reads).publishedCount)
+	}
+
+	@Test
+	fun staleSessionCannotMutateStateOrPublish() {
+		val state = InMemoryNotificationStateStore()
+		val publisher = RecordingNotificationPublisher()
+		val processor = NotificationProcessor(state, publisher, sessions)
+		current = ActiveSession(AccountId("replacement"), Generation(8))
+		val item = NotificationItem(NotificationCategory.NEW_GRADE, "new", "Grade", "5")
+		val result = processor.process(session, settings, true, mapOf(NotificationCategory.NEW_GRADE to CategoryReadResult.Available(listOf(item))))
+		assertEquals(NotificationRunStatus.STALE_GENERATION, result.status)
+		assertFalse(state.hasBaseline(session.activeSession.accountId.value, session.activeSession.generation, NotificationCategory.NEW_GRADE))
+		assertTrue(publisher.items.isEmpty())
+	}
+
+	@Test
+	fun logoutDuringSourceReadPreventsPublicationAndStateMutation() {
+		val entered = java.util.concurrent.CountDownLatch(1)
+		val resume = java.util.concurrent.CountDownLatch(1)
+		val publisher = RecordingNotificationPublisher()
+		val state = InMemoryNotificationStateStore()
+		val source = object : NotificationDataSource {
+			override fun readNewGrades(session: NotificationSession): CategoryReadResult {
+				entered.countDown()
+				check(resume.await(5, java.util.concurrent.TimeUnit.SECONDS))
+				return CategoryReadResult.Available(listOf(NotificationItem(NotificationCategory.NEW_GRADE, "new", "Grade", "5")))
+			}
+			override fun readHomework(session: NotificationSession) = CategoryReadResult.Unsupported
+		}
+		val runner = NotificationWorkerRunner(source, NotificationProcessor(state, publisher, sessions), { true })
+		val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+		try {
+			val result = executor.submit<NotificationRunResult> { runner.run(session, NotificationPreferences(newGradeEnabled = true), true) }
+			assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+			sessions.withSessionLock { current = ActiveSession(AccountId("replacement"), Generation(8)) }
+			resume.countDown()
+			assertEquals(NotificationRunStatus.STALE_GENERATION, result.get(5, java.util.concurrent.TimeUnit.SECONDS).status)
+			assertTrue(publisher.items.isEmpty())
+			assertFalse(state.hasBaseline(session.activeSession.accountId.value, session.activeSession.generation, NotificationCategory.NEW_GRADE))
+		} finally {
+			resume.countDown()
+			executor.shutdownNow()
+		}
+	}
+
+	@Test
+	fun concurrentDeliveriesArePublishedOnce() {
+		val state = InMemoryNotificationStateStore()
+		val publisher = RecordingNotificationPublisher()
+		val processor = NotificationProcessor(state, publisher, sessions)
+		val item = NotificationItem(NotificationCategory.NEW_GRADE, "new", "Grade", "5")
+		processor.process(session, settings, true, mapOf(NotificationCategory.NEW_GRADE to CategoryReadResult.Available(emptyList())))
+		val executor = java.util.concurrent.Executors.newFixedThreadPool(2)
+		val start = java.util.concurrent.CountDownLatch(1)
+		try {
+			val futures = (1..2).map {
+				executor.submit<NotificationRunResult> {
+					check(start.await(5, java.util.concurrent.TimeUnit.SECONDS))
+					processor.process(session, settings, true, mapOf(NotificationCategory.NEW_GRADE to CategoryReadResult.Available(listOf(item))))
+				}
+			}
+			start.countDown()
+			assertEquals(1, futures.sumOf { it.get(5, java.util.concurrent.TimeUnit.SECONDS).publishedCount })
+			assertEquals(listOf(item), publisher.items)
+		} finally {
+			executor.shutdownNow()
+		}
 	}
 
 	@Test
@@ -136,7 +231,7 @@ class NotificationLifecycleTest {
 		val source = RecordingNotificationDataSource()
 		val runner = NotificationWorkerRunner(
 			source = source,
-			processor = NotificationProcessor(InMemoryNotificationStateStore(), RecordingNotificationPublisher()),
+			processor = NotificationProcessor(InMemoryNotificationStateStore(), RecordingNotificationPublisher(), sessions),
 			isCurrentGeneration = { true },
 		)
 
@@ -149,13 +244,14 @@ class NotificationLifecycleTest {
 	fun generationChangeCreatesNewBaselineAndOldGenerationCannotPublish() {
 		val publisher = RecordingNotificationPublisher()
 		val state = InMemoryNotificationStateStore()
-		val processor = NotificationProcessor(state, publisher)
+		val processor = NotificationProcessor(state, publisher, sessions)
 		val old = session
 		val current = session.copy(activeSession = session.activeSession.copy(generation = Generation(5)))
 		val oldItem = NotificationItem(NotificationCategory.HOMEWORK, "old", "Homework", "Old")
 		val currentItem = NotificationItem(NotificationCategory.HOMEWORK, "current", "Homework", "Current")
 
 		processor.process(old, settings, true, mapOf(NotificationCategory.HOMEWORK to CategoryReadResult.Available(listOf(oldItem))))
+		this.current = current.activeSession
 		val result = processor.process(current, settings, true, mapOf(NotificationCategory.HOMEWORK to CategoryReadResult.Available(listOf(currentItem))))
 
 		assertEquals(NotificationRunStatus.BASELINE, result.status)
@@ -182,8 +278,9 @@ private class RecordingNotificationPublisher : NotificationPublisher {
 	val items = mutableListOf<NotificationItem>()
 	var cancelCount = 0
 
-	override fun publish(item: NotificationItem) {
+	override fun publish(item: NotificationItem): NotificationPublishResult {
 		items += item
+		return NotificationPublishResult.PUBLISHED
 	}
 
 	override fun cancelAll() {

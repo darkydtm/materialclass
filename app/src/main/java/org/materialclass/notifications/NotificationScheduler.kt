@@ -92,23 +92,31 @@ class AndroidNotificationPublisher(private val context: Context) : NotificationP
 		}
 	}
 
-	override fun publish(item: NotificationItem) {
+	override fun publish(item: NotificationItem): NotificationPublishResult {
 		if (android.os.Build.VERSION.SDK_INT >= 33 &&
 			context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-		) return
+		) return NotificationPublishResult.PERMISSION_DENIED
+		if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return NotificationPublishResult.PERMISSION_DENIED
 		val title = when (item.category) {
 			NotificationCategory.NEW_GRADE -> context.getString(org.materialclass.R.string.notification_new_grade)
 			NotificationCategory.HOMEWORK -> context.getString(org.materialclass.R.string.notification_homework)
 		}
-		NotificationManagerCompat.from(context).notify(
-			item.stableId.hashCode(),
-			NotificationCompat.Builder(context, CHANNEL_ID)
-				.setSmallIcon(android.R.drawable.ic_dialog_info)
-				.setContentTitle(title)
-				.setContentText(item.body)
-				.setAutoCancel(true)
-				.build(),
-		)
+		return try {
+			NotificationManagerCompat.from(context).notify(
+				item.stableId.hashCode(),
+				NotificationCompat.Builder(context, CHANNEL_ID)
+					.setSmallIcon(android.R.drawable.ic_dialog_info)
+					.setContentTitle(title)
+					.setContentText(item.body)
+					.setAutoCancel(true)
+					.build(),
+			)
+			NotificationPublishResult.PUBLISHED
+		} catch (_: SecurityException) {
+			NotificationPublishResult.PERMISSION_DENIED
+		} catch (_: Exception) {
+			NotificationPublishResult.FAILED
+		}
 	}
 
 	override fun cancelAll() {

@@ -76,10 +76,10 @@ class ProductionNotificationDataSourceTest {
 	fun failureStatusesAndPartialGroupsNeverEstablishGradeBaseline() {
 		val state = InMemoryNotificationStateStore()
 		val publisher = object : NotificationPublisher {
-			override fun publish(item: NotificationItem) = Unit
+			override fun publish(item: NotificationItem) = NotificationPublishResult.PUBLISHED
 			override fun cancelAll() = Unit
 		}
-		val processor = NotificationProcessor(state, publisher)
+		val processor = NotificationProcessor(state, publisher, sessions)
 		grades = GatewayReadResult.Success(JournalGradesModel(listOf(grade("x", "5")), 1, 1))
 		val partial = source.readNewGrades(session)
 		assertEquals(CategoryReadResult.Failed, partial)
@@ -96,9 +96,9 @@ class ProductionNotificationDataSourceTest {
 	@Test
 	fun permissionDoesNotAffectSourceReadsAndStaleSessionFailsClosed() {
 		val runner = NotificationWorkerRunner(source, NotificationProcessor(InMemoryNotificationStateStore(), object : NotificationPublisher {
-			override fun publish(item: NotificationItem) = Unit
+			override fun publish(item: NotificationItem) = NotificationPublishResult.PUBLISHED
 			override fun cancelAll() = Unit
-		}), { true })
+		}, sessions), { true })
 		val result = runner.run(session, NotificationPreferences(homeworkEnabled = true), false)
 		assertEquals(NotificationRunStatus.BASELINE, result.status)
 		assertEquals(listOf("homeworks"), keys)

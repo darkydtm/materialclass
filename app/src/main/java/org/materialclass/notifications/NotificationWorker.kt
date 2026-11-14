@@ -3,6 +3,7 @@ package org.materialclass.notifications
 import android.content.Context
 import org.materialclass.data.ActiveSession
 import org.materialclass.data.Generation
+import org.materialclass.data.SessionAccess
 
 /** Keep worker input independent from server models until notification sources are confirmed. */
 data class NotificationSession(
@@ -40,8 +41,10 @@ object UnsupportedNotificationDataSource : NotificationDataSource {
 	override fun readHomework(session: NotificationSession): CategoryReadResult = CategoryReadResult.Unsupported
 }
 
+enum class NotificationPublishResult { PUBLISHED, PERMISSION_DENIED, FAILED }
+
 interface NotificationPublisher {
-	fun publish(item: NotificationItem)
+	fun publish(item: NotificationItem): NotificationPublishResult
 	fun cancelAll()
 }
 
@@ -151,9 +154,10 @@ data class NotificationRunResult(
 class NotificationProcessor(
 	private val state: NotificationStateStore,
 	private val publisher: NotificationPublisher,
+	private val sessions: SessionAccess,
 ) {
 	fun clearState() {
-		state.clear()
+		sessions.withSessionLock { state.clear() }
 	}
 
 	fun process(
@@ -161,33 +165,43 @@ class NotificationProcessor(
 		preferences: NotificationPreferences,
 		permissionGranted: Boolean,
 		reads: Map<NotificationCategory, CategoryReadResult>,
-	): NotificationRunResult {
+	): NotificationRunResult = sessions.withSessionLock {
+		if (sessions.currentSession() != session.activeSession) return@withSessionLock NotificationRunResult(NotificationRunStatus.STALE_GENERATION)
+		val enabledReads = reads.filterKeys { preferences.isEnabled(it) }
+		if (enabledReads.values.any { it is CategoryReadResult.Failed }) return@withSessionLock NotificationRunResult(NotificationRunStatus.FAILED)
+		if (enabledReads.values.any { it is CategoryReadResult.Offline }) return@withSessionLock NotificationRunResult(NotificationRunStatus.OFFLINE)
+		if (enabledReads.values.any { it is CategoryReadResult.Unsupported }) return@withSessionLock NotificationRunResult(NotificationRunStatus.UNSUPPORTED)
 		val accountId = session.activeSession.accountId.value
 		val generation = session.activeSession.generation
 		if (state.generation(accountId) != generation) state.reset(accountId, generation)
+		val pendingBaselines = mutableMapOf<NotificationCategory, List<NotificationItem>>()
 		var baselineCreated = false
 		var published = 0
 		var sawOffline = false
 		var sawFailed = false
 		var sawUnsupported = false
 		var sawAvailable = false
+		var denied = false
 		for ((category, result) in reads) {
 			if (!preferences.isEnabled(category)) continue
 			when (result) {
 				is CategoryReadResult.Available -> {
 					sawAvailable = true
 					if (!state.hasBaseline(accountId, generation, category)) {
-						result.items.forEach { item -> state.markSeen(accountId, generation, category, item.stableId) }
-						state.markBaseline(accountId, generation, category)
-						baselineCreated = true
+						pendingBaselines[category] = result.items
 						continue
 					}
 					result.items.forEach { item ->
 						if (state.hasSeen(accountId, generation, category, item.stableId)) return@forEach
-						if (permissionGranted) {
-							publisher.publish(item)
-							state.markSeen(accountId, generation, category, item.stableId)
-							published++
+						if (!permissionGranted) {
+							denied = true
+						} else when (try { publisher.publish(item) } catch (_: Exception) { NotificationPublishResult.FAILED }) {
+							NotificationPublishResult.PUBLISHED -> {
+								state.markSeen(accountId, generation, category, item.stableId)
+								published++
+							}
+							NotificationPublishResult.PERMISSION_DENIED -> denied = true
+							NotificationPublishResult.FAILED -> sawFailed = true
 						}
 					}
 				}
@@ -196,11 +210,18 @@ class NotificationProcessor(
 				CategoryReadResult.Failed -> sawFailed = true
 			}
 		}
-		return when {
+		if (!sawFailed && !denied) {
+			for ((category, items) in pendingBaselines) {
+				items.forEach { state.markSeen(accountId, generation, category, it.stableId) }
+				state.markBaseline(accountId, generation, category)
+				baselineCreated = true
+			}
+		}
+		when {
 			sawFailed -> NotificationRunResult(NotificationRunStatus.FAILED, published)
 			sawOffline -> NotificationRunResult(NotificationRunStatus.OFFLINE, published)
 			baselineCreated -> NotificationRunResult(NotificationRunStatus.BASELINE, published)
-			!permissionGranted && sawAvailable -> NotificationRunResult(NotificationRunStatus.PERMISSION_DENIED, published)
+			(denied || !permissionGranted) && sawAvailable -> NotificationRunResult(NotificationRunStatus.PERMISSION_DENIED, published)
 			sawUnsupported && !sawAvailable -> NotificationRunResult(NotificationRunStatus.UNSUPPORTED, published)
 			else -> NotificationRunResult(NotificationRunStatus.PROCESSED, published)
 		}
