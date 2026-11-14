@@ -6,6 +6,21 @@ import org.junit.Test
 
 class UiModelTest {
 	@Test
+	fun staleScreenCannotOpenAnotherDestination() {
+		val navigator = AppNavigator(AppRoute.Settings)
+		var selections = 0
+		val method = navigator.javaClass.methods.firstOrNull { it.name == "goFrom" }
+		assertTrue("Navigation must reject stale screen actions", method != null)
+		val select: () -> Unit = { selections++ }
+		method!!.invoke(navigator, AppRoute.Settings, AppRoute.SettingsTheme, select)
+		method.invoke(navigator, AppRoute.Settings, AppRoute.SettingsNotifications, select)
+		assertEquals(AppRoute.SettingsTheme, navigator.current)
+		assertEquals(1, selections)
+		assertTrue(navigator.back())
+		assertEquals(AppRoute.Settings, navigator.current)
+	}
+
+	@Test
 	fun primaryBackReturnsHomeWithoutRestoringSecondaryHistory() {
 		val navigator = AppNavigator(AppRoute.Home)
 		navigator.go(AppRoute.Settings)
