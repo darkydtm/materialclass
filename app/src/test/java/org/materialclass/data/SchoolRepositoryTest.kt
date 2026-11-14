@@ -20,6 +20,29 @@ class SchoolRepositoryTest {
 	private val capturedAt = Instant.parse("2026-01-02T03:04:05Z")
 
 	@Test
+	fun missingSessionFailureCannotOverwriteReplacementAccount() {
+		val replacement = ActiveSession(AccountId("synthetic-replacement"), Generation(2))
+		val sessions = object : SessionAccess {
+			var active: ActiveSession? = null
+			override fun currentSession(): ActiveSession? {
+				val previous = active
+				if (previous == null) active = replacement
+				return previous
+			}
+			override fun tokenFor(session: ActiveSession): String? = "synthetic-token"
+			override fun <T> withSessionLock(block: () -> T): T = synchronized(this) { block() }
+		}
+		val repository = SchoolRepositoryImpl(FakeGateway(), sessions, MemorySnapshotStore())
+		val events = mutableListOf<RepositoryEvent>()
+		repository.events().observe { events += it }
+
+		repository.refreshSchedule(range)
+
+		assertEquals(DataState.Loading, repository.observeSchedule(range).current)
+		assertTrue(events.isEmpty())
+	}
+
+	@Test
 	fun backgroundScheduleResponseAfterAccountReplacementIsDiscarded() {
 		val fixture = Fixture()
 		val started = CountDownLatch(1)
