@@ -54,6 +54,8 @@ class SecureSessionTest {
 			userId = "synthetic-a",
 			schoolId = "synthetic-school",
 			groupId = "synthetic-group",
+			studentGroupUuid = "group-a",
+			studentGroupUuids = listOf("group-a", "group-b"),
 			eduYear = "2026",
 			hasStudentContext = true,
 		)
