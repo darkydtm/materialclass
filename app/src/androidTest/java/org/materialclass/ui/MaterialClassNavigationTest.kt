@@ -287,7 +287,7 @@ class MaterialClassNavigationTest {
 		composeRule.onNodeWithText(theme).performClick()
 		composeRule.onNodeWithTag("back").performClick()
 		composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag("back").fetchSemanticsNodes().isEmpty() }
-		composeRule.onNodeWithText(settings).assertIsDisplayed()
+		composeRule.onNodeWithText(theme).assertIsDisplayed()
 	}
 
 	@Test
