@@ -23,7 +23,7 @@ data class NotificationItem(
 }
 
 sealed interface CategoryReadResult {
-	data class Available(val items: List<NotificationItem>) : CategoryReadResult
+	data class Available(val items: List<NotificationItem>, val scope: String? = null) : CategoryReadResult
 	data object Offline : CategoryReadResult
 	data object Unsupported : CategoryReadResult
 	data object Failed : CategoryReadResult
@@ -185,10 +185,11 @@ class NotificationProcessor(
 		permissionGranted: Boolean,
 		reads: Map<NotificationCategory, CategoryReadResult>,
 		currentPreferences: () -> NotificationPreferences = { preferences },
+		readIsCurrent: () -> Boolean = { true },
 	): NotificationRunResult = sessions.withSessionLock {
 		var published = 0
 		try {
-		if (sessions.currentSession() != session.activeSession) return@withSessionLock NotificationRunResult(NotificationRunStatus.STALE_GENERATION)
+		if (sessions.currentSession() != session.activeSession || !readIsCurrent()) return@withSessionLock NotificationRunResult(NotificationRunStatus.STALE_GENERATION)
 		val effectivePreferences = currentPreferences()
 		val enabledReads = reads.filterKeys { preferences.isEnabled(it) && effectivePreferences.isEnabled(it) }
 		if (enabledReads.values.any { it is CategoryReadResult.Failed }) return@withSessionLock NotificationRunResult(NotificationRunStatus.FAILED)
@@ -196,7 +197,10 @@ class NotificationProcessor(
 		if (enabledReads.values.any { it is CategoryReadResult.Unsupported }) return@withSessionLock NotificationRunResult(NotificationRunStatus.UNSUPPORTED)
 		val accountId = session.activeSession.accountId.value
 		val generation = session.activeSession.generation
-		if (state.generation(accountId) != generation) state.reset(accountId, generation)
+		fun scopedAccount(category: NotificationCategory, result: CategoryReadResult): String {
+			val scope = (result as? CategoryReadResult.Available)?.scope
+			return if (category == NotificationCategory.NEW_GRADE && scope != null) "grade-scope:${accountId.length}:$accountId:$scope" else accountId
+		}
 		val pendingBaselines = mutableMapOf<NotificationCategory, List<NotificationItem>>()
 		var baselineCreated = false
 		var sawOffline = false
@@ -205,6 +209,8 @@ class NotificationProcessor(
 		var sawAvailable = false
 		var denied = false
 		for ((category, result) in enabledReads) {
+			val accountId = scopedAccount(category, result)
+			if (state.generation(accountId) != generation) state.reset(accountId, generation)
 			if (result is CategoryReadResult.Available && !state.hasBaseline(accountId, generation, category)) {
 				result.items.forEach { state.markSeen(accountId, generation, category, it.stableId) }
 				state.markBaseline(accountId, generation, category)
@@ -213,6 +219,7 @@ class NotificationProcessor(
 			}
 		}
 		for ((category, result) in enabledReads) {
+			val accountId = scopedAccount(category, result)
 			if (category in pendingBaselines) continue
 			when (result) {
 				is CategoryReadResult.Available -> {
@@ -259,18 +266,20 @@ class NotificationWorkerRunner(
 	private val source: NotificationDataSource,
 	private val processor: NotificationProcessor,
 	private val isCurrentGeneration: (ActiveSession) -> Boolean,
+	private val readScope: () -> Any? = { null },
 ) {
 	fun run(session: NotificationSession?, preferences: NotificationPreferences, permissionGranted: Boolean, currentPreferences: () -> NotificationPreferences = { preferences }): NotificationRunResult {
 		if (session == null) return NotificationRunResult(NotificationRunStatus.NO_SESSION)
 		if (!session.tokenPresent) return NotificationRunResult(NotificationRunStatus.NO_TOKEN)
 		if (!preferences.newGradeEnabled && !preferences.homeworkEnabled) return NotificationRunResult(NotificationRunStatus.PROCESSED)
 		if (!isCurrentGeneration(session.activeSession)) return NotificationRunResult(NotificationRunStatus.STALE_GENERATION)
+		val scope = readScope()
 		val reads = buildMap {
 			if (preferences.newGradeEnabled) put(NotificationCategory.NEW_GRADE, source.readNewGrades(session))
 			if (preferences.homeworkEnabled) put(NotificationCategory.HOMEWORK, source.readHomework(session))
 		}
 		if (!isCurrentGeneration(session.activeSession)) return NotificationRunResult(NotificationRunStatus.STALE_GENERATION)
-		return processor.process(session, preferences, permissionGranted, reads, currentPreferences)
+		return processor.process(session, preferences, permissionGranted, reads, currentPreferences) { readScope() == scope }
 	}
 }
 

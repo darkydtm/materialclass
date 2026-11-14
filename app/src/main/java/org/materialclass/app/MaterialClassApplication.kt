@@ -46,6 +46,7 @@ class ApplicationRuntime(application: Application) {
 	private val notificationState = SharedPreferencesNotificationStateStore(application)
 	private val notificationPublisher = AndroidNotificationPublisher(application)
 	private val notificationRunner: NotificationWorkerRunner
+	private var periodEpoch = 0L
 	val startAuthenticated: Boolean get() = sessionCoordinator.currentSession() != null
 
 	init {
@@ -94,10 +95,15 @@ class ApplicationRuntime(application: Application) {
 			},
 			NotificationProcessor(notificationState, notificationPublisher, sessionCoordinator),
 			{ sessionCoordinator.currentSession() == it },
+			{ sessionCoordinator.withSessionLock { periodEpoch to preferences.gradesPeriod() } },
 		)
 	}
 
-	fun changeNotificationSettings(change: () -> Unit) = sessionCoordinator.withSessionLock(change)
+	fun changeNotificationSettings(change: () -> Unit) = sessionCoordinator.withSessionLock {
+		val before = preferences.gradesPeriod()
+		change()
+		if (before != preferences.gradesPeriod()) periodEpoch++
+	}
 
 	fun updateBackgroundSchedule() {
 		sessionCoordinator.withSessionLock {

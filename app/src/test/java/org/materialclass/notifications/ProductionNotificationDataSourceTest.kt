@@ -1,6 +1,9 @@
 package org.materialclass.notifications
 
 import java.time.LocalDate
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -168,6 +171,53 @@ class ProductionNotificationDataSourceTest {
 		grades = GatewayReadResult.Success(JournalGradesModel(listOf(grade("second", "4")), 1, 0))
 		assertEquals(NotificationRunStatus.BASELINE, runner.run(session, enabled, true).status)
 		assertTrue(published.isEmpty())
+		grades = GatewayReadResult.Success(JournalGradesModel(listOf(grade("second", "4"), grade("new-second", "5")), 1, 0))
+		assertEquals(1, runner.run(session, enabled, true).publishedCount)
+		selected = range
+		grades = GatewayReadResult.Success(JournalGradesModel(listOf(grade("first", "5"), grade("new-first", "4")), 1, 0))
+		assertEquals(1, runner.run(session, enabled, true).publishedCount)
+		assertEquals(2, published.size)
+	}
+
+	@Test
+	fun periodChangesDuringJournalReadDiscardResultsEvenAfterSwitchBack() {
+		val lock = Any()
+		var epoch = 0
+		var selected = range
+		val other = DateRange(LocalDate.parse("2026-04-01"), LocalDate.parse("2026-06-30"))
+		val localSessions = object : SessionAccess {
+			override fun currentSession() = synchronized(lock) { current }
+			override fun tokenFor(session: ActiveSession) = synchronized(lock) { if (current == session) "synthetic-token" else null }
+			override fun <T> withSessionLock(block: () -> T) = synchronized(lock) { block() }
+		}
+		val entered = CountDownLatch(1)
+		val release = CountDownLatch(1)
+		val source = ProductionNotificationDataSource(localSessions, { token, _ -> ReadContext(token) }, { synchronized(lock) { selected } }, {
+			entered.countDown()
+			check(release.await(5, TimeUnit.SECONDS))
+			GatewayReadResult.Success(JournalGradesModel(listOf(grade("old", "5")), 1, 0))
+		}, { GatewayReadResult.Empty })
+		val published = mutableListOf<NotificationItem>()
+		val runner = NotificationWorkerRunner(source, NotificationProcessor(InMemoryNotificationStateStore(), object : NotificationPublisher {
+			override fun publish(item: NotificationItem): NotificationPublishResult {
+				published += item
+				return NotificationPublishResult.PUBLISHED
+			}
+			override fun cancelAll() = Unit
+		}, localSessions), { localSessions.currentSession() == it }, { synchronized(lock) { epoch to selected } })
+		val executor = Executors.newSingleThreadExecutor()
+		try {
+			val future = executor.submit<NotificationRunResult> { runner.run(session, NotificationPreferences(newGradeEnabled = true), true) }
+			assertTrue(entered.await(5, TimeUnit.SECONDS))
+			synchronized(lock) { selected = other; epoch++; selected = range; epoch++ }
+			release.countDown()
+			assertEquals(NotificationRunStatus.STALE_GENERATION, future.get(5, TimeUnit.SECONDS).status)
+			assertTrue(published.isEmpty())
+			assertEquals(NotificationRunStatus.BASELINE, runner.run(session, NotificationPreferences(newGradeEnabled = true), true).status)
+		} finally {
+			release.countDown()
+			executor.shutdownNow()
+		}
 	}
 
 	@Test

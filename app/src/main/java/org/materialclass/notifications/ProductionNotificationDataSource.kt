@@ -32,9 +32,9 @@ class ProductionNotificationDataSource(
 					val id = grade.scheduleUuid?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
 					val mark = grade.mark?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
 					NotificationItem(NotificationCategory.NEW_GRADE, "${id.length}:$id$mark", "Grade", mark)
-				}.distinctBy { it.stableId })
+				}.distinctBy { it.stableId }, "${range.start}:${range.endInclusive}")
 			}
-			GatewayReadResult.Empty -> CategoryReadResult.Available(emptyList())
+			GatewayReadResult.Empty -> CategoryReadResult.Available(emptyList(), "${range.start}:${range.endInclusive}")
 			is GatewayReadResult.Failure -> failure(result.error)
 		}
 	}
