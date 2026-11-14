@@ -65,10 +65,11 @@ class SessionStore(
 				val (token, refreshToken, userInfo, hasTrailingData) = DataInputStream(
 					ByteArrayInputStream(cipher.decrypt(keys.tokenKey(), encrypted)),
 				).use { input ->
-					if (input.readInt() != PAYLOAD_MAGIC) throw IllegalArgumentException("unsupported session payload")
+					val version = input.readInt()
+					if (version != PAYLOAD_MAGIC && version != LEGACY_PAYLOAD_MAGIC) throw IllegalArgumentException("unsupported session payload")
 					val token = input.readUTF()
 					val refreshToken = input.readUTF().takeIf(String::isNotEmpty)
-					DecodedPayload(token, refreshToken, input.readUserInfo(), input.available() != 0)
+					DecodedPayload(token, refreshToken, input.readUserInfo(version == PAYLOAD_MAGIC), input.available() != 0)
 				}
 				if (hasTrailingData) return null
 				if (token.isEmpty()) return null
@@ -83,7 +84,8 @@ class SessionStore(
 
 	private companion object {
 		const val MAGIC = 0x4D435331
-		const val PAYLOAD_MAGIC = 0x4D435332
+		const val LEGACY_PAYLOAD_MAGIC = 0x4D435332
+		const val PAYLOAD_MAGIC = 0x4D435333
 		const val MAX_RECORD_BYTES = 1024 * 1024
 	}
 }
@@ -119,6 +121,8 @@ private fun DataOutputStream.writeUserInfo(userInfo: UserInfo?) {
 	writeNullable(userInfo.chatToken)
 	writeNullable(userInfo.role)
 	writeBoolean(userInfo.hasStudentContext)
+	writeInt(userInfo.studentGroupUuids.size)
+	userInfo.studentGroupUuids.forEach(::writeUTF)
 }
 
 private fun DataOutputStream.writeNullable(value: String?) {
@@ -126,9 +130,9 @@ private fun DataOutputStream.writeNullable(value: String?) {
 	if (value != null) writeUTF(value)
 }
 
-private fun DataInputStream.readUserInfo(): UserInfo? {
+private fun DataInputStream.readUserInfo(hasGroupList: Boolean): UserInfo? {
 	if (!readBoolean()) return null
-	return UserInfo(
+	val user = UserInfo(
 		userId = readUTF(),
 		fullName = readNullable(),
 		schoolName = readNullable(),
@@ -143,6 +147,10 @@ private fun DataInputStream.readUserInfo(): UserInfo? {
 		role = readNullable(),
 		hasStudentContext = readBoolean(),
 	)
+	if (!hasGroupList) return user.copy(studentGroupUuids = listOfNotNull(user.studentGroupUuid?.takeIf(String::isNotBlank)))
+	val count = readInt()
+	require(count in 0..10000) { "Invalid student group count" }
+	return user.copy(studentGroupUuids = List(count) { readUTF() })
 }
 
 private fun DataInputStream.readNullable(): String? = if (readBoolean()) readUTF() else null

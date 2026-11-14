@@ -54,6 +54,8 @@ class SecureSessionTest {
 			userId = "synthetic-a",
 			schoolId = "synthetic-school",
 			groupId = "synthetic-group",
+			studentGroupUuid = "synthetic-group-a",
+			studentGroupUuids = listOf("synthetic-group-a", "synthetic-group-b"),
 			eduYear = "2026",
 			hasStudentContext = true,
 		)
@@ -64,6 +66,38 @@ class SecureSessionTest {
 		val restored = SessionCoordinator(fixture.store, fixture.files, fixture.keys, fixture.cipher, fixture.tasks)
 		assertTrue(restored.restore(Instant.EPOCH))
 		assertEquals(user, restored.userInfoFor(restored.currentSession()!!))
+	}
+
+	@Test
+	fun legacySessionRestoresItsSingleKnownStudentGroup() {
+		val fixture = Fixture()
+		val session = fixture.coordinator.activate(AccountId("synthetic-a"), "access-a", Instant.MAX)
+		val plaintext = java.io.ByteArrayOutputStream().also { output ->
+			java.io.DataOutputStream(output).use { data ->
+				data.writeInt(0x4D435332)
+				data.writeUTF("access-a")
+				data.writeUTF("refresh-a")
+				data.writeBoolean(true)
+				data.writeUTF("synthetic-a")
+				repeat(7) { data.writeBoolean(false) }
+				data.writeBoolean(true)
+				data.writeUTF("legacy-group")
+				repeat(3) { data.writeBoolean(false) }
+				data.writeBoolean(true)
+			}
+		}.toByteArray()
+		val encrypted = fixture.cipher.encrypt(fixture.keys.tokenKey(), plaintext)
+		java.io.DataOutputStream(fixture.files.tokenFile().outputStream()).use { data ->
+			data.writeInt(0x4D435331)
+			data.writeUTF(session.accountId.value)
+			data.writeLong(session.generation.value)
+			data.writeUTF(Instant.MAX.toString())
+			data.writeInt(encrypted.size)
+			data.write(encrypted)
+		}
+		val restored = SessionCoordinator(fixture.store, fixture.files, fixture.keys, fixture.cipher, fixture.tasks)
+		assertTrue(restored.restore(Instant.EPOCH))
+		assertEquals(listOf("legacy-group"), restored.userInfoFor(restored.currentSession()!!)?.studentGroupUuids)
 	}
 
 	@Test
