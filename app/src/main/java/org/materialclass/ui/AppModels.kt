@@ -264,7 +264,7 @@ class SchoolViewModel(
 		gradesPeriod = period
 		val source = repository ?: run { gradesState = null; return }
 		val observation = source.observeGrades(period)
-		observation.observe { gradesState = it }
+		observation.observe { if (gradesPeriod == period) gradesState = it }
 		io.execute { source.refreshGrades(period) }
 	}
 
@@ -329,6 +329,7 @@ internal fun <T> DataState<T>?.readyValue(): T? = when (this) {
 internal fun completedLessonCount(lessons: List<ScheduleLesson>, now: LocalTime = LocalTime.now()): Int =
 	lessons.count { lesson ->
 		val end = lesson.timeslot
+			?.takeIf { '-' in it }
 			?.substringAfterLast('-')
 			?.trim()
 			?.takeIf { it.matches(Regex("\\d{1,2}:\\d{2}")) }
