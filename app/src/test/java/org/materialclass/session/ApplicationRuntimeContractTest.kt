@@ -5,6 +5,12 @@ import org.junit.Test
 
 class ApplicationRuntimeContractTest {
 	@Test
+	fun applicationRuntimeExposesBackgroundScheduling() {
+		val runtime = Class.forName("org.materialclass.app.ApplicationRuntime")
+		assertTrue("Background settings must update scheduling", runtime.methods.any { it.name == "updateBackgroundSchedule" && it.parameterCount == 0 })
+	}
+
+	@Test
 	fun applicationOwnsTheSharedRuntimeForActivityAndWorker() {
 		val application = runCatching { Class.forName("org.materialclass.app.MaterialClassApplication") }.getOrNull()
 		assertTrue("Application-scoped runtime owner is missing", application != null)

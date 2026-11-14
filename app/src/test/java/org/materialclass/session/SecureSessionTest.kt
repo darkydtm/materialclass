@@ -131,6 +131,32 @@ class SecureSessionTest {
 	}
 
 	@Test
+	fun backgroundResponseCannotWriteAfterLogoutAndAccountReplacement() {
+		val fixture = Fixture()
+		val old = fixture.coordinator.activate(AccountId("synthetic-a"), "token-a", Instant.MAX)
+		val started = java.util.concurrent.CountDownLatch(1)
+		val release = java.util.concurrent.CountDownLatch(1)
+		val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+		try {
+			val response = executor.submit<Boolean> {
+				started.countDown()
+				check(release.await(5, java.util.concurrent.TimeUnit.SECONDS))
+				fixture.coordinator.cache().write(old, byteArrayOf(9))
+			}
+			assertTrue(started.await(5, java.util.concurrent.TimeUnit.SECONDS))
+			fixture.coordinator.logout()
+			val replacement = fixture.coordinator.activate(AccountId("synthetic-b"), "token-b", Instant.MAX)
+			release.countDown()
+			assertFalse(response.get(5, java.util.concurrent.TimeUnit.SECONDS))
+			assertEquals("token-b", fixture.coordinator.tokenFor(replacement))
+			assertEquals(CacheRead.Missing, fixture.coordinator.cache().read(replacement))
+		} finally {
+			release.countDown()
+			executor.shutdownNow()
+		}
+	}
+
+	@Test
 	fun expiredStoredSessionIsCleanedWithoutServerLogout() {
 		val fixture = Fixture()
 		fixture.coordinator.activate(AccountId("synthetic-a"), "token-a", Instant.ofEpochMilli(10))
