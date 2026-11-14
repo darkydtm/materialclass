@@ -149,6 +149,28 @@ class ProductionNotificationDataSourceTest {
 	}
 
 	@Test
+	fun switchingPeriodStartsIndependentBaseline() {
+		var selected = range
+		val other = DateRange(LocalDate.parse("2026-04-01"), LocalDate.parse("2026-06-30"))
+		val source = ProductionNotificationDataSource(sessions, { token, _ -> ReadContext(token) }, { selected }, { grades }, { homework })
+		val published = mutableListOf<NotificationItem>()
+		val runner = NotificationWorkerRunner(source, NotificationProcessor(InMemoryNotificationStateStore(), object : NotificationPublisher {
+			override fun publish(item: NotificationItem): NotificationPublishResult {
+				published += item
+				return NotificationPublishResult.PUBLISHED
+			}
+			override fun cancelAll() = Unit
+		}, sessions), { sessions.currentSession() == it })
+		val enabled = NotificationPreferences(newGradeEnabled = true)
+		grades = GatewayReadResult.Success(JournalGradesModel(listOf(grade("first", "5")), 1, 0))
+		assertEquals(NotificationRunStatus.BASELINE, runner.run(session, enabled, true).status)
+		selected = other
+		grades = GatewayReadResult.Success(JournalGradesModel(listOf(grade("second", "4")), 1, 0))
+		assertEquals(NotificationRunStatus.BASELINE, runner.run(session, enabled, true).status)
+		assertTrue(published.isEmpty())
+	}
+
+	@Test
 	fun unexpectedSourceFailureDoesNotExposeDataOrReportSuccess() {
 		val broken = ProductionNotificationDataSource(sessions, { _, _ -> throw IllegalStateException("synthetic private data") }, { range }, { grades }, { homework })
 		assertEquals(CategoryReadResult.Failed, broken.readNewGrades(session))
