@@ -1,14 +1,9 @@
 package org.materialclass.ui
 
 
-import androidx.activity.compose.PredictiveBackHandler
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -17,14 +12,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.withContext
+import androidx.compose.ui.viewinterop.AndroidView
+
 
 import org.materialclass.api.AppError
 import org.materialclass.api.GatewayLoginResult
@@ -64,32 +56,21 @@ fun MaterialClassApp(
 		}
 	}
 	val snackbarHostState = remember { SnackbarHostState() }
-	val backProgress = remember { Animatable(0f) }
-	val screenWidth = with(LocalDensity.current) { configuration.screenWidthDp.dp.toPx() }
-
-	PredictiveBackHandler(enabled = navigator.current !in loginRoutes && navigator.canGoBack()) { events ->
-		try {
-			events.collect { event -> backProgress.snapTo(event.progress) }
-			backProgress.animateTo(1f, tween(150))
-			navigator.back()
-			backProgress.snapTo(0f)
-		} catch (_: CancellationException) {
-			withContext(NonCancellable) { backProgress.animateTo(0f, tween(150)) }
-		}
-	}
-
 	LaunchedEffect(viewModel.loginState) {
 		if (viewModel.loginState == LoginUiState.Confirmed) navigator.reset(AppRoute.Home)
 		if (viewModel.loginState == LoginUiState.ConnectionError) snackbarHostState.showSnackbar(text("login_connection_error"))
 	}
 
 	MaterialClassTheme(theme) {
-		Surface(modifier = Modifier.fillMaxSize().offset { IntOffset((screenWidth * backProgress.value).toInt(), 0) }, color = MaterialTheme.colorScheme.background) {
-			if (navigator.current in loginRoutes) {
+		val currentRoute = navigator.current
+		val previousRoute = navigator.previousOrNull()
+		val renderRoute: @Composable (AppRoute) -> Unit = { route ->
+			if (route in loginRoutes) {
 				LoginFlow(text, viewModel, loginRoute(viewModel.loginState)) { viewModel.resetLogin(); navigator.reset(AppRoute.Login) }
 			} else {
 				AppScaffold(
 					navigator = navigator,
+					route = route,
 					text = text,
 					viewModel = viewModel,
 					snackbarHostState = snackbarHostState,
@@ -113,5 +94,20 @@ fun MaterialClassApp(
 				)
 			}
 		}
+		AndroidView(
+			modifier = Modifier.fillMaxSize(),
+			factory = { PredictiveBackLayout(it) },
+			update = { layout ->
+				layout.updateLayers(
+					backgroundColor = MaterialTheme.colorScheme.background.toArgb(),
+					gestureEnabled = navigator.canGoBack() && previousRoute != null,
+					previousRoute = previousRoute,
+					currentRoute = currentRoute,
+					previousContent = previousRoute?.let { route -> { renderRoute(route) } },
+					currentContent = { renderRoute(currentRoute) },
+					onClose = { navigator.back() },
+				)
+			},
+		)
 	}
 }

@@ -110,6 +110,7 @@ dependencies {
 	implementation(libs.androidx.compose.material3)
 	implementation(libs.androidx.compose.material.icons)
 	implementation(libs.androidx.core.ktx)
+	implementation(libs.androidx.customview)
 	implementation(libs.androidx.work.runtime)
 	coreLibraryDesugaring(libs.android.desugar.jdk.libs)
 

@@ -19,6 +19,7 @@ class UiModelTest {
 		navigator.go(AppRoute.LessonDetail)
 
 		assertEquals(AppRoute.LessonDetail, navigator.current)
+		assertEquals(AppRoute.Schedule, navigator.previousOrNull())
 		assertTrue(navigator.back())
 		assertEquals(AppRoute.Schedule, navigator.current)
 		assertTrue(navigator.back())

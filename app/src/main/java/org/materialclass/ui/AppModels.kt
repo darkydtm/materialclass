@@ -71,6 +71,8 @@ class AppNavigator(start: AppRoute) {
 
 	fun canGoBack(): Boolean = stack.size > 1
 
+	fun previousOrNull(): AppRoute? = stack.getOrNull(stack.lastIndex - 1)
+
 	fun reset(next: AppRoute) {
 		stack.clear()
 		stack += next
