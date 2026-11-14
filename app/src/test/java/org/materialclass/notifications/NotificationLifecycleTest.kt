@@ -79,6 +79,21 @@ class NotificationLifecycleTest {
 	}
 
 	@Test
+	fun partialReadDoesNotCreateAnyBaseline() {
+		val state = InMemoryNotificationStateStore()
+		val processor = NotificationProcessor(state, RecordingNotificationPublisher())
+		val item = NotificationItem(NotificationCategory.NEW_GRADE, "grade-1", "Grade", "Changed")
+
+		val result = processor.process(session, settings, true, mapOf(
+			NotificationCategory.NEW_GRADE to CategoryReadResult.Available(listOf(item)),
+			NotificationCategory.HOMEWORK to CategoryReadResult.Failed,
+		))
+
+		assertEquals(NotificationRunStatus.FAILED, result.status)
+		assertFalse(state.hasBaseline(session.activeSession.accountId.value, session.activeSession.generation, NotificationCategory.NEW_GRADE))
+	}
+
+	@Test
 	fun failedReadIsNotReportedAsProcessed() {
 		val processor = NotificationProcessor(InMemoryNotificationStateStore(), RecordingNotificationPublisher())
 
