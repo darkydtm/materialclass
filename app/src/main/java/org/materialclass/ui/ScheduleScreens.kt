@@ -74,7 +74,11 @@ internal fun HomeScreen(
 			}
 		}
 		item {
-			Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+			Card(
+				shape = CardShape,
+				colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+				modifier = Modifier.fillMaxWidth().testTag("day-progress-card"),
+			) {
 				Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 					Text(text("day_progress"), style = MaterialTheme.typography.labelLarge)
 					Text(if (today == null) text("no_data") else "$completedLessons / ${today.lessons.size}", style = MaterialTheme.typography.displaySmall)
@@ -134,7 +138,7 @@ internal fun ScheduleScreen(
 		verticalArrangement = Arrangement.spacedBy(16.dp),
 	) {
 		item {
-			Card(shape = WeekPickerShape) {
+			Card(shape = WeekPickerShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
 				Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
 					Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
 						IconButton(onClick = { weekOffset-- }) { Icon(Icons.Default.ArrowBack, contentDescription = text("previous_week")) }

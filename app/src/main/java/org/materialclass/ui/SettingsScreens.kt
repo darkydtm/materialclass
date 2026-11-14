@@ -67,7 +67,7 @@ internal fun SettingsScreen(
 
 @Composable
 private fun SettingRow(label: String, supporting: String, onClick: () -> Unit) {
-	Card(onClick = onClick, shape = RowShape, modifier = Modifier.fillMaxWidth()) {
+	Card(onClick = onClick, shape = RowShape, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
 		Row(modifier = Modifier.fillMaxWidth().heightIn(min = 58.dp).padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
 			Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
 				Text(label, style = MaterialTheme.typography.labelLarge)
@@ -83,7 +83,7 @@ internal fun <T> ChoiceScreen(padding: PaddingValues, text: (String) -> String, 
 	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
 		Text(text(kind), style = MaterialTheme.typography.headlineMedium)
 		values.forEach { value ->
-			Card(onClick = { onValue(value) }, shape = RowShape, modifier = Modifier.fillMaxWidth()) {
+			Card(onClick = { onValue(value) }, shape = RowShape, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
 				Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
 					Text(label(value))
 					if (value == selected) Icon(Icons.Default.Check, contentDescription = null)
@@ -111,7 +111,7 @@ internal fun NotificationsScreen(
 
 @Composable
 private fun NotificationRow(text: (String) -> String, label: String, description: String, enabled: Boolean, onChange: (Boolean) -> Unit) {
-	Card(shape = RowShape, modifier = Modifier.fillMaxWidth()) {
+	Card(shape = RowShape, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
 		Row(modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(start = 20.dp, top = 12.dp, end = 16.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
 			Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
 				Text(label, style = MaterialTheme.typography.bodyMedium)
@@ -135,7 +135,7 @@ internal fun BackgroundWorkScreen(
 	val intervalIndex = intervals.indexOf(interval.toInt()).coerceAtLeast(0)
 	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
 		Text(text("background_work_description"), color = MaterialTheme.colorScheme.onSurfaceVariant)
-		Card(shape = BackgroundShape, modifier = Modifier.fillMaxWidth()) {
+		Card(shape = BackgroundShape, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
 			Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
 				Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
 					Text(text("background_work_enabled"), style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))

@@ -89,7 +89,7 @@ internal fun DiaryScreen(padding: PaddingValues, text: (String) -> String, viewM
 private fun SubjectCard(subject: GradeSubject, text: (String) -> String, onClick: () -> Unit) {
 	val credit = isCreditSubject(subject)
 	val displayedScore = assessmentText(subject.finalScore, subject.scoreType, text("credit"), text("fail"), text("no_data"))
-	Card(onClick = onClick, shape = RowShape, modifier = Modifier.fillMaxWidth(), colors = if (credit) CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer) else CardDefaults.cardColors()) {
+	Card(onClick = onClick, shape = RowShape, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = if (credit) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh)) {
 		Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 			Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
 				Text(subject.subjectName ?: text("unknown"), style = MaterialTheme.typography.titleLarge)
@@ -129,7 +129,7 @@ internal fun SubjectDetailScreen(padding: PaddingValues, text: (String) -> Strin
 					Text(text("no_data"), color = MaterialTheme.colorScheme.onSurfaceVariant)
 				}
 				subject.schedules.forEach { schedule ->
-					Card(shape = RowShape, modifier = Modifier.fillMaxWidth()) {
+					Card(shape = RowShape, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
 						Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
 							Text(schedule.type ?: text("unknown"))
 							Text(schedule.markMax?.toString() ?: "-")
