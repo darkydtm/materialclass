@@ -1,5 +1,7 @@
 package org.materialclass.ui
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Color
@@ -144,12 +146,24 @@ internal class PredictiveBackLayout(
 	}
 
 	fun commitPredictiveBack() {
-		if (!gestureEnabled) return
-		setPredictiveProgress(1f)
-		if (!closeDispatched) {
-			closeDispatched = true
-			awaitingContentSwap = true
-			onClose?.invoke()
+		if (!gestureEnabled || closeDispatched) return
+		openingAnimator?.cancel()
+		closeDispatched = true
+		val start = if (width == 0) 1f else contentLayer.left.toFloat() / width
+		openingAnimator = ValueAnimator.ofFloat(start, 1f).apply {
+			duration = (300L * (1f - start)).toLong()
+			addUpdateListener { setPredictiveProgress(it.animatedValue as Float) }
+			addListener(object : AnimatorListenerAdapter() {
+				private var cancelled = false
+				override fun onAnimationCancel(animation: Animator) { cancelled = true }
+				override fun onAnimationEnd(animation: Animator) {
+					if (!cancelled) {
+						awaitingContentSwap = true
+						onClose?.invoke()
+					}
+				}
+			})
+			start()
 		}
 	}
 

@@ -55,6 +55,7 @@ internal fun AppScaffold(
 	backgroundInterval: Float,
 	onBackgroundInterval: (Float) -> Unit,
 	onLogout: () -> Unit,
+	onBack: () -> Unit = { navigator.back() },
 ) {
 	val titleKey = route.titleKey()
 	val rootRoutes = primaryRoutes.toList()
@@ -65,7 +66,7 @@ internal fun AppScaffold(
 				title = { Text(text(titleKey)) },
 				navigationIcon = {
 					if (route !in rootRoutes) {
-						IconButton(onClick = { navigator.back() }, modifier = Modifier.testTag("back")) {
+						IconButton(onClick = onBack, modifier = Modifier.testTag("back")) {
 							Icon(Icons.Default.ArrowBack, contentDescription = text("back"))
 						}
 					}

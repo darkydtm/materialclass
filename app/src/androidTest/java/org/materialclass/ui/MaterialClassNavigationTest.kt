@@ -259,15 +259,17 @@ class MaterialClassNavigationTest {
 			)
 		}
 		composeRule.waitForIdle()
+		var closes = 0
 		composeRule.runOnUiThread {
 			layout.updateLayers(
 				android.graphics.Color.BLACK, true, AppRoute.Settings, AppRoute.SettingsTheme,
 				previous, { Box(Modifier.fillMaxSize().background(Color.Yellow)) },
-			) { }
+			) { closes++ }
 		}
 		composeRule.waitForIdle()
+		composeRule.runOnUiThread { layout.commitPredictiveBack() }
+		composeRule.waitUntil(5_000) { closes == 1 }
 		composeRule.runOnUiThread {
-			layout.commitPredictiveBack()
 			layout.updateLayers(android.graphics.Color.BLACK, false, null, AppRoute.Settings, null, previous) { }
 		}
 		composeRule.waitForIdle()

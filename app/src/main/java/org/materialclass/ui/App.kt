@@ -119,6 +119,7 @@ fun MaterialClassApp(
 					backgroundInterval = backgroundInterval,
 					onBackgroundInterval = { backgroundInterval = it; actualPreferences.setBackgroundInterval(it); onBackgroundSettingsChanged() },
 					onLogout = { viewModel.logout(); navigator.reset(AppRoute.Login) },
+					onBack = { if (backLayout != null) backLayout?.commitPredictiveBack() else navigator.back() },
 				)
 			}
 		}
