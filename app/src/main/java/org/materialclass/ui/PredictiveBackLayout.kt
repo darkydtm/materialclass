@@ -23,8 +23,8 @@ internal class PredictiveBackLayout(
 ) : ViewGroup(context) {
 	private val backgroundLayer = View(context)
 	private val shadowLayer = View(context)
-	private val previousLayer = ComposeLayer(context)
-	private val contentLayer = ComposeLayer(context)
+	private var previousLayer = ComposeLayer(context)
+	private var contentLayer = ComposeLayer(context)
 	private val dragHelper = ViewDragHelper.create(this, 1f, DragCallback())
 	private val edgeSize = (24 * resources.displayMetrics.density).roundToInt()
 	private val shadowWidth = (24 * resources.displayMetrics.density).roundToInt()
@@ -99,7 +99,16 @@ internal class PredictiveBackLayout(
 					}
 				}
 			} else {
-				previousLayer.updateContent(previousContent)
+				if (opening) {
+					val oldContent = contentLayer
+					contentLayer = previousLayer
+					previousLayer = oldContent
+					previousLayer.bringToFront()
+					shadowLayer.bringToFront()
+					contentLayer.bringToFront()
+				} else {
+					previousLayer.updateContent(previousContent)
+				}
 				contentLayer.updateContent(currentContent)
 				previousLayer.visibility = if (previousContent == null) INVISIBLE else VISIBLE
 				contentLayer.visibility = VISIBLE
