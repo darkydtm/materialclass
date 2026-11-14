@@ -27,8 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 
 import androidx.compose.material3.Text
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -114,8 +113,8 @@ private fun SubjectCard(subject: GradeSubject, text: (String) -> String, onClick
 		Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 			Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
 				Text(subject.subjectName ?: text("unknown"), modifier = Modifier.weight(1f).padding(end = 8.dp), style = MaterialTheme.typography.titleLarge)
-				Surface(shape = RoundedCornerShape(10.dp), color = gradeContainerColor(subject.finalScore, subject.scoreType, 5.0)) {
-					Text(displayedScore, modifier = Modifier.widthIn(min = 34.dp).padding(horizontal = 8.dp, vertical = 8.dp), textAlign = TextAlign.Center, style = MaterialTheme.typography.titleMedium, color = assessmentColor(subject.finalScore, subject.scoreType))
+				Surface(shape = RoundedCornerShape(10.dp), color = gradeContainerColor(subject.finalScore, subject.scoreType, 5.0), contentColor = gradeContentColor(subject.finalScore, subject.scoreType, 5.0)) {
+					Text(displayedScore, modifier = Modifier.widthIn(min = 34.dp).padding(horizontal = 8.dp, vertical = 8.dp), textAlign = TextAlign.Center, style = MaterialTheme.typography.titleMedium)
 				}
 			}
 			Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
@@ -158,14 +157,32 @@ internal fun gradeContainerColor(value: String?, scoreType: String?, maximum: Do
 }
 
 @Composable
+internal fun gradeContentColor(value: String?, scoreType: String?, maximum: Double? = null): androidx.compose.ui.graphics.Color {
+	val colors = MaterialTheme.colorScheme
+	return when (gradeContainerColor(value, scoreType, maximum)) {
+		colors.errorContainer -> colors.onErrorContainer
+		colors.tertiaryContainer -> colors.onTertiaryContainer
+		colors.secondaryContainer -> colors.onSecondaryContainer
+		colors.primaryContainer -> colors.onPrimaryContainer
+		else -> colors.onSurface
+	}
+}
+
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
 internal fun GradeTile(value: String?, scoreType: String?, date: String?, type: String?, text: (String) -> String, maximum: Double? = null) {
 	var showComparison by remember { mutableStateOf(false) }
 	if (showComparison) {
-		AlertDialog(onDismissRequest = { showComparison = false }, title = { Text(text("grade_comparison")) }, text = { Text(text("grade_comparison_unavailable")) }, confirmButton = { TextButton(onClick = { showComparison = false }) { Text(text("back")) } })
+		ModalBottomSheet(onDismissRequest = { showComparison = false }) {
+			Column(modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+				Text(text("grade_comparison"), style = MaterialTheme.typography.headlineSmall)
+				Text(text("grade_comparison_unavailable"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+			}
+		}
 	}
 	Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp)) {
 		if (!type.isNullOrBlank()) Text(type, style = MaterialTheme.typography.labelSmall, maxLines = 1)
-		Surface(onClick = { showComparison = true }, shape = RoundedCornerShape(11.dp), color = gradeContainerColor(value, scoreType, maximum), contentColor = MaterialTheme.colorScheme.onSurface, modifier = Modifier.widthIn(min = 44.dp)) {
+		Surface(onClick = { showComparison = true }, shape = RoundedCornerShape(11.dp), color = gradeContainerColor(value, scoreType, maximum), contentColor = gradeContentColor(value, scoreType, maximum), modifier = Modifier.widthIn(min = 44.dp)) {
 			Box(modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp), contentAlignment = Alignment.Center) {
 				Text(assessmentText(value, scoreType, text("credit"), text("fail"), text("no_data")), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
 			}
@@ -186,10 +203,15 @@ internal fun SubjectDetailScreen(padding: PaddingValues, text: (String) -> Strin
 	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
 		val credit = isCreditSubject(subject)
 		Text(subject.subjectName.orEmpty(), style = MaterialTheme.typography.headlineLarge)
-		Card(shape = CardShape, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = gradeContainerColor(subject.finalScore, subject.scoreType, 5.0))) {
+		Card(shape = CardShape, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = gradeContainerColor(subject.finalScore, subject.scoreType, 5.0), contentColor = gradeContentColor(subject.finalScore, subject.scoreType, 5.0))) {
 			Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
 				Text(text("final_grade"), style = MaterialTheme.typography.labelLarge)
-				Text(assessmentText(subject.finalScore, subject.scoreType, text("credit"), text("fail"), text("no_data")), style = MaterialTheme.typography.displaySmall, color = assessmentColor(subject.finalScore, subject.scoreType))
+				Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+					Text(assessmentText(subject.finalScore, subject.scoreType, text("credit"), text("fail"), text("no_data")), style = MaterialTheme.typography.displaySmall)
+					GradeCalculator.calculate(gradeComponents(subject.schedules)).percentage?.let { percentage ->
+						Text("(${percentage.toInt()}%)", style = MaterialTheme.typography.titleMedium)
+					}
+				}
 			}
 		}
 		if (!credit) {
@@ -201,10 +223,12 @@ internal fun SubjectDetailScreen(padding: PaddingValues, text: (String) -> Strin
 				GradeCategory.entries.forEach { category ->
 					val values = components.filter { it.category == category }.mapNotNull { it.score }
 					val contribution = if (values.isEmpty() || availableWeight == 0) null else (values.average() * weights.getValue(category) / availableWeight).toInt()
-					Card(shape = RowShape, modifier = Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
+					val average = values.takeIf { it.isNotEmpty() }?.average()
+					val color = gradeContainerColor(average?.toString(), null, 100.0)
+					Card(shape = RowShape, modifier = Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = color, contentColor = gradeContentColor(average?.toString(), null, 100.0))) {
 						Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 							Text(text(when (category) { GradeCategory.FO -> "grade_category_fo"; GradeCategory.SOR -> "grade_category_sor"; GradeCategory.SOCH -> "grade_category_soch" }), style = MaterialTheme.typography.labelMedium)
-							Text(if (contribution == null) "-" else "$contribution/${weights.getValue(category)}%", style = MaterialTheme.typography.titleMedium)
+							Text(if (contribution == null) text("no_data") else "$contribution/${weights.getValue(category)}%", style = MaterialTheme.typography.titleMedium)
 						}
 					}
 				}
@@ -213,7 +237,7 @@ internal fun SubjectDetailScreen(padding: PaddingValues, text: (String) -> Strin
 		}
 		val scoredSchedules = subject.schedules.filter { it.score != null || it.sor != null || it.soch != null }
 		if (scoredSchedules.isNotEmpty()) {
-			Text("${scoredSchedules.size}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+			Text("${scoredSchedules.sumOf { listOf(it.score, it.sor, it.soch).count { value -> value != null } }}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
 			androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
 				scoredSchedules.forEach { schedule ->
 					if (schedule.score != null) GradeTile(schedule.score, subject.scoreType, schedule.date, text("grade_category_fo"), text, schedule.markMax?.toDouble())
