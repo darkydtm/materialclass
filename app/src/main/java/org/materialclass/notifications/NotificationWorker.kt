@@ -135,6 +135,7 @@ enum class NotificationRunStatus {
 	BASELINE,
 	PROCESSED,
 	OFFLINE,
+	FAILED,
 	PERMISSION_DENIED,
 	NO_SESSION,
 	NO_TOKEN,
@@ -167,6 +168,7 @@ class NotificationProcessor(
 		var baselineCreated = false
 		var published = 0
 		var sawOffline = false
+		var sawFailed = false
 		var sawUnsupported = false
 		var sawAvailable = false
 		for ((category, result) in reads) {
@@ -191,13 +193,14 @@ class NotificationProcessor(
 				}
 				CategoryReadResult.Offline -> sawOffline = true
 				CategoryReadResult.Unsupported -> sawUnsupported = true
-				CategoryReadResult.Failed -> Unit
+				CategoryReadResult.Failed -> sawFailed = true
 			}
 		}
 		return when {
+			sawFailed -> NotificationRunResult(NotificationRunStatus.FAILED, published)
+			sawOffline -> NotificationRunResult(NotificationRunStatus.OFFLINE, published)
 			baselineCreated -> NotificationRunResult(NotificationRunStatus.BASELINE, published)
 			!permissionGranted && sawAvailable -> NotificationRunResult(NotificationRunStatus.PERMISSION_DENIED, published)
-			sawOffline && !sawAvailable -> NotificationRunResult(NotificationRunStatus.OFFLINE, published)
 			sawUnsupported && !sawAvailable -> NotificationRunResult(NotificationRunStatus.UNSUPPORTED, published)
 			else -> NotificationRunResult(NotificationRunStatus.PROCESSED, published)
 		}
