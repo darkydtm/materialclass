@@ -82,16 +82,18 @@ internal fun DiaryScreen(padding: PaddingValues, text: (String) -> String, viewM
 
 @Composable
 private fun SubjectCard(subject: GradeSubject, text: (String) -> String, onClick: () -> Unit) {
-	Card(onClick = onClick, shape = RowShape, modifier = Modifier.fillMaxWidth()) {
+	val credit = isCreditSubject(subject)
+	val displayedScore = assessmentText(subject.finalScore, subject.scoreType, text("credit"), text("fail"), text("no_data"))
+	Card(onClick = onClick, shape = RowShape, modifier = Modifier.fillMaxWidth(), colors = if (credit) CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer) else CardDefaults.cardColors()) {
 		Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 			Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
 				Text(subject.subjectName ?: text("unknown"), style = MaterialTheme.typography.titleLarge)
-				Text(subject.finalScore ?: text("no_data"), style = MaterialTheme.typography.titleMedium)
+				Text(displayedScore, style = MaterialTheme.typography.titleMedium, color = assessmentColor(subject.finalScore, subject.scoreType))
 			}
 			Divider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 1.dp)
 			Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-				(subject.scores.ifEmpty { listOfNotNull(subject.quarter1, subject.quarter2, subject.quarter3, subject.quarter4) }).forEach { score ->
-					Text(score ?: text("no_data"), modifier = Modifier.width(42.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+				(subject.scores.ifEmpty { subject.schedules.mapNotNull { it.score }.ifEmpty { listOfNotNull(subject.quarter1, subject.quarter2, subject.quarter3, subject.quarter4) } }).forEach { score ->
+					Text(assessmentText(score, subject.scoreType, text("credit"), text("fail"), text("no_data")), modifier = Modifier.width(42.dp), color = assessmentColor(score, subject.scoreType))
 				}
 			}
 		}
@@ -107,29 +109,32 @@ internal fun SubjectDetailScreen(padding: PaddingValues, text: (String) -> Strin
 		return
 	}
 	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+		val credit = isCreditSubject(subject)
 		Text(subject.subjectName.orEmpty(), style = MaterialTheme.typography.headlineLarge)
 		Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
 			Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
 				Text(text("final_grade"), style = MaterialTheme.typography.labelLarge)
-				Text(subject.finalScore ?: text("no_data"), style = MaterialTheme.typography.displaySmall)
+				Text(assessmentText(subject.finalScore, subject.scoreType, text("credit"), text("fail"), text("no_data")), style = MaterialTheme.typography.displaySmall, color = assessmentColor(subject.finalScore, subject.scoreType))
 			}
 		}
-		Text(text("calculation"), style = MaterialTheme.typography.titleMedium)
-		Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-			if (subject.schedules.isEmpty()) {
-				Text(text("no_data"), color = MaterialTheme.colorScheme.onSurfaceVariant)
-			}
-			subject.schedules.forEach { schedule ->
-				Card(shape = RowShape, modifier = Modifier.fillMaxWidth()) {
-					Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-						Text(schedule.type ?: text("unknown"))
-						Text(schedule.markMax?.toString() ?: "-")
+		if (!credit) {
+			Text(text("calculation"), style = MaterialTheme.typography.titleMedium)
+			Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+				if (subject.schedules.isEmpty()) {
+					Text(text("no_data"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+				}
+				subject.schedules.forEach { schedule ->
+					Card(shape = RowShape, modifier = Modifier.fillMaxWidth()) {
+						Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+							Text(schedule.type ?: text("unknown"))
+							Text(schedule.markMax?.toString() ?: "-")
+						}
 					}
 				}
 			}
-		}
-		Button(onClick = { navigator.go(if (subject.schedules.isEmpty()) AppRoute.CalculatorMissing else AppRoute.Calculator) }, modifier = Modifier.fillMaxWidth()) {
-			Text(text("calculation_title"))
+			Button(onClick = { navigator.go(if (subject.schedules.isEmpty()) AppRoute.CalculatorMissing else AppRoute.Calculator) }, modifier = Modifier.fillMaxWidth()) {
+				Text(text("calculation_title"))
+			}
 		}
 	}
 }

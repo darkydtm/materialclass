@@ -87,6 +87,8 @@
 	<string name="lessons_today">Уроки на сегодня</string>
 	<string name="lessons_context">День: сегодня</string>
 	<string name="no_data">Нет данных</string>
+	<string name="credit">Зачет</string>
+	<string name="fail">Незачет</string>
 
 	<string name="week_description">Расписание на ближайшие три недели</string>
 	<string name="lesson_title">Урок</string>

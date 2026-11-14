@@ -190,7 +190,42 @@ class ConfirmedSchoolGateway(
 
 	fun subjects(context: ReadContext): GatewayReadResult<SubjectsModel> = gateway.subjects(context)
 
-	fun grades(context: ReadContext): GatewayReadResult<GradesModel> = gateway.grades(context)
+	fun grades(context: ReadContext): GatewayReadResult<GradesModel> {
+		val subjects = when (val result = gateway.subjects(context)) {
+			is GatewayReadResult.Success -> result.value
+			GatewayReadResult.Empty -> return GatewayReadResult.Empty
+			is GatewayReadResult.Failure -> return GatewayReadResult.Failure(result.error)
+		}
+		val schedules = subjects.subjects.flatMap { it.schedules }
+		if (schedules.isEmpty()) return GatewayReadResult.Success(GradesModel(subjects.subjectCount, subjects.subjects))
+		val dates = schedules.mapNotNull { it.date }.sortedWith(compareBy { parseDate(it) })
+		if (dates.isEmpty()) return GatewayReadResult.Success(GradesModel(subjects.subjectCount, subjects.subjects))
+		val firstDate = dates.first()
+		val lastDate = dates.last()
+		val journalContext = context.copy(
+			queryParameters = context.queryParameters + mapOf(
+				"dateFrom" to journalDate(firstDate),
+				"dateTo" to journalDate(lastDate),
+			),
+		)
+		val journal = when (val result = gateway.journalGrades(journalContext)) {
+			is GatewayReadResult.Success -> result.value
+			GatewayReadResult.Empty -> null
+			is GatewayReadResult.Failure -> null
+		}
+		val bySchedule = journal?.grades.orEmpty().associateBy { it.scheduleUuid }
+		return GatewayReadResult.Success(
+			GradesModel(
+				subjects.subjectCount,
+				subjects.subjects.map { subject ->
+					subject.copy(schedules = subject.schedules.map { schedule ->
+						val grade = bySchedule[schedule.uuid]
+						schedule.copy(score = grade?.mark, attendance = grade?.attendance)
+					})
+				},
+			),
+		)
+	}
 
 	fun schedule(context: ReadContext): GatewayReadResult<ScheduleModel> = gateway.schedule(context)
 
@@ -251,6 +286,14 @@ class ConfirmedSchoolGateway(
 
 	fun studentContext(): GatewayReadResult<ProfileModel> = profile()
 
+	private fun parseDate(value: String): java.time.LocalDate = runCatching {
+		java.time.LocalDate.parse(value, java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy"))
+	}.getOrDefault(java.time.LocalDate.MIN)
+
+	private fun journalDate(value: String): String = runCatching {
+		parseDate(value).toString() + "T00:00:00.000Z"
+	}.getOrDefault(value + "T00:00:00.000Z")
+
 	fun readContext(token: String, key: String): ReadContext {
 		val user = signedInUser ?: return ReadContext(token)
 		val parameters = linkedMapOf(
@@ -273,6 +316,13 @@ class ConfirmedSchoolGateway(
 				parameters["period"] = key.substringAfter(':')
 				user.groupId?.let { parameters["groupId"] = it }
 			}
+			key.startsWith("grades:") -> {
+				parameters["periodType"] = "quarter"
+				parameters["period"] = key.substringAfter(':')
+				user.groupId?.let { parameters["groupId"] = it }
+				parameters["userId"] = user.userId
+				parameters["studentGroupUuids"] = user.studentGroupUuids.joinToString(",")
+			}
 			key == "homeworks" || key.startsWith("homeworks:") -> {
 				user.studentGroupUuid?.let { parameters["studentGroupUuid"] = it }
 			}
@@ -286,9 +336,11 @@ class ConfirmedSchoolGateway(
 			}
 			key.startsWith("journal:") -> {
 				parameters["userId"] = user.userId
-				parameters["studentGroupUuid"] = user.studentGroupUuid.orEmpty()
-				parameters["dateFrom"] = key.substringAfter(':').substringBefore(':') + "T00:00:00.000Z"
-				parameters["dateTo"] = key.substringAfterLast(':') + "T00:00:00.000Z"
+				parameters["studentGroupUuids"] = user.studentGroupUuids.joinToString(",")
+				if (key.startsWith("journal:")) {
+					parameters["dateFrom"] = key.substringAfter(':').substringBefore(':') + "T00:00:00.000Z"
+					parameters["dateTo"] = key.substringAfterLast(':') + "T00:00:00.000Z"
+				}
 			}
 		}
 		return ReadContext(token, parameters.filterValues { it.isNotBlank() }, user.chatToken)

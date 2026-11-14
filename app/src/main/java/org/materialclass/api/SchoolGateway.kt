@@ -211,39 +211,68 @@ class SchoolGateway(
 		}
 	}
 
-	private fun <T> readJournal(
+	private fun readJournal(
 		context: ReadContext,
-		mapper: (String) -> GatewayReadResult<T>,
-	): GatewayReadResult<T> {
+		mapper: (String) -> GatewayReadResult<org.materialclass.data.JournalGradesModel>,
+	): GatewayReadResult<org.materialclass.data.JournalGradesModel> {
 		if (context.accessToken.isBlank()) return GatewayReadResult.Failure(AppError.Unauthorized)
-		val request = HttpRequestData(
-			method = "GET",
-			url = buildUrl(JOURNAL_PATH, context.queryParameters, JOURNAL_BASE_URL),
-			headers = mapOf(
-				"User-Agent" to USER_AGENT,
-				"Accept" to "application/json",
-				"Authorization" to "Bearer ${context.secondaryToken ?: context.accessToken}",
-				"external" to "1",
-				"Origin" to "https://www.bilimclass.kz",
-				"Referer" to "https://www.bilimclass.kz/",
-			),
-			body = "",
-		)
-		return try {
-			val response = transport.execute(request)
-			when {
-				response.status == 401 -> GatewayReadResult.Failure(AppError.Unauthorized)
-				response.status !in 200..299 -> GatewayReadResult.Failure(AppError.HttpStatus(response.status))
-				!response.contentType.lowercase().startsWith("application/json") -> GatewayReadResult.Failure(AppError.InvalidResponse)
-				else -> mapper(response.body)
+		val groups = context.queryParameters["studentGroupUuids"]
+			?.split(',')
+			?.map(String::trim)
+			?.filter(String::isNotBlank)
+			.orEmpty()
+			.ifEmpty { listOfNotNull(context.queryParameters["studentGroupUuid"]) }
+		if (groups.isEmpty()) return GatewayReadResult.Failure(AppError.InvalidResponse)
+		var succeeded = 0
+		var failed = 0
+		var firstFailure: AppError? = null
+		val grades = mutableListOf<org.materialclass.data.JournalGrade>()
+		groups.forEach { group ->
+			val parameters = context.queryParameters - "studentGroupUuids" + ("studentGroupUuid" to group)
+			val request = HttpRequestData(
+				method = "GET",
+				url = buildUrl(JOURNAL_PATH, parameters, JOURNAL_BASE_URL),
+				headers = mapOf(
+					"User-Agent" to USER_AGENT,
+					"Accept" to "application/json",
+					"Authorization" to "Bearer ${context.secondaryToken ?: context.accessToken}",
+					"external" to "1",
+					"Origin" to "https://www.bilimclass.kz",
+					"Referer" to "https://www.bilimclass.kz/",
+				),
+				body = "",
+			)
+			try {
+				val response = transport.execute(request)
+				when {
+					response.status == 401 -> GatewayReadResult.Failure<org.materialclass.data.JournalGradesModel>(AppError.Unauthorized)
+					response.status !in 200..299 -> GatewayReadResult.Failure<org.materialclass.data.JournalGradesModel>(AppError.HttpStatus(response.status))
+					!response.contentType.lowercase().startsWith("application/json") -> GatewayReadResult.Failure<org.materialclass.data.JournalGradesModel>(AppError.InvalidResponse)
+					else -> mapper(response.body)
+				}.also { result ->
+					when (result) {
+						is GatewayReadResult.Success -> {
+							succeeded++
+							if (result.value is org.materialclass.data.JournalGradesModel) grades += (result.value as org.materialclass.data.JournalGradesModel).grades
+						}
+						GatewayReadResult.Empty -> succeeded++
+						is GatewayReadResult.Failure -> { failed++; if (firstFailure == null) firstFailure = result.error }
+					}
+				}
+			} catch (_: TransportFailure.Timeout) {
+				failed++
+				if (firstFailure == null) firstFailure = AppError.Timeout
+			} catch (_: TransportFailure.Offline) {
+				failed++
+				if (firstFailure == null) firstFailure = AppError.Offline
+			} catch (_: Exception) {
+				failed++
+				if (firstFailure == null) firstFailure = AppError.Network
 			}
-		} catch (_: TransportFailure.Timeout) {
-			GatewayReadResult.Failure(AppError.Timeout)
-		} catch (_: TransportFailure.Offline) {
-			GatewayReadResult.Failure(AppError.Offline)
-		} catch (_: Exception) {
-			GatewayReadResult.Failure(AppError.Network)
 		}
+		if (succeeded == 0) return GatewayReadResult.Failure(firstFailure ?: AppError.Network)
+		if (grades.isEmpty() && failed == 0) return GatewayReadResult.Empty
+		return GatewayReadResult.Success(org.materialclass.data.JournalGradesModel(grades, succeeded, failed))
 	}
 
 	private fun readBinary(context: ReadContext, path: String): HttpResult {

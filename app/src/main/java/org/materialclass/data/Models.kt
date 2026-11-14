@@ -114,17 +114,27 @@ data class DiaryWeeksModel(
 
 data class PeriodsModel(
 	val periodCount: Int,
+	val periods: List<DiaryPeriod> = emptyList(),
 ) {
 	init {
 		require(periodCount >= 0) { "Period count must not be negative" }
-	}
+		require(periods.size <= periodCount) { "Period list must fit the period count" }
 }
+}
+
+data class DiaryPeriod(
+	val period: Int?,
+	val start: String?,
+	val end: String?,
+) : java.io.Serializable
 
 data class SubjectsModel(
 	val subjectCount: Int,
+	val subjects: List<GradeSubject> = emptyList(),
 ) {
 	init {
 		require(subjectCount >= 0) { "Subject count must not be negative" }
+		require(subjectCount == subjects.size || subjects.isEmpty()) { "Subject count must match subjects" }
 	}
 }
 
@@ -179,6 +189,14 @@ data class GradeSubject(
 	val yearScore: String? = null,
 	val totalMissCount: Int? = null,
 	val scores: List<String> = emptyList(),
+	val scoreType: String? = null,
+	val scoreEntries: List<GradeScoreEntry> = emptyList(),
+) : java.io.Serializable
+
+data class GradeScoreEntry(
+	val category: String?,
+	val value: String?,
+	val max: String? = null,
 ) : java.io.Serializable
 
 data class JournalGrade(
@@ -197,7 +215,12 @@ data class JournalGradesModel(
 	val grades: List<JournalGrade>,
 	val groupsSucceeded: Int,
 	val groupsFailed: Int,
-) : java.io.Serializable
+) : java.io.Serializable {
+	init {
+		require(groupsSucceeded >= 0) { "Successful group count must not be negative" }
+		require(groupsFailed >= 0) { "Failed group count must not be negative" }
+	}
+}
 
 data class HomeworkItem(
 	val uuid: String?,
@@ -231,6 +254,8 @@ data class GradeSchedule(
 	val timeStart: String?,
 	val markMax: Int?,
 	val type: String?,
+	val score: String? = null,
+	val attendance: String? = null,
 ) : java.io.Serializable
 
 data object AttendanceModel

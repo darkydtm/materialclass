@@ -5,9 +5,11 @@ import java.time.LocalDateTime
 import java.time.ZoneOffset
 import org.materialclass.data.DiaryDay
 import org.materialclass.data.DiaryModel
+import org.materialclass.data.DiaryPeriod
 import org.materialclass.data.DiarySubject
 import org.materialclass.data.DiaryWeeksModel
 import org.materialclass.data.GradeSchedule
+import org.materialclass.data.GradeScoreEntry
 import org.materialclass.data.GradeSubject
 import org.materialclass.data.GradesModel
 import org.materialclass.data.HomeworkDetailModel
@@ -79,7 +81,12 @@ object ContractMapper {
 	fun mapDiaryPeriods(body: String): GatewayReadResult<PeriodsModel> = try {
 		val periods = JsonParser(body).parseObject().requiredObject("data").requiredArray("periods")
 		if (periods.any { it !is JsonValue.ObjectValue }) throw IllegalArgumentException("unsupported period shape")
-		if (periods.isEmpty()) GatewayReadResult.Empty else GatewayReadResult.Success(PeriodsModel(periods.size))
+		if (periods.isEmpty()) GatewayReadResult.Empty else GatewayReadResult.Success(
+			PeriodsModel(periods.size, periods.map { value ->
+				val item = value.asObject()
+				DiaryPeriod(item["period"]?.scoreValue()?.toIntOrNull(), item["periodStart"]?.asText(), item["periodEnd"]?.asText())
+			}),
+		)
 	} catch (_: Exception) {
 		GatewayReadResult.Failure(AppError.InvalidResponse)
 	}
@@ -87,7 +94,9 @@ object ContractMapper {
 	fun mapSubjects(body: String): GatewayReadResult<SubjectsModel> = try {
 		val subjects = JsonParser(body).parseObject().requiredArray("data")
 		if (subjects.any { it !is JsonValue.ObjectValue }) throw IllegalArgumentException("unsupported subject shape")
-		if (subjects.isEmpty()) GatewayReadResult.Empty else GatewayReadResult.Success(SubjectsModel(subjects.size))
+		if (subjects.isEmpty()) GatewayReadResult.Empty else GatewayReadResult.Success(
+			SubjectsModel(subjects.size, subjects.map { it.asObject().toGradeSubject() }),
+		)
 	} catch (_: Exception) {
 		GatewayReadResult.Failure(AppError.InvalidResponse)
 	}
@@ -199,6 +208,7 @@ data class UserInfo(
 	val groupId: String? = null,
 	val studentSchoolUuid: String? = null,
 	val studentGroupUuid: String? = null,
+	val studentGroupUuids: List<String> = emptyList(),
 	val eduYear: String? = null,
 	val chatToken: String? = null,
 	val role: String? = null,
@@ -233,6 +243,9 @@ private fun Map<String, JsonValue>.toUserInfo(userId: String): UserInfo {
 		studentSchoolUuid = student?.get("studentSchoolUuid")?.asText(),
 		studentGroupUuid = student?.get("studentGroupUuid")?.asText()
 			?: (student?.get("studentGroupUuids") as? JsonValue.ArrayValue)?.values?.firstOrNull()?.asText(),
+		studentGroupUuids = (student?.get("studentGroupUuids") as? JsonValue.ArrayValue)?.values
+			.orEmpty().mapNotNull { it.asText()?.takeIf(String::isNotBlank) }
+			.ifEmpty { listOfNotNull(student?.get("studentGroupUuid")?.asText()?.takeIf(String::isNotBlank)) },
 		eduYear = currentYear,
 		chatToken = get("chatToken")?.asText(),
 		role = get("role")?.asText(),
@@ -292,9 +305,14 @@ private fun JsonValue.textValue(): String? = when (this) {
 private fun Map<String, JsonValue>.toGradeSubject(): GradeSubject {
 	val schedules = (get("schedules") as? JsonValue.ArrayValue)?.values.orEmpty().map { value ->
 		val item = value.asObject()
-		GradeSchedule(item["uuid"]?.asText(), item["date"]?.asText(), item["timeStart"]?.asText(), item["markMax"]?.asText()?.toIntOrNull(), item["type"]?.asText())
+		GradeSchedule(item["uuid"]?.asText(), item["date"]?.asText(), item["timeStart"]?.asText(), item["markMax"]?.asText()?.toIntOrNull(), item["type"]?.textValue())
 	}
-	return GradeSubject(get("subjectName")?.asText(), get("finalScore")?.asText(), schedules)
+	return GradeSubject(
+		subjectName = get("subjectName")?.asText(),
+		finalScore = get("finalScore")?.scoreValue(),
+		schedules = schedules,
+		scoreType = get("scoreType")?.asText(),
+	)
 }
 
 private fun Map<String, JsonValue>.toYearGradeSubject(): GradeSubject {
@@ -303,15 +321,19 @@ private fun Map<String, JsonValue>.toYearGradeSubject(): GradeSubject {
 	val attendances = (get("attendances") as? JsonValue.ObjectValue)?.values
 	return GradeSubject(
 		subjectName = get("subjectName")?.asText(),
-		finalScore = yearScores?.get("finalScore")?.asText(),
+		finalScore = yearScores?.get("finalScore")?.scoreValue() ?: yearScores?.get("yearScore")?.scoreValue(),
 		schedules = emptyList(),
+		scoreType = get("scoreType")?.asText(),
 		quarter1 = attestations?.score("quarter1"),
 		quarter2 = attestations?.score("quarter2"),
 		quarter3 = attestations?.score("quarter3"),
 		quarter4 = attestations?.score("quarter4"),
-		yearScore = yearScores?.get("yearScore")?.asText(),
+		yearScore = yearScores?.get("yearScore")?.scoreValue(),
 		totalMissCount = attendances?.get("totalMissCount")?.asText()?.toIntOrNull(),
-		scores = attestations.orEmpty().values.mapNotNull { it.scoreValue() }.distinct(),
+		scores = attestations.orEmpty().values.mapNotNull { it.scoreValue() },
+		scoreEntries = attestations.orEmpty().map { (category, value) ->
+			GradeScoreEntry(category, value.scoreValue(), (value as? JsonValue.ObjectValue)?.values?.get("markMax")?.scoreValue())
+		},
 	)
 }
 
@@ -350,15 +372,16 @@ private fun Map<String, JsonValue>.toHomeworkDetail(): HomeworkDetailModel = Hom
 
 private fun Map<String, JsonValue>.toJournalGrade(scheduleUuid: String): JournalGrade {
 	val formatted = (get("formattedScore") as? JsonValue.ObjectValue)?.values
+	val score = formatted?.get("mark")?.scoreValue()
 	return JournalGrade(
 		scheduleUuid = get("scheduleUuid")?.asText() ?: scheduleUuid,
 		attendance = get("attendance")?.asText(),
-		formattedScore = get("formattedScore")?.asText(),
-		sor = get("sor")?.asText(),
-		soch = get("soch")?.asText(),
-		po = get("po")?.asText(),
-		mark = formatted?.get("mark")?.asText(),
-		markMax = formatted?.get("markMax")?.asText(),
+		formattedScore = score,
+		sor = get("sor")?.scoreValue(),
+		soch = get("soch")?.scoreValue(),
+		po = get("po")?.scoreValue(),
+		mark = score,
+		markMax = formatted?.get("markMax")?.scoreValue(),
 		comment = formatted?.get("comment")?.asText(),
 	)
 }

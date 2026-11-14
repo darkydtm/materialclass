@@ -87,6 +87,8 @@
 	<string name="lessons_today">Today’s lessons</string>
 	<string name="lessons_context">Today</string>
 	<string name="no_data">No data</string>
+	<string name="credit">Pass</string>
+	<string name="fail">Fail</string>
 
 	<string name="week_description">Three weeks ahead, broken down by lesson</string>
 	<string name="lesson_title">Lesson</string>

@@ -113,4 +113,20 @@ class UiModelTest {
 		val after = listOf(org.materialclass.data.GradeSubject("Math", "4", emptyList()))
 		assertEquals(gradeSubjectStableKeys(before), gradeSubjectStableKeys(after))
 	}
+
+	@Test
+	fun assessmentTypeUsesCreditLabelsAndKeepsNumbersNumeric() {
+		assertEquals(AssessmentKind.Credit, assessmentKind("Зачет"))
+		assertEquals(AssessmentKind.Fail, assessmentKind("Незачет"))
+		assertEquals(AssessmentKind.Numeric, assessmentKind("8"))
+		assertEquals(AssessmentKind.Credit, assessmentKind("ok", "credit"))
+		assertEquals("Зачет", assessmentText("pass", null, "Зачет", "Незачет", "Нет данных"))
+		assertEquals("8", assessmentText("8", null, "Зачет", "Незачет", "Нет данных"))
+	}
+
+	@Test
+	fun creditSubjectIsDetectedFromFinalOrLessonAssessment() {
+		assertTrue(isCreditSubject(org.materialclass.data.GradeSubject("Safety", "Зачет", emptyList())))
+		assertTrue(isCreditSubject(org.materialclass.data.GradeSubject("Safety", null, listOf(org.materialclass.data.GradeSchedule("lesson", null, null, null, null, "Незачет")))))
+	}
 }

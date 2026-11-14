@@ -5,6 +5,8 @@ import android.content.SharedPreferences
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
 import java.time.LocalDate
 import java.util.Locale
 import java.util.concurrent.Executors
@@ -354,6 +356,44 @@ internal fun findScheduleLesson(days: List<ScheduleDay>, selected: String): Sche
 
 internal fun gradeSubjectStableKeys(subjects: List<GradeSubject>): List<String> =
 	uniqueStableKeys("subject", subjects.map(::gradeSubjectIdentity))
+
+internal enum class AssessmentKind {
+	Numeric,
+	Credit,
+	Fail,
+	Empty,
+}
+
+internal fun assessmentKind(value: String?, scoreType: String? = null): AssessmentKind {
+	val normalizedValue = value?.trim()?.lowercase(Locale.ROOT).orEmpty()
+	val normalizedType = scoreType?.trim()?.lowercase(Locale.ROOT).orEmpty()
+	return when {
+		normalizedValue.isBlank() -> AssessmentKind.Empty
+		normalizedValue.contains("незач") || normalizedValue.contains("не зач") || normalizedValue in setOf("fail", "failed", "not_pass") -> AssessmentKind.Fail
+		normalizedValue.contains("зач") || normalizedValue in setOf("pass", "passed", "credit") -> AssessmentKind.Credit
+		normalizedType in setOf("credit", "pass_fail", "pass-fail", "offset") -> if (normalizedValue.contains("незач") || normalizedValue.contains("не зач") || normalizedValue in setOf("fail", "failed", "not_pass")) AssessmentKind.Fail else AssessmentKind.Credit
+		else -> AssessmentKind.Numeric
+	}
+}
+
+internal fun isCreditSubject(subject: GradeSubject): Boolean =
+	subject.scoreType?.trim()?.lowercase(Locale.ROOT) in setOf("credit", "pass_fail", "pass-fail", "offset") ||
+	assessmentKind(subject.finalScore, subject.scoreType) in setOf(AssessmentKind.Credit, AssessmentKind.Fail) ||
+		subject.schedules.any { assessmentKind(it.score, subject.scoreType) in setOf(AssessmentKind.Credit, AssessmentKind.Fail) }
+
+internal fun assessmentText(value: String?, scoreType: String?, credit: String, fail: String, noData: String): String = when (assessmentKind(value, scoreType)) {
+	AssessmentKind.Credit -> credit
+	AssessmentKind.Fail -> fail
+	AssessmentKind.Empty -> noData
+	AssessmentKind.Numeric -> value.orEmpty()
+}
+
+@Composable
+internal fun assessmentColor(value: String?, scoreType: String?): androidx.compose.ui.graphics.Color = when (assessmentKind(value, scoreType)) {
+	AssessmentKind.Credit -> androidx.compose.material3.MaterialTheme.colorScheme.primary
+	AssessmentKind.Fail -> androidx.compose.material3.MaterialTheme.colorScheme.error
+	else -> androidx.compose.material3.MaterialTheme.colorScheme.onSurface
+}
 
 internal const val INTERACTIVE_FRAME_BUDGET_MS = 8.3f
 

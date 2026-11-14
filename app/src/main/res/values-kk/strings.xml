@@ -87,6 +87,8 @@
 	<string name="lessons_today">Бүгінгі сабақтар</string>
 	<string name="lessons_context">Бүгін</string>
 	<string name="no_data">Дерек жоқ</string>
+	<string name="credit">Сынақ</string>
+	<string name="fail">Сынақтан өтпеді</string>
 
 	<string name="week_description">Алдағы үш аптаның сабақ кестесі</string>
 	<string name="lesson_title">Сабақ</string>
