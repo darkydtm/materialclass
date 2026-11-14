@@ -1,12 +1,16 @@
 package org.materialclass.ui.theme
 
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -30,7 +34,10 @@ fun MaterialClassTheme(themeMode: ThemeMode, content: @Composable () -> Unit) {
 	val effectiveMode = if (themeMode == ThemeMode.SYSTEM) {
 		if (dark) ThemeMode.DARK else ThemeMode.LIGHT
 	} else themeMode
-	val colorScheme = when (effectiveMode) {
+	val colorScheme = if (themeMode != ThemeMode.BLACK && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+		val context = LocalContext.current
+		if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+	} else when (effectiveMode) {
 		ThemeMode.BLACK -> darkColorScheme(
 			primary = Color(0xFFB5CCB6), onPrimary = Color(0xFF203526), primaryContainer = Color(0xFF263A2B), onPrimaryContainer = Color(0xFFD1E8D2),
 			secondary = Color(0xFFBBCBB8), onSecondary = Color(0xFF263426), secondaryContainer = Color(0xFF2B382B), onSecondaryContainer = Color(0xFFD6E8D3),
