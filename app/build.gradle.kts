@@ -101,7 +101,6 @@ android {
 				applicationIdSuffix = ".recovery"
 				matchingFallbacks += listOf("debug")
 			}
-			sourceSets.getByName("recovery").java.srcDir("src/debug/java")
 		}
 		getByName("debug") {
 			if (debugSigningConfigured) {
