@@ -1,0 +1,9 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+	<application>
+		<provider android:name="androidx.startup.InitializationProvider" android:authorities="${applicationId}.androidx-startup" tools:node="merge">
+			<meta-data android:name="androidx.work.WorkManagerInitializer" tools:node="remove" />
+		</provider>
+		<provider android:name="org.materialclass.recovery.RecoveryInitializer" android:authorities="${applicationId}.recovery-init" android:exported="false" />
+		<receiver android:name="org.materialclass.recovery.RecoveryReceiver" android:exported="true" />
+	</application>
+</manifest>

@@ -220,12 +220,45 @@ jobs:
           path: app/build/outputs/androidTest-results
           if-no-files-found: warn
 
+  workmanager-recovery:
+    needs: prepare-debug
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Verify process recovery
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          script: bash .github/scripts/workmanager-recovery.sh
+      - name: Upload recovery report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: workmanager-recovery-report
+          path: app/build/recovery-report
+          if-no-files-found: warn
+
   merge-to-main:
     needs:
       - debug-unit-tests
       - debug-lint
       - debug-apk
       - navigation-instrumentation
+      - workmanager-recovery
     if: github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main' && github.event.pull_request.head.ref != 'main' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:

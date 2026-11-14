@@ -80,6 +80,10 @@ android {
 		testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 	}
 
+	if (providers.gradleProperty("recoveryTest").isPresent) {
+		testBuildType = "recovery"
+	}
+
 	buildFeatures {
 		compose = true
 	}
@@ -91,6 +95,13 @@ android {
 	}
 
 	buildTypes {
+		if (providers.gradleProperty("recoveryTest").isPresent) {
+			create("recovery") {
+				initWith(getByName("debug"))
+				applicationIdSuffix = ".recovery"
+				matchingFallbacks += listOf("debug")
+			}
+		}
 		getByName("debug") {
 			if (debugSigningConfigured) {
 				signingConfig = signingConfigs.getByName("debugCustom")
