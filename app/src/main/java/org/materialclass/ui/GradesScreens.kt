@@ -5,12 +5,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.width
+
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -92,13 +93,17 @@ private fun SubjectCard(subject: GradeSubject, text: (String) -> String, onClick
 	Card(onClick = onClick, shape = RowShape, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = if (credit) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh)) {
 		Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 			Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-				Text(subject.subjectName ?: text("unknown"), style = MaterialTheme.typography.titleLarge)
+				Text(subject.subjectName ?: text("unknown"), modifier = Modifier.weight(1f).padding(end = 8.dp), style = MaterialTheme.typography.titleLarge)
 				Text(displayedScore, style = MaterialTheme.typography.titleMedium, color = assessmentColor(subject.finalScore, subject.scoreType))
 			}
 			Divider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 1.dp)
 			Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
 				(subject.scores.ifEmpty { subject.schedules.mapNotNull { it.score }.ifEmpty { listOfNotNull(subject.quarter1, subject.quarter2, subject.quarter3, subject.quarter4) } }).forEach { score ->
-					Text(assessmentText(score, subject.scoreType, text("credit"), text("fail"), text("no_data")), modifier = Modifier.width(42.dp), color = assessmentColor(score, subject.scoreType))
+					Surface(shape = RoundedCornerShape(11.dp), color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.size(44.dp)) {
+						Box(contentAlignment = Alignment.Center) {
+							Text(assessmentText(score, subject.scoreType, text("credit"), text("fail"), text("no_data")), color = assessmentColor(score, subject.scoreType), style = MaterialTheme.typography.titleMedium, maxLines = 1)
+						}
+					}
 				}
 			}
 		}
