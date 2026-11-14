@@ -3,6 +3,10 @@ package org.materialclass.notifications
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.work.Configuration
+import androidx.work.ListenableWorker
+import androidx.work.WorkerFactory
+import androidx.work.WorkerParameters
 import androidx.work.NetworkType
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
@@ -21,11 +25,19 @@ class NotificationWorkManagerTest {
 	private lateinit var context: Context
 	private lateinit var manager: WorkManager
 	private val name = "materialclass-notifications"
+	@Volatile private var createdWorkers = 0
 
 	@Before
 	fun setUp() {
 		context = ApplicationProvider.getApplicationContext()
-		WorkManagerTestInitHelper.initializeTestWorkManager(context)
+		val factory = object : WorkerFactory() {
+			override fun createWorker(context: Context, workerClassName: String, workerParameters: WorkerParameters): ListenableWorker? {
+				if (workerClassName != NotificationWorker::class.java.name) return null
+				createdWorkers++
+				return NotificationWorker(context, workerParameters)
+			}
+		}
+		WorkManagerTestInitHelper.initializeTestWorkManager(context, Configuration.Builder().setWorkerFactory(factory).build())
 		manager = WorkManager.getInstance(context)
 		manager.cancelAllWork().result.get(10, TimeUnit.SECONDS)
 		(context as MaterialClassApplication).runtime
@@ -63,13 +75,16 @@ class NotificationWorkManagerTest {
 			if (info == null) Thread.sleep(50)
 		}
 		assertNotNull(info)
+		val id = info!!.id
 		val driver = WorkManagerTestInitHelper.getTestDriver(context)!!
-		driver.setAllConstraintsMet(info!!.id)
-		driver.setPeriodDelayMet(info.id)
+		driver.setAllConstraintsMet(id)
+		driver.setPeriodDelayMet(id)
 		val end = System.nanoTime() + TimeUnit.SECONDS.toNanos(15)
+		while (createdWorkers == 0 && System.nanoTime() < end) Thread.sleep(50)
+		assertEquals(1, createdWorkers)
 		var completed = false
 		while (System.nanoTime() < end) {
-			val current = manager.getWorkInfoById(info.id).get(10, TimeUnit.SECONDS)
+			val current = manager.getWorkInfoById(id).get(10, TimeUnit.SECONDS)
 			if (current != null && current.state == WorkInfo.State.ENQUEUED && current.nextScheduleTimeMillis > System.currentTimeMillis()) {
 				completed = true
 				break
