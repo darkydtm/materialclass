@@ -1,9 +1,7 @@
 package org.materialclass.ui
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -38,7 +36,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
+import java.time.DayOfWeek
+import java.time.LocalDate
 import androidx.compose.ui.unit.dp
+import org.materialclass.data.GradeSchedule
 import org.materialclass.data.ScheduleLesson
 
 @Composable
@@ -51,13 +52,16 @@ internal fun HomeScreen(
 ) {
 	LaunchedEffect(Unit) {
 		viewModel.loadSchedule()
+		viewModel.loadGrades()
 		viewModel.loadProfile()
 	}
 	val profile = viewModel.profileState.readyValue()
 	val schedule = viewModel.scheduleState.readyValue()
 	val today = schedule?.days?.firstOrNull { it.isCurrent } ?: schedule?.days?.firstOrNull()
 	val homeState = viewModel.scheduleState.toUiState()
-	val completedLessons = today?.lessons?.count { it.theme != null } ?: 0
+	val weekend = LocalDate.now().dayOfWeek in setOf(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY)
+	val completedLessons = if (weekend) 0 else completedLessonCount(today?.lessons.orEmpty())
+	val lessonsTitle = if (weekend) "lessons_monday" else "lessons_today"
 	LazyColumn(
 		modifier = Modifier.fillMaxSize().padding(padding).testTag("home-screen"),
 		contentPadding = PaddingValues(20.dp),
@@ -67,7 +71,6 @@ internal fun HomeScreen(
 			Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
 				Text(text("greeting_day"), color = MaterialTheme.colorScheme.onSurfaceVariant)
 				Text(displayNameFromFullName(profile?.fullName) ?: text("student_name"), style = MaterialTheme.typography.headlineLarge)
-				Text(profile?.groupLabel ?: text("student_context"), color = MaterialTheme.colorScheme.onSurfaceVariant)
 			}
 		}
 		item {
@@ -78,11 +81,13 @@ internal fun HomeScreen(
 					if (today != null) LinearProgressIndicator(
 						progress = { if (today.lessons.isEmpty()) 0f else completedLessons.toFloat() / today.lessons.size },
 						modifier = Modifier.fillMaxWidth(),
+						color = MaterialTheme.colorScheme.primary,
+						trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
 					)
 				}
 			}
 		}
-		item { Text(text("lessons_today"), style = MaterialTheme.typography.titleLarge) }
+		item { Text(text(lessonsTitle), style = MaterialTheme.typography.titleLarge) }
 		if (today == null) {
 			item { StatePanel(text, homeState, { viewModel.retry(AppRoute.Schedule) }) }
 		} else {
@@ -92,7 +97,7 @@ internal fun HomeScreen(
 				contentType = { "lesson" },
 			) { index ->
 				val lesson = today.lessons[index]
-				LessonCard(lesson) {
+				LessonCard(lesson, gradeForLesson(viewModel.gradesState.readyValue(), lesson)) {
 					onLessonSelected(lesson.uuid.orEmpty())
 					navigator.go(AppRoute.LessonDetail)
 				}
@@ -112,6 +117,7 @@ internal fun ScheduleScreen(
 	var weekOffset by rememberSaveable { mutableIntStateOf(0) }
 	var selectedDay by rememberSaveable { mutableIntStateOf(0) }
 	LaunchedEffect(weekOffset) { viewModel.loadSchedule(weekOffset) }
+	LaunchedEffect(Unit) { viewModel.loadGrades() }
 	val schedule = viewModel.scheduleState.readyValue()
 	val safeSelectedDay = selectedDay.coerceIn(0, (schedule?.days?.lastIndex ?: 0).coerceAtLeast(0))
 	val day = schedule?.days?.getOrNull(safeSelectedDay)
@@ -139,13 +145,15 @@ internal fun ScheduleScreen(
 						(0..4).forEach { index ->
 							val selected = safeSelectedDay == index
 							Surface(
-								modifier = Modifier.size(width = 54.dp, height = 45.dp).clickable { selectedDay = index },
+								modifier = Modifier.size(width = 58.dp, height = 58.dp).clickable { selectedDay = index },
 								shape = RoundedCornerShape(999.dp),
-								color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
-								contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
-								border = if (selected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+								color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainer,
+								contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
 							) {
-								Box(contentAlignment = Alignment.Center) { Text((index + 1).toString()) }
+								Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+									Text(text("day_short_$index"), style = MaterialTheme.typography.labelMedium)
+									Text(dayNumber(schedule?.days?.getOrNull(index)?.dateLabel) ?: "-", style = MaterialTheme.typography.titleMedium)
+								}
 							}
 						}
 					}
@@ -164,7 +172,7 @@ internal fun ScheduleScreen(
 				contentType = { "lesson" },
 			) { index ->
 				val lesson = day.lessons[index]
-				LessonCard(lesson) {
+				LessonCard(lesson, gradeForLesson(viewModel.gradesState.readyValue(), lesson)) {
 					onLessonSelected(lesson.uuid.orEmpty())
 					navigator.go(AppRoute.LessonDetail)
 				}
@@ -173,8 +181,14 @@ internal fun ScheduleScreen(
 	}
 }
 
+private fun dayNumber(value: String?): String? {
+	val parts = value?.trim()?.split('.', '-', '/') ?: return null
+	val candidate = if (parts.firstOrNull()?.length == 4) parts.lastOrNull() else parts.firstOrNull()
+	return candidate?.takeIf { it.length in 1..2 && it.all(Char::isDigit) }?.toIntOrNull()?.toString()
+}
+
 @Composable
-private fun LessonCard(lesson: ScheduleLesson, onClick: () -> Unit) {
+private fun LessonCard(lesson: ScheduleLesson, grade: GradeSchedule?, onClick: () -> Unit) {
 	Card(onClick = onClick, shape = LessonShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer), modifier = Modifier.fillMaxWidth()) {
 		Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
 			Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -183,9 +197,9 @@ private fun LessonCard(lesson: ScheduleLesson, onClick: () -> Unit) {
 					Text(cabinet, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 				}
 			}
+			GradeCard(grade)
 			Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
 				Text(lesson.label ?: "", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
-				lesson.type?.takeUnless { it.equals("regular", ignoreCase = true) }?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
 			}
 			lesson.homework?.let {
 				Text(
@@ -198,6 +212,13 @@ private fun LessonCard(lesson: ScheduleLesson, onClick: () -> Unit) {
 				)
 			}
 		}
+	}
+}
+
+@Composable
+private fun GradeCard(grade: GradeSchedule?) {
+	Card(shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer), modifier = Modifier.fillMaxWidth()) {
+		Text(grade?.score ?: "-", modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
 	}
 }
 

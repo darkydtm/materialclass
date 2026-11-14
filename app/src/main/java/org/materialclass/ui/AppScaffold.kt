@@ -1,9 +1,6 @@
 package org.materialclass.ui
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
+
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -37,7 +34,7 @@ import java.util.Locale
 @Composable
 internal fun AppScaffold(
 	navigator: AppNavigator,
-	displayRoute: AppRoute = navigator.current,
+	route: AppRoute = navigator.current,
 	text: (String) -> String,
 	viewModel: SchoolViewModel,
 	snackbarHostState: SnackbarHostState,
@@ -59,21 +56,22 @@ internal fun AppScaffold(
 	onBackgroundInterval: (Float) -> Unit,
 	onLogout: () -> Unit,
 ) {
-	val titleKey = displayRoute.titleKey()
+	val titleKey = route.titleKey()
+	val rootRoutes = primaryRoutes.toList()
 	Scaffold(
 		topBar = {
 			CenterAlignedTopAppBar(
 				colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
 				title = { Text(text(titleKey)) },
 				navigationIcon = {
-					if (displayRoute !in primaryRoutes) {
-						IconButton(onClick = { navigator.handleBack() }, modifier = Modifier.testTag("back")) {
+					if (route !in rootRoutes) {
+						IconButton(onClick = { navigator.back() }, modifier = Modifier.testTag("back")) {
 							Icon(Icons.Default.ArrowBack, contentDescription = text("back"))
 						}
 					}
 				},
 				actions = {
-					if (displayRoute in primaryRoutes) {
+					if (route in rootRoutes) {
 						IconButton(onClick = { navigator.go(AppRoute.Profile) }) {
 							Icon(Icons.Default.AccountCircle, contentDescription = text("profile"))
 						}
@@ -82,18 +80,18 @@ internal fun AppScaffold(
 			)
 		},
 		bottomBar = {
-			if (displayRoute in primaryRoutes) {
+			if (route in rootRoutes) {
 				NavigationBar(
 					modifier = Modifier.navigationBarsPadding(),
 					containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
 					tonalElevation = 0.dp,
 				) {
-					primaryRoutes.forEach { route ->
+					rootRoutes.forEach { itemRoute ->
 						NavigationBarItem(
-							selected = displayRoute == route,
-							onClick = { navigator.selectPrimary(route) },
-							icon = { Icon(route.icon(), contentDescription = null) },
-							label = { Text(text(route.labelKey())) },
+							selected = route == itemRoute,
+							onClick = { navigator.go(itemRoute) },
+							icon = { Icon(itemRoute.icon(), contentDescription = null) },
+							label = { Text(text(itemRoute.labelKey())) },
 							colors = NavigationBarItemDefaults.colors(
 								selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
 								selectedTextColor = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -108,8 +106,7 @@ internal fun AppScaffold(
 		},
 		snackbarHost = { SnackbarHost(snackbarHostState) },
 	) { padding ->
-		AnimatedContent(targetState = displayRoute, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "screen") { route ->
-			when (route) {
+		when (route) {
 				AppRoute.Home -> HomeScreen(padding, text, viewModel, navigator, onLessonSelected)
 				AppRoute.HomeError -> StateScreen(padding, text, "nav_home", "error_load", "error_load_body") { viewModel.retry(AppRoute.HomeError) }
 				AppRoute.HomeEmpty -> StateScreen(padding, text, "nav_home", "empty_day", "empty_day_body") { navigator.go(AppRoute.Schedule) }
@@ -139,7 +136,6 @@ internal fun AppScaffold(
 				AppRoute.BackgroundWork -> BackgroundWorkScreen(padding, text, backgroundWork, onBackgroundWork, backgroundInterval, onBackgroundInterval)
 				AppRoute.Profile -> ProfileScreen(padding, text, viewModel, onLogout)
 				else -> Unit
-			}
 		}
 	}
 }

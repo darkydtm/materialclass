@@ -1,6 +1,7 @@
 package org.materialclass.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
@@ -18,9 +20,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Divider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -45,17 +47,20 @@ internal fun DiaryScreen(padding: PaddingValues, text: (String) -> String, viewM
 	val grades = viewModel.gradesState.readyValue()
 	LazyColumn(modifier = Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
 		item {
-			Text(text("quarter"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 8.dp))
-			Card(shape = NotificationShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer), modifier = Modifier.fillMaxWidth()) {
+			Text(text("quarter"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+			Surface(shape = NotificationShape, color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
 				Row(modifier = Modifier.padding(5.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
 					(0..3).forEach { index ->
-						FilterChip(
-							modifier = Modifier.weight(1f),
-							selected = quarter == index,
-							onClick = { quarter = index },
+						Surface(
+							modifier = Modifier.weight(1f).clickable { quarter = index },
 							shape = RoundedCornerShape(14.dp),
-							label = { Text((index + 1).toString()) },
-						)
+							color = if (quarter == index) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainer,
+							contentColor = if (quarter == index) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+						) {
+							Box(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
+								Text((index + 1).toString(), style = MaterialTheme.typography.titleMedium)
+							}
+						}
 					}
 				}
 			}
@@ -82,16 +87,18 @@ internal fun DiaryScreen(padding: PaddingValues, text: (String) -> String, viewM
 
 @Composable
 private fun SubjectCard(subject: GradeSubject, text: (String) -> String, onClick: () -> Unit) {
-	Card(onClick = onClick, shape = RowShape, modifier = Modifier.fillMaxWidth()) {
+	val credit = isCreditSubject(subject)
+	val displayedScore = assessmentText(subject.finalScore, subject.scoreType, text("credit"), text("fail"), text("no_data"))
+	Card(onClick = onClick, shape = RowShape, modifier = Modifier.fillMaxWidth(), colors = if (credit) CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer) else CardDefaults.cardColors()) {
 		Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 			Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
 				Text(subject.subjectName ?: text("unknown"), style = MaterialTheme.typography.titleLarge)
-				Text(subject.finalScore ?: text("no_data"), style = MaterialTheme.typography.titleMedium)
+				Text(displayedScore, style = MaterialTheme.typography.titleMedium, color = assessmentColor(subject.finalScore, subject.scoreType))
 			}
 			Divider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 1.dp)
 			Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-				(subject.scores.ifEmpty { listOfNotNull(subject.quarter1, subject.quarter2, subject.quarter3, subject.quarter4) }).forEach { score ->
-					Text(score ?: text("no_data"), modifier = Modifier.width(42.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+				(subject.scores.ifEmpty { subject.schedules.mapNotNull { it.score }.ifEmpty { listOfNotNull(subject.quarter1, subject.quarter2, subject.quarter3, subject.quarter4) } }).forEach { score ->
+					Text(assessmentText(score, subject.scoreType, text("credit"), text("fail"), text("no_data")), modifier = Modifier.width(42.dp), color = assessmentColor(score, subject.scoreType))
 				}
 			}
 		}
@@ -100,43 +107,46 @@ private fun SubjectCard(subject: GradeSubject, text: (String) -> String, onClick
 
 @Composable
 internal fun SubjectDetailScreen(padding: PaddingValues, text: (String) -> String, viewModel: SchoolViewModel, selectedSubject: String, navigator: AppNavigator) {
-	LaunchedEffect(Unit) { viewModel.loadGrades() }
+	LaunchedEffect(viewModel.gradesPeriod) { viewModel.loadGrades(viewModel.gradesPeriod) }
 	val subject = viewModel.gradesState.readyValue()?.subjects?.firstOrNull { it.subjectName == selectedSubject }
 	if (subject == null) {
 		StateScreen(padding, text, "subject_title", "subject_detail_unavailable", "unsupported") { viewModel.retry(AppRoute.SubjectDetail) }
 		return
 	}
 	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+		val credit = isCreditSubject(subject)
 		Text(subject.subjectName.orEmpty(), style = MaterialTheme.typography.headlineLarge)
 		Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
 			Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
 				Text(text("final_grade"), style = MaterialTheme.typography.labelLarge)
-				Text(subject.finalScore ?: text("no_data"), style = MaterialTheme.typography.displaySmall)
+				Text(assessmentText(subject.finalScore, subject.scoreType, text("credit"), text("fail"), text("no_data")), style = MaterialTheme.typography.displaySmall, color = assessmentColor(subject.finalScore, subject.scoreType))
 			}
 		}
-		Text(text("calculation"), style = MaterialTheme.typography.titleMedium)
-		Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-			if (subject.schedules.isEmpty()) {
-				Text(text("no_data"), color = MaterialTheme.colorScheme.onSurfaceVariant)
-			}
-			subject.schedules.forEach { schedule ->
-				Card(shape = RowShape, modifier = Modifier.fillMaxWidth()) {
-					Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-						Text(schedule.type ?: text("unknown"))
-						Text(schedule.markMax?.toString() ?: "-")
+		if (!credit) {
+			Text(text("calculation"), style = MaterialTheme.typography.titleMedium)
+			Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+				if (subject.schedules.isEmpty()) {
+					Text(text("no_data"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+				}
+				subject.schedules.forEach { schedule ->
+					Card(shape = RowShape, modifier = Modifier.fillMaxWidth()) {
+						Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+							Text(schedule.type ?: text("unknown"))
+							Text(schedule.markMax?.toString() ?: "-")
+						}
 					}
 				}
 			}
-		}
-		Button(onClick = { navigator.go(if (subject.schedules.isEmpty()) AppRoute.CalculatorMissing else AppRoute.Calculator) }, modifier = Modifier.fillMaxWidth()) {
-			Text(text("calculation_title"))
+			Button(onClick = { navigator.go(if (subject.schedules.isEmpty()) AppRoute.CalculatorMissing else AppRoute.Calculator) }, modifier = Modifier.fillMaxWidth()) {
+				Text(text("calculation_title"))
+			}
 		}
 	}
 }
 
 @Composable
 internal fun CalculatorScreen(padding: PaddingValues, text: (String) -> String, viewModel: SchoolViewModel, selectedSubject: String, missing: Boolean) {
-	LaunchedEffect(Unit) { viewModel.loadGrades() }
+	LaunchedEffect(viewModel.gradesPeriod) { viewModel.loadGrades(viewModel.gradesPeriod) }
 	val subject = viewModel.gradesState.readyValue()?.subjects?.firstOrNull { it.subjectName == selectedSubject }
 	val components = remember(subject) {
 		listOf(

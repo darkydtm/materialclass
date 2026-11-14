@@ -16,7 +16,10 @@ import org.materialclass.data.SubjectsModel
 class GradesSourcesTest {
 	private val context = ReadContext(
 		accessToken = "synthetic-access",
-		queryParameters = mapOf("schoolId" to "synthetic-school"),
+		queryParameters = mapOf(
+			"schoolId" to "synthetic-school",
+			"studentGroupUuids" to "group-a,group-b",
+		),
 	)
 
 	@Test
@@ -33,7 +36,9 @@ class GradesSourcesTest {
 
 		val result = SchoolGateway(transport).diaryPeriods(context)
 
-		assertEquals(GatewayReadResult.Success(PeriodsModel(periodCount = 3)), result)
+		val periods = (result as GatewayReadResult.Success).value
+		assertEquals(3, periods.periodCount)
+		assertEquals(3, periods.periods.size)
 	}
 
 	@Test
@@ -55,7 +60,9 @@ class GradesSourcesTest {
 			)
 		}).subjects(context)
 
-		assertEquals(GatewayReadResult.Success(SubjectsModel(subjectCount = 3)), result)
+		val subjects = (result as GatewayReadResult.Success).value
+		assertEquals(3, subjects.subjectCount)
+		assertEquals(listOf(null, "0", ""), subjects.subjects.map { it.finalScore })
 	}
 
 	@Test
@@ -81,22 +88,37 @@ class GradesSourcesTest {
 	}
 
 	@Test
-	fun yearGradesUseTheConfirmedYearEndpointWhileOtherSourcesStayUnsupported() {
+	fun gradesUseSubjectsAndJournalSources() {
 		val calls = mutableListOf<HttpRequestData>()
 		val gateway = ConfirmedSchoolGateway(
 			SchoolGateway(SyntheticGradesTransport { request ->
 				calls += request
-				HttpResponseData(200, "application/json", "{\"data\":{\"rows\":[{\"subjectName\":\"Math\",\"attestations\":{\"quarter1\":\"5\"},\"yearScores\":{\"yearScore\":\"5\",\"finalScore\":null},\"attendances\":{\"totalMissCount\":0}}]}}")
+				when {
+					request.url.substringBefore('?').endsWith("/diary/subjects") -> HttpResponseData(200, "application/json", "{\"data\":[{\"subjectName\":\"Math\",\"scoreType\":\"numeric\",\"schedules\":[{\"uuid\":\"lesson-1\",\"date\":\"14.11.2026\",\"markMax\":10,\"type\":\"regular\"}]}]}")
+					else -> HttpResponseData(200, "application/json", "{\"data\":{\"lesson-1\":{\"attendance\":\"was_in_class\",\"formattedScore\":{\"mark\":8,\"markMax\":10,\"comment\":null}}}}")
+				}
 			}),
 			FakeGradesSessionController(),
 		)
 
 		val grades = gateway.grades(context)
-		assertEquals("https://api.bilimclass.kz/api/v4/os/clientoffice/diary/year", calls.single().url.substringBefore('?'))
+		assertEquals("https://api.bilimclass.kz/api/v4/os/clientoffice/diary/subjects", calls.first().url.substringBefore('?'))
+		assertEquals("https://journal-service.bilimclass.kz/diary/quarter", calls.last().url.substringBefore('?'))
 		assertEquals("Math", (grades as GatewayReadResult.Success).value.subjects.single().subjectName)
 		assertEquals(GatewayReadResult.Failure<AttendanceModel>(AppError.UnsupportedContract), gateway.attendance(context))
 		assertEquals(GatewayReadResult.Failure<SubjectDetailsModel>(AppError.UnsupportedContract), gateway.subjectDetails("synthetic-subject"))
-		assertEquals(1, calls.size)
+		assertEquals(3, calls.size)
+	}
+
+	@Test
+	fun journalRequestsEachStudentGroupUuidSeparately() {
+		val calls = mutableListOf<HttpRequestData>()
+		val result = SchoolGateway(SyntheticGradesTransport { request ->
+			calls += request
+			HttpResponseData(200, "application/json", "{\"data\":{}}")
+		}).journalGrades(context)
+		assertTrue(result is GatewayReadResult.Empty)
+		assertEquals(listOf("group-a", "group-b"), calls.map { queryValue(it.url, "studentGroupUuid") })
 	}
 
 	@Test
@@ -119,7 +141,51 @@ class GradesSourcesTest {
 		)
 		assertEquals(listOf("8", "9"), (result as GatewayReadResult.Success).value.subjects.single().scores)
 	}
+
+	@Test
+	fun scoreMapperSupportsObjectFinalScoresAndKeepsZero() {
+		val result = ContractMapper.mapGrades(
+			"{\"data\":{\"rows\":[{\"subjectName\":\"Safety\",\"scoreType\":\"credit\",\"yearScores\":{\"finalScore\":{\"mark\":\"Зачет\"}},\"attestations\":{\"quarter1\":{\"mark\":0}}}]}}",
+		)
+		val subject = (result as GatewayReadResult.Success).value.subjects.single()
+		assertEquals("Зачет", subject.finalScore)
+		assertEquals(listOf("0"), subject.scores)
+	}
+
+	@Test
+	fun subjectsMapperPreservesSchedulesScoreTypeAndCreditResult() {
+		val result = ContractMapper.mapSubjects(
+			"{\"data\":[{\"subjectName\":\"Safety\",\"scoreType\":\"credit\",\"finalScore\":\"Зачет\",\"schedules\":[{\"uuid\":\"lesson-1\",\"date\":\"14.11.2026\",\"timeStart\":\"09:00\",\"markMax\":10,\"type\":\"regular\"}]}]}",
+		)
+
+		val subject = (result as GatewayReadResult.Success).value.subjects.single()
+		assertEquals("credit", subject.scoreType)
+		assertEquals("Зачет", subject.finalScore)
+		assertEquals("lesson-1", subject.schedules.single().uuid)
+		assertEquals(1, subject.schedules.size)
+	}
+
+	@Test
+	fun journalMapperPreservesCreditAndNumericAssessmentValues() {
+		val result = ContractMapper.mapJournalGrades(
+			"{\"data\":{\"lesson-credit\":{\"attendance\":\"was_in_class\",\"formattedScore\":{\"mark\":\"Зачет\",\"markMax\":null,\"comment\":null},\"sor\":null,\"soch\":null,\"po\":null},\"lesson-number\":{\"attendance\":\"was_in_class\",\"formattedScore\":{\"mark\":8,\"markMax\":10,\"comment\":null},\"sor\":null,\"soch\":null,\"po\":null}}}",
+		)
+
+		val grades = (result as GatewayReadResult.Success).value.grades
+		assertEquals("Зачет", grades.first { it.scheduleUuid == "lesson-credit" }.mark)
+		assertEquals("8", grades.first { it.scheduleUuid == "lesson-number" }.mark)
+	}
+
+	@Test
+	fun loginMappingPreservesEveryStudentGroupUuid() {
+		val result = ContractMapper.mapLoginResponse(
+			"{\"access_token\":\"a\",\"refresh_token\":\"r\",\"exp_time\":\"2030-01-01T00:00:00Z\",\"user_info\":{\"userId\":\"student\",\"studentInfo\":{\"studentGroupUuids\":[\"group-a\",\"group-b\"]}}}",
+		)
+		assertEquals(listOf("group-a", "group-b"), (result as GatewayLoginResult.Success).response.userInfo.studentGroupUuids)
+	}
 }
+
+private fun queryValue(url: String, key: String): String = url.substringAfter("$key=").substringBefore('&')
 
 private class SyntheticGradesTransport(
 	private val responder: (HttpRequestData) -> HttpResponseData,

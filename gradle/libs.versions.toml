@@ -5,6 +5,7 @@ composeBom = "2026.09.00"
 material3 = "1.5.0-rc01"
 activityCompose = "1.13.0"
 coreKtx = "1.17.0"
+customView = "1.2.0"
 workManager = "2.10.5"
 desugarJdkLibs = "2.1.5"
 androidxTestJunit = "1.3.0"
@@ -18,6 +19,7 @@ androidx-compose-material-icons = { group = "androidx.compose.material", name = 
 androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-customview = { group = "androidx.customview", name = "customview", version.ref = "customView" }
 androidx-work-runtime = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "workManager" }
 android-desugar-jdk-libs = { group = "com.android.tools", name = "desugar_jdk_libs", version.ref = "desugarJdkLibs" }
 androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestJunit" }

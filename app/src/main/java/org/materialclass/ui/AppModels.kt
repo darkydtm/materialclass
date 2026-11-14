@@ -2,10 +2,13 @@ package org.materialclass.ui
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import java.time.LocalDate
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.util.concurrent.Executors
 import org.materialclass.api.AppError
@@ -47,13 +50,6 @@ enum class AppRoute {
 	Profile,
 }
 
-internal val primaryRoutes = listOf(
-	AppRoute.Home,
-	AppRoute.Diary,
-	AppRoute.Schedule,
-	AppRoute.Settings,
-)
-
 class AppNavigator(start: AppRoute) {
 	private val stack = mutableListOf(start)
 	private var route by mutableStateOf(start)
@@ -61,17 +57,13 @@ class AppNavigator(start: AppRoute) {
 		get() = route
 
 	fun go(next: AppRoute) {
-		if (current != next) {
+		if (current == next) return
+		if (next in primaryRoutes && current !in loginRoutes) {
+			stack.clear()
 			stack += next
-			route = next
+		} else {
+			stack += next
 		}
-	}
-
-	fun selectPrimary(next: AppRoute) {
-		require(next in primaryRoutes)
-		stack.clear()
-		stack += AppRoute.Home
-		if (next != AppRoute.Home) stack += next
 		route = next
 	}
 
@@ -84,18 +76,13 @@ class AppNavigator(start: AppRoute) {
 
 	fun canGoBack(): Boolean = stack.size > 1
 
-	fun predictiveBackTarget(): AppRoute? = when {
-		current == AppRoute.Home -> null
-		current in primaryRoutes -> AppRoute.Home
-		else -> stack.dropLast(1).lastOrNull { it in primaryRoutes } ?: AppRoute.Home
-	}
+	fun previousOrNull(): AppRoute? = stack.getOrNull(stack.lastIndex - 1)
 
-	fun handleBack(): Boolean {
-		when {
-			current == AppRoute.Home -> return false
-			current in primaryRoutes -> selectPrimary(AppRoute.Home)
-			else -> selectPrimary(predictiveBackTarget() ?: AppRoute.Home)
-		}
+	fun handlePrimaryBack(): Boolean {
+		if (current !in primaryRoutes || current == AppRoute.Home) return false
+		stack.clear()
+		stack += AppRoute.Home
+		route = AppRoute.Home
 		return true
 	}
 
@@ -104,7 +91,10 @@ class AppNavigator(start: AppRoute) {
 		stack += next
 		route = next
 	}
+
 }
+
+internal val primaryRoutes = listOf(AppRoute.Home, AppRoute.Diary, AppRoute.Schedule, AppRoute.Settings)
 
 enum class AppLanguage(val tag: String) {
 	RU("ru"),
@@ -220,6 +210,8 @@ class SchoolViewModel(
 		private set
 	var gradesState: DataState<GradesModel>? by mutableStateOf(null)
 		private set
+	var gradesPeriod: String by mutableStateOf("1")
+		private set
 
 	private fun week(offset: Int = 0, nextWeekOnWeekend: Boolean = false): DateRange {
 			val today = LocalDate.now()
@@ -269,6 +261,7 @@ class SchoolViewModel(
 	}
 
 	fun loadGrades(period: String = "1") {
+		gradesPeriod = period
 		val source = repository ?: run { gradesState = null; return }
 		val observation = source.observeGrades(period)
 		observation.observe { gradesState = it }
@@ -286,9 +279,9 @@ class SchoolViewModel(
 		when (route) {
 			AppRoute.HomeError, AppRoute.HomeEmpty -> loadSchedule()
 			AppRoute.Schedule, AppRoute.ScheduleOffline -> loadSchedule()
-			AppRoute.Diary -> loadGrades()
+			AppRoute.Diary -> loadGrades(gradesPeriod)
 			AppRoute.Profile -> loadProfile()
-			AppRoute.SubjectDetail, AppRoute.Calculator, AppRoute.CalculatorMissing -> loadGrades()
+			AppRoute.SubjectDetail, AppRoute.Calculator, AppRoute.CalculatorMissing -> loadGrades(gradesPeriod)
 			else -> Unit
 		}
 	}
@@ -332,6 +325,23 @@ internal fun <T> DataState<T>?.readyValue(): T? = when (this) {
 	is DataState.Error -> snapshot?.value
 	else -> null
 }
+
+internal fun completedLessonCount(lessons: List<ScheduleLesson>, now: LocalTime = LocalTime.now()): Int =
+	lessons.count { lesson ->
+		val end = lesson.timeslot
+			?.substringAfterLast('-')
+			?.trim()
+			?.takeIf { it.matches(Regex("\\d{1,2}:\\d{2}")) }
+			?.let { runCatching { LocalTime.parse(it, DateTimeFormatter.ofPattern("H:mm")) }.getOrNull() }
+		end != null && now >= end
+	}
+
+internal fun gradeForLesson(grades: GradesModel?, lesson: ScheduleLesson): GradeSchedule? =
+	lesson.uuid?.takeIf(String::isNotBlank)?.let { uuid -> grades?.subjects.orEmpty()
+		.asSequence()
+		.flatMap { it.schedules.asSequence() }
+		.firstOrNull { it.uuid == uuid }
+	}
 
 internal fun stableItemKey(kind: String, index: Int, identity: String?): String =
 	identity?.takeIf(String::isNotBlank)?.let { "$kind:$it" } ?: "$kind:index:$index"
@@ -384,6 +394,44 @@ internal fun findScheduleLesson(days: List<ScheduleDay>, selected: String): Sche
 
 internal fun gradeSubjectStableKeys(subjects: List<GradeSubject>): List<String> =
 	uniqueStableKeys("subject", subjects.map(::gradeSubjectIdentity))
+
+internal enum class AssessmentKind {
+	Numeric,
+	Credit,
+	Fail,
+	Empty,
+}
+
+internal fun assessmentKind(value: String?, scoreType: String? = null): AssessmentKind {
+	val normalizedValue = value?.trim()?.lowercase(Locale.ROOT).orEmpty()
+	val normalizedType = scoreType?.trim()?.lowercase(Locale.ROOT).orEmpty()
+	return when {
+		normalizedValue.isBlank() -> AssessmentKind.Empty
+		normalizedValue.contains("незач") || normalizedValue.contains("не зач") || normalizedValue in setOf("fail", "failed", "not_pass") -> AssessmentKind.Fail
+		normalizedValue.contains("зач") || normalizedValue in setOf("pass", "passed", "credit") -> AssessmentKind.Credit
+		normalizedType in setOf("credit", "pass_fail", "pass-fail", "offset") -> if (normalizedValue.contains("незач") || normalizedValue.contains("не зач") || normalizedValue in setOf("fail", "failed", "not_pass")) AssessmentKind.Fail else AssessmentKind.Credit
+		else -> AssessmentKind.Numeric
+	}
+}
+
+internal fun isCreditSubject(subject: GradeSubject): Boolean =
+	subject.scoreType?.trim()?.lowercase(Locale.ROOT) in setOf("credit", "pass_fail", "pass-fail", "offset") ||
+	assessmentKind(subject.finalScore, subject.scoreType) in setOf(AssessmentKind.Credit, AssessmentKind.Fail) ||
+		subject.schedules.any { assessmentKind(it.score, subject.scoreType) in setOf(AssessmentKind.Credit, AssessmentKind.Fail) }
+
+internal fun assessmentText(value: String?, scoreType: String?, credit: String, fail: String, noData: String): String = when (assessmentKind(value, scoreType)) {
+	AssessmentKind.Credit -> credit
+	AssessmentKind.Fail -> fail
+	AssessmentKind.Empty -> noData
+	AssessmentKind.Numeric -> value.orEmpty()
+}
+
+@Composable
+internal fun assessmentColor(value: String?, scoreType: String?): androidx.compose.ui.graphics.Color = when (assessmentKind(value, scoreType)) {
+	AssessmentKind.Credit -> androidx.compose.material3.MaterialTheme.colorScheme.primary
+	AssessmentKind.Fail -> androidx.compose.material3.MaterialTheme.colorScheme.error
+	else -> androidx.compose.material3.MaterialTheme.colorScheme.onSurface
+}
 
 internal const val INTERACTIVE_FRAME_BUDGET_MS = 8.3f
 

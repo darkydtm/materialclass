@@ -6,6 +6,26 @@ import org.junit.Test
 
 class UiModelTest {
 	@Test
+	fun primaryBackReturnsHomeWithoutRestoringSecondaryHistory() {
+		val navigator = AppNavigator(AppRoute.Home)
+		navigator.go(AppRoute.Settings)
+		navigator.go(AppRoute.SettingsTheme)
+		navigator.go(AppRoute.Schedule)
+		assertTrue(navigator.handlePrimaryBack())
+		assertEquals(AppRoute.Home, navigator.current)
+		assertEquals(false, navigator.handlePrimaryBack())
+	}
+
+	@Test
+	fun completedLessonsUseEndTimesRatherThanThemes() {
+		val lessons = listOf(
+			org.materialclass.data.ScheduleLesson("a", "Math", "08:00 - 08:45", null, null, null, null, null),
+			org.materialclass.data.ScheduleLesson("b", "Art", "09:00 - 09:45", null, null, null, "Theme", null),
+		)
+		assertEquals(1, completedLessonCount(lessons, java.time.LocalTime.of(9, 0)))
+	}
+
+	@Test
 	fun interactiveScreensUse120HzFrameBudget() {
 		assertEquals(8.3f, INTERACTIVE_FRAME_BUDGET_MS)
 		assertEquals(AppRoute.entries.toSet(), interactiveScreenFrameBudgets.keys)
@@ -19,6 +39,7 @@ class UiModelTest {
 		navigator.go(AppRoute.LessonDetail)
 
 		assertEquals(AppRoute.LessonDetail, navigator.current)
+		assertEquals(AppRoute.Schedule, navigator.previousOrNull())
 		assertTrue(navigator.back())
 		assertEquals(AppRoute.Schedule, navigator.current)
 		assertTrue(navigator.back())
@@ -27,37 +48,14 @@ class UiModelTest {
 	}
 
 	@Test
-	fun primaryRouteBackReturnsToHomeAndHomeHasNoInAppBackTarget() {
+	fun selectingPrimaryRouteClearsSecondaryHistory() {
 		val navigator = AppNavigator(AppRoute.Home)
-		navigator.selectPrimary(AppRoute.Schedule)
+		navigator.go(AppRoute.Settings)
+		navigator.go(AppRoute.SettingsTheme)
+		navigator.go(AppRoute.Diary)
 
-		assertEquals(AppRoute.Home, navigator.predictiveBackTarget())
-		assertTrue(navigator.handleBack())
-		assertEquals(AppRoute.Home, navigator.current)
-		assertEquals(null, navigator.predictiveBackTarget())
-		assertEquals(false, navigator.handleBack())
-	}
-
-	@Test
-	fun secondaryRouteBackReturnsToPreviousSection() {
-		val navigator = AppNavigator(AppRoute.Home)
-		navigator.selectPrimary(AppRoute.Schedule)
-		navigator.go(AppRoute.LessonDetail)
-
-		assertEquals(AppRoute.Schedule, navigator.predictiveBackTarget())
-		assertTrue(navigator.handleBack())
-		assertEquals(AppRoute.Schedule, navigator.current)
-	}
-
-	@Test
-	fun selectingAnotherPrimaryRouteDropsSecondaryHistory() {
-		val navigator = AppNavigator(AppRoute.Home)
-		navigator.selectPrimary(AppRoute.Schedule)
-		navigator.go(AppRoute.LessonDetail)
-		navigator.selectPrimary(AppRoute.Settings)
-
-		assertEquals(AppRoute.Settings, navigator.current)
-		assertEquals(AppRoute.Home, navigator.predictiveBackTarget())
+		assertEquals(AppRoute.Diary, navigator.current)
+		assertEquals(false, navigator.back())
 	}
 
 	@Test
@@ -146,5 +144,21 @@ class UiModelTest {
 		val before = listOf(org.materialclass.data.GradeSubject("Math", "5", emptyList()))
 		val after = listOf(org.materialclass.data.GradeSubject("Math", "4", emptyList()))
 		assertEquals(gradeSubjectStableKeys(before), gradeSubjectStableKeys(after))
+	}
+
+	@Test
+	fun assessmentTypeUsesCreditLabelsAndKeepsNumbersNumeric() {
+		assertEquals(AssessmentKind.Credit, assessmentKind("Зачет"))
+		assertEquals(AssessmentKind.Fail, assessmentKind("Незачет"))
+		assertEquals(AssessmentKind.Numeric, assessmentKind("8"))
+		assertEquals(AssessmentKind.Credit, assessmentKind("ok", "credit"))
+		assertEquals("Зачет", assessmentText("pass", null, "Зачет", "Незачет", "Нет данных"))
+		assertEquals("8", assessmentText("8", null, "Зачет", "Незачет", "Нет данных"))
+	}
+
+	@Test
+	fun creditSubjectIsDetectedFromFinalOrLessonAssessment() {
+		assertTrue(isCreditSubject(org.materialclass.data.GradeSubject("Safety", "Зачет", emptyList())))
+		assertTrue(isCreditSubject(org.materialclass.data.GradeSubject("Safety", null, listOf(org.materialclass.data.GradeSchedule("lesson", null, null, null, null, "Незачет")))))
 	}
 }
