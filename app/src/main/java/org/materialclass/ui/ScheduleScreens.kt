@@ -223,8 +223,8 @@ private fun LessonCard(lesson: ScheduleLesson, grade: GradeSchedule?, onClick: (
 @Composable
 private fun GradeCard(grade: GradeSchedule?) {
 	val score = grade?.score?.takeIf(String::isNotBlank) ?: return
-	Card(shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
-		Text(score, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
+	Card(shape = RoundedCornerShape(11.dp), colors = CardDefaults.cardColors(containerColor = gradeContainerColor(score, null))) {
+		Text(score, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.titleMedium, color = assessmentColor(score, null))
 	}
 }
 

@@ -5,10 +5,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.size
+
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.clickable
 
@@ -29,12 +30,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
+
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
+
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.materialclass.data.GradeSubject
 import org.materialclass.grades.GradeCalculator
@@ -87,28 +89,63 @@ internal fun DiaryScreen(padding: PaddingValues, text: (String) -> String, viewM
 
 @Composable
 private fun SubjectCard(subject: GradeSubject, text: (String) -> String, onClick: () -> Unit) {
-	val credit = isCreditSubject(subject)
 	val displayedScore = assessmentText(subject.finalScore, subject.scoreType, text("credit"), text("fail"), text("no_data"))
-	Card(onClick = onClick, shape = RowShape, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = if (credit) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh)) {
+	Card(onClick = onClick, shape = RowShape, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
 		Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 			Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
 				Text(subject.subjectName ?: text("unknown"), modifier = Modifier.weight(1f).padding(end = 8.dp), style = MaterialTheme.typography.titleLarge)
-				Text(displayedScore, style = MaterialTheme.typography.titleMedium, color = assessmentColor(subject.finalScore, subject.scoreType))
+				Surface(shape = RoundedCornerShape(10.dp), color = gradeContainerColor(subject.finalScore, subject.scoreType)) {
+					Text(displayedScore, modifier = Modifier.widthIn(min = 34.dp).padding(horizontal = 8.dp, vertical = 8.dp), textAlign = TextAlign.Center, style = MaterialTheme.typography.titleMedium, color = assessmentColor(subject.finalScore, subject.scoreType))
+				}
 			}
 			Divider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 1.dp)
 			Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-				(subject.scores.ifEmpty { subject.schedules.mapNotNull { it.score }.ifEmpty { listOfNotNull(subject.quarter1, subject.quarter2, subject.quarter3, subject.quarter4) } }).forEach { score ->
-					Surface(shape = RoundedCornerShape(11.dp), color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.size(44.dp)) {
-						Box(contentAlignment = Alignment.Center) {
-							Text(assessmentText(score, subject.scoreType, text("credit"), text("fail"), text("no_data")), color = assessmentColor(score, subject.scoreType), style = MaterialTheme.typography.titleMedium, maxLines = 1)
-						}
+				if (subject.schedules.any { it.score != null }) {
+					subject.schedules.filter { it.score != null }.forEach { schedule ->
+						GradeTile(schedule.score, subject.scoreType, schedule.date, null, text)
 					}
+				} else {
+					subject.scores.forEach { score -> GradeTile(score, subject.scoreType, null, null, text) }
 				}
 			}
 		}
 	}
 }
 
+@Composable
+internal fun gradeContainerColor(value: String?, scoreType: String?): androidx.compose.ui.graphics.Color {
+	val colors = MaterialTheme.colorScheme
+	return when (assessmentKind(value, scoreType)) {
+		AssessmentKind.Fail -> colors.errorContainer
+		AssessmentKind.Credit -> colors.primaryContainer
+		AssessmentKind.Empty -> colors.surfaceContainerHigh
+		AssessmentKind.Numeric -> {
+			val number = value?.substringBefore('/')?.trim()?.toDoubleOrNull()
+			when {
+				number == null -> colors.surfaceContainerHigh
+				number <= 2 -> colors.errorContainer
+				number <= 4 -> colors.tertiaryContainer
+				number <= 7 -> colors.secondaryContainer
+				else -> colors.primaryContainer
+			}
+		}
+	}
+}
+
+@Composable
+internal fun GradeTile(value: String?, scoreType: String?, date: String?, type: String?, text: (String) -> String) {
+	Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp)) {
+		if (!type.isNullOrBlank()) Text(type, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+		Surface(shape = RoundedCornerShape(11.dp), color = gradeContainerColor(value, scoreType), modifier = Modifier.widthIn(min = 44.dp)) {
+			Box(modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp), contentAlignment = Alignment.Center) {
+				Text(assessmentText(value, scoreType, text("credit"), text("fail"), text("no_data")), color = assessmentColor(value, scoreType), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+			}
+		}
+		if (!date.isNullOrBlank()) Text(date.substringBefore('T'), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+	}
+}
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 internal fun SubjectDetailScreen(padding: PaddingValues, text: (String) -> String, viewModel: SchoolViewModel, selectedSubject: String, navigator: AppNavigator) {
 	LaunchedEffect(viewModel.gradesPeriod) { viewModel.loadGrades(viewModel.gradesPeriod) }
@@ -120,7 +157,7 @@ internal fun SubjectDetailScreen(padding: PaddingValues, text: (String) -> Strin
 	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
 		val credit = isCreditSubject(subject)
 		Text(subject.subjectName.orEmpty(), style = MaterialTheme.typography.headlineLarge)
-		Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+		Card(shape = CardShape, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = gradeContainerColor(subject.finalScore, subject.scoreType))) {
 			Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
 				Text(text("final_grade"), style = MaterialTheme.typography.labelLarge)
 				Text(assessmentText(subject.finalScore, subject.scoreType, text("credit"), text("fail"), text("no_data")), style = MaterialTheme.typography.displaySmall, color = assessmentColor(subject.finalScore, subject.scoreType))
@@ -128,21 +165,30 @@ internal fun SubjectDetailScreen(padding: PaddingValues, text: (String) -> Strin
 		}
 		if (!credit) {
 			Text(text("calculation"), style = MaterialTheme.typography.titleMedium)
-			Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-				if (subject.schedules.isEmpty()) {
-					Text(text("no_data"), color = MaterialTheme.colorScheme.onSurfaceVariant)
-				}
-				subject.schedules.forEach { schedule ->
-					Card(shape = RowShape, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
-						Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-							Text(schedule.type ?: text("unknown"))
-							Text(schedule.markMax?.toString() ?: "-")
+			Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+				listOf("FO", "SOR", "SOCH").forEach { category ->
+					val values = subject.schedules.filter { (it.type ?: "").equals(category, ignoreCase = true) }.mapNotNull { schedule ->
+						val score = schedule.score?.toDoubleOrNull()
+						val max = schedule.markMax
+						if (score != null && max != null && max > 0 && score in 0.0..max.toDouble()) score / max * 100 else null
+					}
+					Card(shape = RowShape, modifier = Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
+						Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+							Text(category, style = MaterialTheme.typography.labelMedium)
+							Text(if (values.isEmpty()) "-" else "${values.average().toInt()}%", style = MaterialTheme.typography.titleMedium)
 						}
 					}
 				}
 			}
 			Button(onClick = { navigator.goFrom(AppRoute.SubjectDetail, if (subject.schedules.isEmpty()) AppRoute.CalculatorMissing else AppRoute.Calculator) {} }, modifier = Modifier.fillMaxWidth()) {
 				Text(text("calculation_title"))
+			}
+		}
+		val scoredSchedules = subject.schedules.filter { it.score != null }
+		if (scoredSchedules.isNotEmpty()) {
+			Text("${scoredSchedules.size}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+			androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+				scoredSchedules.forEach { schedule -> GradeTile(schedule.score, subject.scoreType, schedule.date, schedule.type, text) }
 			}
 		}
 	}
