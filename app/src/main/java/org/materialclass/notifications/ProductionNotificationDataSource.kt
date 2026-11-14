@@ -13,18 +13,18 @@ import org.materialclass.data.SessionAccess
 class ProductionNotificationDataSource(
 	private val sessions: SessionAccess,
 	private val context: (String, String) -> ReadContext,
-	private val journalRange: () -> DateRange,
+	private val journalRange: () -> DateRange?,
 	private val journal: (ReadContext) -> GatewayReadResult<JournalGradesModel>,
 	private val homeworks: (ReadContext) -> GatewayReadResult<HomeworksModel>,
 ) : NotificationDataSource {
 	constructor(
 		sessions: SessionAccess,
 		gateway: ConfirmedSchoolGateway,
-		journalRange: () -> DateRange,
+		journalRange: () -> DateRange?,
 	) : this(sessions, gateway::readContext, journalRange, gateway::journalGrades, gateway::homeworks)
 
 	override fun readNewGrades(session: NotificationSession): CategoryReadResult = read(session.activeSession) { token ->
-		val range = journalRange()
+		val range = journalRange() ?: return@read CategoryReadResult.Failed
 		when (val result = journal(context(token, "journal:${range.start}:${range.endInclusive}"))) {
 			is GatewayReadResult.Success -> {
 				if (result.value.groupsFailed != 0 || result.value.groupsSucceeded == 0) CategoryReadResult.Failed

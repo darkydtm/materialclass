@@ -6,7 +6,7 @@ import android.content.pm.PackageManager
 import androidx.core.app.NotificationManagerCompat
 import java.time.Instant
 import java.time.LocalDate
-import org.materialclass.data.DateRange
+import org.materialclass.notifications.SelectedPeriodRange
 import org.materialclass.notifications.AndroidNotificationPublisher
 import org.materialclass.notifications.NotificationPreferences
 import org.materialclass.notifications.NotificationProcessor
@@ -85,8 +85,12 @@ class ApplicationRuntime(application: Application) {
 		gateway = confirmedGateway
 		notificationRunner = NotificationWorkerRunner(
 			ProductionNotificationDataSource(sessionCoordinator, gateway) {
-				val today = LocalDate.now()
-				DateRange(today.minusMonths(3), today)
+				val session = sessionCoordinator.currentSession() ?: return@ProductionNotificationDataSource null
+				val token = sessionCoordinator.tokenFor(session) ?: return@ProductionNotificationDataSource null
+				val selected = preferences.gradesPeriod()
+				val periods = gateway.diaryPeriods(gateway.readContext(token, "periods"))
+				if (sessionCoordinator.currentSession() != session || preferences.gradesPeriod() != selected) null
+				else SelectedPeriodRange.resolve(selected, periods)
 			},
 			NotificationProcessor(notificationState, notificationPublisher, sessionCoordinator),
 			{ sessionCoordinator.currentSession() == it },
