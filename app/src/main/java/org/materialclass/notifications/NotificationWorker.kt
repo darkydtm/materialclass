@@ -93,37 +93,53 @@ class InMemoryNotificationStateStore : NotificationStateStore {
 	}
 }
 
+class NotificationStateWriteException : IllegalStateException("Notification state could not be persisted")
+
 class SharedPreferencesNotificationStateStore(context: Context) : NotificationStateStore {
 	private val preferences = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 
-	override fun generation(accountId: String): Generation = Generation(preferences.getLong(generationKey(accountId), 0L))
+	private fun <T> locked(block: () -> T): T = synchronized(lock) {
+		if (dirty) {
+			if (!preferences.edit().putLong(RECOVERY_KEY, System.nanoTime()).commit()) throw NotificationStateWriteException()
+			dirty = false
+		}
+		block()
+	}
 
-	override fun reset(accountId: String, generation: Generation) {
+	private fun write(editor: android.content.SharedPreferences.Editor) {
+		dirty = true
+		if (!editor.commit()) throw NotificationStateWriteException()
+		dirty = false
+	}
+
+	override fun generation(accountId: String): Generation = locked { Generation(preferences.getLong(generationKey(accountId), 0L)) }
+
+	override fun reset(accountId: String, generation: Generation) = locked {
 		val editor = preferences.edit().putLong(generationKey(accountId), generation.value)
 		NotificationCategory.entries.forEach { category -> editor.remove(baselineKey(accountId, generation, category)) }
-		editor.apply()
+		write(editor)
 	}
 
-	override fun hasBaseline(accountId: String, generation: Generation, category: NotificationCategory): Boolean =
+	override fun hasBaseline(accountId: String, generation: Generation, category: NotificationCategory): Boolean = locked {
 		preferences.getBoolean(baselineKey(accountId, generation, category), false)
-
-	override fun markBaseline(accountId: String, generation: Generation, category: NotificationCategory) {
-		preferences.edit().putBoolean(baselineKey(accountId, generation, category), true).apply()
 	}
 
-	override fun hasSeen(accountId: String, generation: Generation, category: NotificationCategory, stableId: String): Boolean =
-		preferences.getStringSet(seenKey(accountId, generation, category), emptySet()).orEmpty().contains(stableId)
+	override fun markBaseline(accountId: String, generation: Generation, category: NotificationCategory) = locked {
+		write(preferences.edit().putBoolean(baselineKey(accountId, generation, category), true))
+	}
 
-	override fun markSeen(accountId: String, generation: Generation, category: NotificationCategory, stableId: String) {
+	override fun hasSeen(accountId: String, generation: Generation, category: NotificationCategory, stableId: String): Boolean = locked {
+		preferences.getStringSet(seenKey(accountId, generation, category), emptySet()).orEmpty().contains(stableId)
+	}
+
+	override fun markSeen(accountId: String, generation: Generation, category: NotificationCategory, stableId: String) = locked {
 		val key = seenKey(accountId, generation, category)
 		val values = preferences.getStringSet(key, emptySet()).orEmpty().toMutableSet()
 		values += stableId
-		preferences.edit().putStringSet(key, values).apply()
+		write(preferences.edit().putStringSet(key, values))
 	}
 
-	override fun clear() {
-		preferences.edit().clear().apply()
-	}
+	override fun clear() = locked { write(preferences.edit().clear()) }
 
 	private fun generationKey(accountId: String): String = "generation:$accountId"
 	private fun baselineKey(accountId: String, generation: Generation, category: NotificationCategory): String = "baseline:$accountId:${generation.value}:${category.name}"
@@ -131,6 +147,9 @@ class SharedPreferencesNotificationStateStore(context: Context) : NotificationSt
 
 	private companion object {
 		const val PREFERENCES_NAME = "notification-state"
+		const val RECOVERY_KEY = "recovery"
+		val lock = Any()
+		var dirty = false
 	}
 }
 
@@ -167,6 +186,8 @@ class NotificationProcessor(
 		reads: Map<NotificationCategory, CategoryReadResult>,
 		currentPreferences: () -> NotificationPreferences = { preferences },
 	): NotificationRunResult = sessions.withSessionLock {
+		var published = 0
+		try {
 		if (sessions.currentSession() != session.activeSession) return@withSessionLock NotificationRunResult(NotificationRunStatus.STALE_GENERATION)
 		val effectivePreferences = currentPreferences()
 		val enabledReads = reads.filterKeys { preferences.isEnabled(it) && effectivePreferences.isEnabled(it) }
@@ -178,13 +199,21 @@ class NotificationProcessor(
 		if (state.generation(accountId) != generation) state.reset(accountId, generation)
 		val pendingBaselines = mutableMapOf<NotificationCategory, List<NotificationItem>>()
 		var baselineCreated = false
-		var published = 0
 		var sawOffline = false
 		var sawFailed = false
 		var sawUnsupported = false
 		var sawAvailable = false
 		var denied = false
 		for ((category, result) in enabledReads) {
+			if (result is CategoryReadResult.Available && !state.hasBaseline(accountId, generation, category)) {
+				result.items.forEach { state.markSeen(accountId, generation, category, it.stableId) }
+				state.markBaseline(accountId, generation, category)
+				pendingBaselines[category] = result.items
+				baselineCreated = true
+			}
+		}
+		for ((category, result) in enabledReads) {
+			if (category in pendingBaselines) continue
 			when (result) {
 				is CategoryReadResult.Available -> {
 					sawAvailable = true
@@ -198,8 +227,8 @@ class NotificationProcessor(
 							denied = true
 						} else when (try { publisher.publish(item) } catch (_: Exception) { NotificationPublishResult.FAILED }) {
 							NotificationPublishResult.PUBLISHED -> {
-								state.markSeen(accountId, generation, category, item.stableId)
 								published++
+								state.markSeen(accountId, generation, category, item.stableId)
 							}
 							NotificationPublishResult.PERMISSION_DENIED -> denied = true
 							NotificationPublishResult.FAILED -> sawFailed = true
@@ -211,13 +240,7 @@ class NotificationProcessor(
 				CategoryReadResult.Failed -> sawFailed = true
 			}
 		}
-		if (!sawFailed && !denied) {
-			for ((category, items) in pendingBaselines) {
-				items.forEach { state.markSeen(accountId, generation, category, it.stableId) }
-				state.markBaseline(accountId, generation, category)
-				baselineCreated = true
-			}
-		}
+
 		when {
 			sawFailed -> NotificationRunResult(NotificationRunStatus.FAILED, published)
 			sawOffline -> NotificationRunResult(NotificationRunStatus.OFFLINE, published)
@@ -225,6 +248,9 @@ class NotificationProcessor(
 			(denied || !permissionGranted) && sawAvailable -> NotificationRunResult(NotificationRunStatus.PERMISSION_DENIED, published)
 			sawUnsupported && !sawAvailable -> NotificationRunResult(NotificationRunStatus.UNSUPPORTED, published)
 			else -> NotificationRunResult(NotificationRunStatus.PROCESSED, published)
+		}
+		} catch (_: IllegalStateException) {
+			NotificationRunResult(NotificationRunStatus.FAILED, published)
 		}
 	}
 }

@@ -50,6 +50,55 @@ class NotificationLifecycleTest {
 	}
 
 	@Test
+	fun failedBaselineWritesPreventPublicationAndReturnFailure() {
+		for (failure in listOf("seen", "baseline")) {
+			val backing = InMemoryNotificationStateStore()
+			val state = object : NotificationStateStore by backing {
+				override fun markSeen(accountId: String, generation: Generation, category: NotificationCategory, stableId: String) {
+					if (failure == "seen") throw IllegalStateException("synthetic failure")
+					backing.markSeen(accountId, generation, category, stableId)
+				}
+				override fun markBaseline(accountId: String, generation: Generation, category: NotificationCategory) {
+					if (failure == "baseline") throw IllegalStateException("synthetic failure")
+					backing.markBaseline(accountId, generation, category)
+				}
+			}
+			val publisher = RecordingNotificationPublisher()
+			val processor = NotificationProcessor(state, publisher, sessions)
+			val item = NotificationItem(NotificationCategory.NEW_GRADE, "old", "Grade", "5")
+			val result = processor.process(session, settings, true, mapOf(NotificationCategory.NEW_GRADE to CategoryReadResult.Available(listOf(item))))
+			assertEquals(failure, NotificationRunStatus.FAILED, result.status)
+			assertFalse(backing.hasBaseline(session.activeSession.accountId.value, session.activeSession.generation, NotificationCategory.NEW_GRADE))
+			assertTrue(publisher.items.isEmpty())
+		}
+	}
+
+	@Test
+	fun failedSeenWriteAfterPublishReportsFailureAndCanDuplicateAfterRestart() {
+		val backing = InMemoryNotificationStateStore()
+		var fail = false
+		val state = object : NotificationStateStore by backing {
+			override fun markSeen(accountId: String, generation: Generation, category: NotificationCategory, stableId: String) {
+				if (fail) throw IllegalStateException("synthetic failure")
+				backing.markSeen(accountId, generation, category, stableId)
+			}
+		}
+		val publisher = RecordingNotificationPublisher()
+		val processor = NotificationProcessor(state, publisher, sessions)
+		processor.process(session, settings, true, mapOf(NotificationCategory.NEW_GRADE to CategoryReadResult.Available(emptyList())))
+		val item = NotificationItem(NotificationCategory.NEW_GRADE, "new", "Grade", "5")
+		val reads = mapOf(NotificationCategory.NEW_GRADE to CategoryReadResult.Available(listOf(item)))
+		fail = true
+		val failed = processor.process(session, settings, true, reads)
+		assertEquals(NotificationRunStatus.FAILED, failed.status)
+		assertEquals(1, failed.publishedCount)
+		fail = false
+		val restarted = NotificationProcessor(backing, publisher, sessions)
+		assertEquals(1, restarted.process(session, settings, true, reads).publishedCount)
+		assertEquals(listOf(item, item), publisher.items)
+	}
+
+	@Test
 	fun firstAvailableReadCreatesBaselineWithoutPublishingOldItems() {
 		val publisher = RecordingNotificationPublisher()
 		val processor = NotificationProcessor(InMemoryNotificationStateStore(), publisher, sessions)
