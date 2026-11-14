@@ -1,6 +1,9 @@
 package org.materialclass.data
 
 import java.time.Instant
+import org.materialclass.diagnostics.DiaryDiagnostics
+import org.materialclass.diagnostics.DiaryOutcome
+import org.materialclass.diagnostics.DiaryStage
 import org.materialclass.api.AppError
 import org.materialclass.api.GatewayReadResult
 import org.materialclass.api.ReadContext
@@ -117,6 +120,7 @@ class SchoolRepositoryImpl(
 	}
 
 	private fun <T> refresh(key: String, call: (ReadContext) -> GatewayReadResult<T>) {
+		if (key.startsWith("grades:")) DiaryDiagnostics.record(DiaryStage.REPOSITORY, DiaryOutcome.START)
 		val session = sessions.currentSession() ?: return publishFailure(key, AppError.LoginRequired)
 		sessions.withSessionLock {
 			synchronized(lock) {
@@ -124,7 +128,10 @@ class SchoolRepositoryImpl(
 			}
 		}
 		val token = sessions.tokenFor(session) ?: return publishFailure(key, AppError.LoginRequired)
-		val result = try { call(context(token, key)) } catch (_: Exception) { GatewayReadResult.Failure(AppError.Network) }
+		val result = try { call(context(token, key)) } catch (exception: Exception) {
+			if (key.startsWith("grades:")) DiaryDiagnostics.record(DiaryStage.REPOSITORY, DiaryOutcome.FAILURE, error = AppError.Network, exception = exception)
+			GatewayReadResult.Failure(AppError.Network)
+		}
 		sessions.withSessionLock {
 			synchronized(lock) {
 				if (sessions.currentSession() != session) return@synchronized
@@ -149,6 +156,7 @@ class SchoolRepositoryImpl(
 	}
 
 	private fun handleFailure(key: String, error: AppError) {
+		if (key.startsWith("grades:")) DiaryDiagnostics.record(DiaryStage.REPOSITORY, DiaryOutcome.FAILURE, error = error)
 		val previous = states[key]
 		val snapshot = when (previous) {
 			is DataState.Ready<*> -> previous.snapshot
@@ -173,6 +181,10 @@ class SchoolRepositoryImpl(
 		val snapshot = Snapshot(session.accountId, session.generation, value, now())
 		val payload = runCatching {
 			java.io.ByteArrayOutputStream().also { output -> java.io.ObjectOutputStream(output).use { it.writeObject(value) } }.toByteArray()
+		}.onSuccess {
+			if (key.startsWith("grades:")) DiaryDiagnostics.record(DiaryStage.SERIALIZE, DiaryOutcome.SUCCESS)
+		}.onFailure { exception ->
+			if (key.startsWith("grades:")) DiaryDiagnostics.record(DiaryStage.SERIALIZE, DiaryOutcome.FAILURE, exception = exception)
 		}.getOrNull()
 		if (payload == null || !writeSlices(session, key, CachedSlice(payload, snapshot.capturedAt))) {
 			handleFailure(key, AppError.Network)
@@ -213,7 +225,9 @@ class SchoolRepositoryImpl(
 
 	private fun writeSlices(session: ActiveSession, key: String, slice: CachedSlice): Boolean {
 		val existing = (store.read(session) as? SnapshotStoreRead.Hit)?.slices.orEmpty()
-		return store.write(session, existing + (key to slice))
+		val saved = store.write(session, existing + (key to slice))
+		if (key.startsWith("grades:")) DiaryDiagnostics.record(DiaryStage.SNAPSHOT, if (saved) DiaryOutcome.SUCCESS else DiaryOutcome.FAILURE)
+		return saved
 	}
 
 	private fun emitFailure(key: String, error: AppError) {

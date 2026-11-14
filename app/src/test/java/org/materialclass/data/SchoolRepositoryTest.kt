@@ -11,6 +11,7 @@ import org.junit.Test
 import org.materialclass.api.AppError
 import org.materialclass.api.GatewayReadResult
 import org.materialclass.api.ReadContext
+import org.materialclass.diagnostics.DiaryDiagnostics
 
 class SchoolRepositoryTest {
 	private val account = AccountId("synthetic-account")
@@ -141,6 +142,25 @@ class SchoolRepositoryTest {
 		fixture.gateway.diaryResult = GatewayReadResult.Success(DiaryModel(8))
 		fixture.repository.refreshDiary(range)
 		assertEquals(before, fixture.store.read(session))
+	}
+
+	@Test
+	fun gradesDiagnosticsDistinguishSerializationAndFailedStorage() {
+		val messages = mutableListOf<String>()
+		val previous = DiaryDiagnostics.sink
+		try {
+			DiaryDiagnostics.sink = { messages.add(it) }
+			val fixture = Fixture()
+			fixture.store.failWrites = true
+			fixture.gateway.gradesResult = GatewayReadResult.Success(GradesModel(0))
+			fixture.repository.refreshGrades("private-period")
+			assertTrue(messages.any { it.contains("stage=SERIALIZE outcome=SUCCESS") })
+			assertTrue(messages.any { it.contains("stage=SNAPSHOT outcome=FAILURE") })
+			assertTrue(messages.any { it.contains("stage=REPOSITORY outcome=FAILURE") && it.contains("error=Network") })
+			assertFalse(messages.joinToString().contains("private"))
+		} finally {
+			DiaryDiagnostics.sink = previous
+		}
 	}
 
 	private inner class Fixture {

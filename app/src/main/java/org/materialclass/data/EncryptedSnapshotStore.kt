@@ -1,6 +1,9 @@
 package org.materialclass.data
 
 import java.time.Instant
+import org.materialclass.diagnostics.DiaryDiagnostics
+import org.materialclass.diagnostics.DiaryOutcome
+import org.materialclass.diagnostics.DiaryStage
 import org.materialclass.cache.CacheRead
 import org.materialclass.cache.EncryptedCache
 
@@ -19,7 +22,9 @@ class EncryptedSnapshotStore(
 	}
 	override fun write(session: ActiveSession, slices: Map<String, CachedSlice>): Boolean {
 		if (sessions.currentSession() != session) return false
-		return runCatching { cache.write(session, encode(slices)) }.getOrDefault(false)
+		return runCatching { cache.write(session, encode(slices)) }.onFailure { exception ->
+			DiaryDiagnostics.record(DiaryStage.SNAPSHOT, DiaryOutcome.FAILURE, exception = exception)
+		}.getOrDefault(false)
 	}
 
 	private fun encode(slices: Map<String, CachedSlice>): ByteArray {

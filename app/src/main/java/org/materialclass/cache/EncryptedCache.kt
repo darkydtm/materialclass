@@ -4,6 +4,9 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
+import org.materialclass.diagnostics.DiaryDiagnostics
+import org.materialclass.diagnostics.DiaryOutcome
+import org.materialclass.diagnostics.DiaryStage
 import org.materialclass.data.ActiveSession
 import org.materialclass.security.KeyProvider
 import org.materialclass.security.SecureCipher
@@ -38,7 +41,8 @@ class EncryptedCache(
 			}.toByteArray()
 			files.atomicWrite(files.cacheFile(session.accountId), record)
 			current() == session
-		} catch (_: Exception) {
+		} catch (exception: Exception) {
+			DiaryDiagnostics.record(DiaryStage.CACHE, DiaryOutcome.FAILURE, exception = exception)
 			false
 		}
 	}

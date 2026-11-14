@@ -1,5 +1,9 @@
 package org.materialclass.ui
 
+import org.materialclass.diagnostics.DiaryDiagnostics
+import org.materialclass.diagnostics.DiaryOutcome
+import org.materialclass.diagnostics.DiaryStage
+
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.compose.runtime.Composable
@@ -261,6 +265,7 @@ class SchoolViewModel(
 	}
 
 	fun loadGrades(period: String = "1") {
+		DiaryDiagnostics.record(DiaryStage.LOAD, DiaryOutcome.START)
 		gradesPeriod = period
 		val source = repository ?: run { gradesState = null; return }
 		val observation = source.observeGrades(period)

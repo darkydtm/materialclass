@@ -1,6 +1,9 @@
 package org.materialclass.api
 
 import java.net.URLEncoder
+import org.materialclass.diagnostics.DiaryDiagnostics
+import org.materialclass.diagnostics.DiaryOutcome
+import org.materialclass.diagnostics.DiaryStage
 import org.materialclass.data.DiaryModel
 import org.materialclass.data.DiaryWeeksModel
 import org.materialclass.data.GradesModel
@@ -189,8 +192,11 @@ class SchoolGateway(
 			body = "",
 		)
 		log("read request GET $path")
+		val diagnostic = path == SUBJECTS_PATH
+		if (diagnostic) DiaryDiagnostics.record(DiaryStage.SUBJECTS, DiaryOutcome.START)
 		return try {
 			val response = transport.execute(request)
+			if (diagnostic) DiaryDiagnostics.record(DiaryStage.SUBJECTS, DiaryOutcome.SUCCESS, status = response.status)
 			when {
 				response.status == 401 -> GatewayReadResult.Failure(AppError.Unauthorized)
 				response.status == 403 -> GatewayReadResult.Failure(AppError.Forbidden)
@@ -199,14 +205,24 @@ class SchoolGateway(
 				)
 				!response.contentType.lowercase().startsWith("application/json") -> GatewayReadResult.Failure(AppError.InvalidResponse)
 				else -> mapper(response.body)
+			}.also { result ->
+				if (diagnostic) when (result) {
+					is GatewayReadResult.Success -> DiaryDiagnostics.record(DiaryStage.SUBJECTS, DiaryOutcome.SUCCESS)
+					GatewayReadResult.Empty -> DiaryDiagnostics.record(DiaryStage.SUBJECTS, DiaryOutcome.EMPTY)
+					is GatewayReadResult.Failure -> DiaryDiagnostics.record(DiaryStage.SUBJECTS, DiaryOutcome.FAILURE, error = result.error)
+				}
 			}
-		} catch (_: TransportFailure.Timeout) {
+		} catch (exception: TransportFailure.Timeout) {
+			if (diagnostic) DiaryDiagnostics.record(DiaryStage.SUBJECTS, DiaryOutcome.FAILURE, error = AppError.Timeout, exception = exception)
 			GatewayReadResult.Failure(AppError.Timeout)
-		} catch (_: TransportFailure.Offline) {
+		} catch (exception: TransportFailure.Offline) {
+			if (diagnostic) DiaryDiagnostics.record(DiaryStage.SUBJECTS, DiaryOutcome.FAILURE, error = AppError.Offline, exception = exception)
 			GatewayReadResult.Failure(AppError.Offline)
-		} catch (_: TransportFailure.Tls) {
+		} catch (exception: TransportFailure.Tls) {
+			if (diagnostic) DiaryDiagnostics.record(DiaryStage.SUBJECTS, DiaryOutcome.FAILURE, error = AppError.TlsFailure, exception = exception)
 			GatewayReadResult.Failure(AppError.TlsFailure)
-		} catch (_: Exception) {
+		} catch (exception: Exception) {
+			if (diagnostic) DiaryDiagnostics.record(DiaryStage.SUBJECTS, DiaryOutcome.FAILURE, error = AppError.Network, exception = exception)
 			GatewayReadResult.Failure(AppError.Network)
 		}
 	}
@@ -222,7 +238,10 @@ class SchoolGateway(
 			?.filter(String::isNotBlank)
 			.orEmpty()
 			.ifEmpty { listOfNotNull(context.queryParameters["studentGroupUuid"]) }
-		if (groups.isEmpty()) return GatewayReadResult.Failure(AppError.InvalidResponse)
+		if (groups.isEmpty()) {
+			DiaryDiagnostics.record(DiaryStage.JOURNAL, DiaryOutcome.FAILURE, error = AppError.InvalidResponse)
+			return GatewayReadResult.Failure(AppError.InvalidResponse)
+		}
 		var succeeded = 0
 		var failed = 0
 		var firstFailure: AppError? = null
@@ -243,7 +262,9 @@ class SchoolGateway(
 				body = "",
 			)
 			try {
+				DiaryDiagnostics.record(DiaryStage.JOURNAL, DiaryOutcome.START)
 				val response = transport.execute(request)
+				DiaryDiagnostics.record(DiaryStage.JOURNAL, DiaryOutcome.SUCCESS, status = response.status)
 				when {
 					response.status == 401 -> GatewayReadResult.Failure<org.materialclass.data.JournalGradesModel>(AppError.Unauthorized)
 					response.status !in 200..299 -> GatewayReadResult.Failure<org.materialclass.data.JournalGradesModel>(AppError.HttpStatus(response.status))
@@ -258,18 +279,27 @@ class SchoolGateway(
 						GatewayReadResult.Empty -> succeeded++
 						is GatewayReadResult.Failure -> { failed++; if (firstFailure == null) firstFailure = result.error }
 					}
+					when (result) {
+						is GatewayReadResult.Success -> DiaryDiagnostics.record(DiaryStage.JOURNAL, DiaryOutcome.SUCCESS)
+						GatewayReadResult.Empty -> DiaryDiagnostics.record(DiaryStage.JOURNAL, DiaryOutcome.EMPTY)
+						is GatewayReadResult.Failure -> DiaryDiagnostics.record(DiaryStage.JOURNAL, DiaryOutcome.FAILURE, error = result.error)
+					}
 				}
-			} catch (_: TransportFailure.Timeout) {
+			} catch (exception: TransportFailure.Timeout) {
+				DiaryDiagnostics.record(DiaryStage.JOURNAL, DiaryOutcome.FAILURE, error = AppError.Timeout, exception = exception)
 				failed++
 				if (firstFailure == null) firstFailure = AppError.Timeout
-			} catch (_: TransportFailure.Offline) {
+			} catch (exception: TransportFailure.Offline) {
+				DiaryDiagnostics.record(DiaryStage.JOURNAL, DiaryOutcome.FAILURE, error = AppError.Offline, exception = exception)
 				failed++
 				if (firstFailure == null) firstFailure = AppError.Offline
-			} catch (_: Exception) {
+			} catch (exception: Exception) {
+				DiaryDiagnostics.record(DiaryStage.JOURNAL, DiaryOutcome.FAILURE, error = AppError.Network, exception = exception)
 				failed++
 				if (firstFailure == null) firstFailure = AppError.Network
 			}
 		}
+		if (failed > 0 && succeeded > 0) DiaryDiagnostics.record(DiaryStage.JOURNAL, DiaryOutcome.PARTIAL)
 		if (succeeded == 0) return GatewayReadResult.Failure(firstFailure ?: AppError.Network)
 		if (grades.isEmpty() && failed == 0) return GatewayReadResult.Empty
 		return GatewayReadResult.Success(org.materialclass.data.JournalGradesModel(grades, succeeded, failed))
