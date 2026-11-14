@@ -279,7 +279,7 @@ class MaterialClassNavigationTest {
 
 	@Test
 	fun actualBackButtonReturnsFromThemeToSettings() {
-		composeRule.activity.setContent { MaterialClassApp(startAuthenticated = true) }
+		composeRule.setContent { MaterialClassApp(startAuthenticated = true) }
 		val context = composeRule.activity
 		val settings = context.getString(org.materialclass.R.string.nav_settings)
 		val theme = context.getString(org.materialclass.R.string.theme)
