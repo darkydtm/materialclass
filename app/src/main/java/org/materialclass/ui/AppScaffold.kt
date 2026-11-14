@@ -57,7 +57,7 @@ internal fun AppScaffold(
 	onLogout: () -> Unit,
 ) {
 	val titleKey = route.titleKey()
-	val rootRoutes = listOf(AppRoute.Home, AppRoute.Diary, AppRoute.Schedule, AppRoute.Settings)
+	val rootRoutes = primaryRoutes.toList()
 	Scaffold(
 		topBar = {
 			CenterAlignedTopAppBar(

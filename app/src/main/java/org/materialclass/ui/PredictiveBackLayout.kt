@@ -12,6 +12,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.AbstractComposeView
 import androidx.core.graphics.toColorInt
+import androidx.core.view.doOnPreDraw
 import androidx.customview.widget.ViewDragHelper
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -34,6 +35,9 @@ internal class PredictiveBackLayout(
 	private var gestureEnabled = false
 	private var lastLaidOutLeft = 0
 	private var currentWidth = 0
+	private var awaitingContentSwap = false
+	private var contentSwapPending = false
+	private var swapPreviousContent: (@Composable () -> Unit)? = null
 
 	init {
 		setWillNotDraw(false)
@@ -62,10 +66,10 @@ internal class PredictiveBackLayout(
 		this.onClose = onClose
 		this.gestureEnabled = gestureEnabled
 		backgroundLayer.setBackgroundColor(backgroundColor)
-		previousLayer.updateContent(previousContent)
-		contentLayer.updateContent(currentContent)
-		previousLayer.visibility = if (previousContent == null) INVISIBLE else VISIBLE
 		if (this.currentRoute != currentRoute) {
+			val swapAfterClose = awaitingContentSwap
+			awaitingContentSwap = false
+			contentSwapPending = false
 			this.currentRoute = currentRoute
 			closeDispatched = false
 			recovering = false
@@ -73,6 +77,35 @@ internal class PredictiveBackLayout(
 			contentLayer.offsetLeftAndRight(-contentLayer.left)
 			backgroundLayer.alpha = 1f
 			positionShadow(0)
+			if (swapAfterClose) {
+				contentLayer.visibility = INVISIBLE
+				contentSwapPending = true
+				swapPreviousContent = previousContent
+				contentLayer.updateContent(currentContent)
+				contentLayer.post {
+					if (contentSwapPending) {
+						contentSwapPending = false
+						contentLayer.visibility = VISIBLE
+						contentLayer.doOnPreDraw {
+							previousLayer.updateContent(swapPreviousContent)
+							previousLayer.visibility = if (swapPreviousContent == null) INVISIBLE else VISIBLE
+							swapPreviousContent = null
+						}
+					}
+				}
+			} else {
+				previousLayer.updateContent(previousContent)
+				contentLayer.updateContent(currentContent)
+				previousLayer.visibility = if (previousContent == null) INVISIBLE else VISIBLE
+				contentLayer.visibility = VISIBLE
+			}
+		} else {
+			contentSwapPending = false
+			swapPreviousContent = null
+			previousLayer.updateContent(previousContent)
+			contentLayer.updateContent(currentContent)
+			previousLayer.visibility = if (previousContent == null) INVISIBLE else VISIBLE
+			contentLayer.visibility = VISIBLE
 		}
 		if (previousRoute == null) {
 			previousLayer.visibility = INVISIBLE
@@ -198,7 +231,7 @@ internal class PredictiveBackLayout(
 	}
 
 	private inner class DragCallback : ViewDragHelper.Callback() {
-		override fun tryCaptureView(child: View, pointerId: Int): Boolean = gestureEnabled && child === contentLayer
+		override fun tryCaptureView(child: View, pointerId: Int): Boolean = gestureEnabled && edgeGesture && child === contentLayer
 
 		override fun getViewHorizontalDragRange(child: View): Int = width
 
@@ -209,7 +242,7 @@ internal class PredictiveBackLayout(
 		}
 
 		override fun onEdgeDragStarted(edgeFlags: Int, pointerId: Int) {
-			if (gestureEnabled && edgeFlags and ViewDragHelper.EDGE_LEFT != 0 && contentLayer.left == 0) {
+			if (gestureEnabled && edgeGesture && edgeFlags and ViewDragHelper.EDGE_LEFT != 0 && contentLayer.left == 0) {
 				dragHelper.captureChildView(contentLayer, pointerId)
 			}
 		}
@@ -239,6 +272,7 @@ internal class PredictiveBackLayout(
 			if (contentLayer.left >= currentWidth || backgroundLayer.alpha <= 0f) {
 				if (!closeDispatched) {
 					closeDispatched = true
+					awaitingContentSwap = true
 					onClose?.invoke()
 				}
 			} else if (contentLayer.left > 0) {

@@ -28,6 +28,17 @@ class UiModelTest {
 	}
 
 	@Test
+	fun selectingPrimaryRouteClearsSecondaryHistory() {
+		val navigator = AppNavigator(AppRoute.Home)
+		navigator.go(AppRoute.Settings)
+		navigator.go(AppRoute.SettingsTheme)
+		navigator.go(AppRoute.Diary)
+
+		assertEquals(AppRoute.Diary, navigator.current)
+		assertEquals(false, navigator.back())
+	}
+
+	@Test
 	fun unsupportedContractIsRenderedAsUnavailableState() {
 		assertEquals(UiContent.Unsupported, UiContent.from(DataStateKind.Unsupported))
 		assertEquals(UiContent.Empty, UiContent.from(DataStateKind.Empty))

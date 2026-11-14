@@ -56,10 +56,14 @@ class AppNavigator(start: AppRoute) {
 		get() = route
 
 	fun go(next: AppRoute) {
-		if (current != next) {
+		if (current == next) return
+		if (next in primaryRoutes && current !in loginRoutes) {
+			stack.clear()
 			stack += next
-			route = next
+		} else {
+			stack += next
 		}
+		route = next
 	}
 
 	fun back(): Boolean {
@@ -78,7 +82,10 @@ class AppNavigator(start: AppRoute) {
 		stack += next
 		route = next
 	}
+
 }
+
+internal val primaryRoutes = listOf(AppRoute.Home, AppRoute.Diary, AppRoute.Schedule, AppRoute.Settings)
 
 enum class AppLanguage(val tag: String) {
 	RU("ru"),
@@ -194,6 +201,8 @@ class SchoolViewModel(
 		private set
 	var gradesState: DataState<GradesModel>? by mutableStateOf(null)
 		private set
+	var gradesPeriod: String by mutableStateOf("1")
+		private set
 
 	private fun week(offset: Int = 0, nextWeekOnWeekend: Boolean = false): DateRange {
 			val today = LocalDate.now()
@@ -243,6 +252,7 @@ class SchoolViewModel(
 	}
 
 	fun loadGrades(period: String = "1") {
+		gradesPeriod = period
 		val source = repository ?: run { gradesState = null; return }
 		val observation = source.observeGrades(period)
 		observation.observe { gradesState = it }
@@ -260,9 +270,9 @@ class SchoolViewModel(
 		when (route) {
 			AppRoute.HomeError, AppRoute.HomeEmpty -> loadSchedule()
 			AppRoute.Schedule, AppRoute.ScheduleOffline -> loadSchedule()
-			AppRoute.Diary -> loadGrades()
+			AppRoute.Diary -> loadGrades(gradesPeriod)
 			AppRoute.Profile -> loadProfile()
-			AppRoute.SubjectDetail, AppRoute.Calculator, AppRoute.CalculatorMissing -> loadGrades()
+			AppRoute.SubjectDetail, AppRoute.Calculator, AppRoute.CalculatorMissing -> loadGrades(gradesPeriod)
 			else -> Unit
 		}
 	}

@@ -101,7 +101,7 @@ fun MaterialClassApp(
 			update = { layout ->
 				layout.updateLayers(
 					backgroundColor = backgroundColor,
-					gestureEnabled = navigator.canGoBack() && previousRoute != null,
+					gestureEnabled = currentRoute !in loginRoutes && currentRoute !in primaryRoutes && navigator.canGoBack() && previousRoute != null,
 					previousRoute = previousRoute,
 					currentRoute = currentRoute,
 					previousContent = previousRoute?.let { route -> { renderRoute(route) } },

@@ -42,6 +42,11 @@
 	<string name="open_subject">Открыть предмет</string>
 	<string name="previous_week">Предыдущая неделя</string>
 	<string name="next_week">Следующая неделя</string>
+	<string name="day_short_0">Пн</string>
+	<string name="day_short_1">Вт</string>
+	<string name="day_short_2">Ср</string>
+	<string name="day_short_3">Чт</string>
+	<string name="day_short_4">Пт</string>
 	<string name="selected_day">День</string>
 	<string name="calculator_intro">Расчёт доступных компонентов</string>
 	<string name="calculator_missing">Недостающие компоненты показываются явно</string>

@@ -42,6 +42,11 @@
 	<string name="open_subject">Пәнді ашу</string>
 	<string name="previous_week">Алдыңғы апта</string>
 	<string name="next_week">Келесі апта</string>
+	<string name="day_short_0">Дс</string>
+	<string name="day_short_1">Сс</string>
+	<string name="day_short_2">Ср</string>
+	<string name="day_short_3">Бс</string>
+	<string name="day_short_4">Жм</string>
 	<string name="selected_day">Күн</string>
 	<string name="calculator_intro">Қолжетімді компоненттер есебі</string>
 	<string name="calculator_missing">Жетіспейтін компоненттер ашық көрсетіледі</string>

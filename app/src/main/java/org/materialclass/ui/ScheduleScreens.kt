@@ -1,9 +1,7 @@
 package org.materialclass.ui
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -139,13 +137,15 @@ internal fun ScheduleScreen(
 						(0..4).forEach { index ->
 							val selected = safeSelectedDay == index
 							Surface(
-								modifier = Modifier.size(width = 54.dp, height = 45.dp).clickable { selectedDay = index },
+								modifier = Modifier.size(width = 58.dp, height = 58.dp).clickable { selectedDay = index },
 								shape = RoundedCornerShape(999.dp),
-								color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
-								contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
-								border = if (selected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+								color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainer,
+								contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
 							) {
-								Box(contentAlignment = Alignment.Center) { Text((index + 1).toString()) }
+								Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+									Text(text("day_short_$index"), style = MaterialTheme.typography.labelMedium)
+									Text(dayNumber(schedule?.days?.getOrNull(index)?.dateLabel) ?: "-", style = MaterialTheme.typography.titleMedium)
+								}
 							}
 						}
 					}
@@ -171,6 +171,12 @@ internal fun ScheduleScreen(
 			}
 		}
 	}
+}
+
+private fun dayNumber(value: String?): String? {
+	val parts = value?.trim()?.split('.', '-', '/') ?: return null
+	val candidate = if (parts.firstOrNull()?.length == 4) parts.lastOrNull() else parts.firstOrNull()
+	return candidate?.takeIf { it.length in 1..2 && it.all(Char::isDigit) }?.toIntOrNull()?.toString()
 }
 
 @Composable

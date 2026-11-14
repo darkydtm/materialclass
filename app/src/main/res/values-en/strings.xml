@@ -42,6 +42,11 @@
 	<string name="open_subject">Open subject</string>
 	<string name="previous_week">Previous week</string>
 	<string name="next_week">Next week</string>
+	<string name="day_short_0">Mon</string>
+	<string name="day_short_1">Tue</string>
+	<string name="day_short_2">Wed</string>
+	<string name="day_short_3">Thu</string>
+	<string name="day_short_4">Fri</string>
 	<string name="selected_day">Day</string>
 	<string name="calculator_intro">Calculation from available components</string>
 	<string name="calculator_missing">Missing components are shown explicitly</string>

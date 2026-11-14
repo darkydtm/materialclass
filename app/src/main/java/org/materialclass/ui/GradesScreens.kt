@@ -1,6 +1,7 @@
 package org.materialclass.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
@@ -18,9 +20,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Divider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -45,17 +47,19 @@ internal fun DiaryScreen(padding: PaddingValues, text: (String) -> String, viewM
 	val grades = viewModel.gradesState.readyValue()
 	LazyColumn(modifier = Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
 		item {
-			Text(text("quarter"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 8.dp))
-			Card(shape = NotificationShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer), modifier = Modifier.fillMaxWidth()) {
+			Surface(shape = NotificationShape, color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
 				Row(modifier = Modifier.padding(5.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
 					(0..3).forEach { index ->
-						FilterChip(
-							modifier = Modifier.weight(1f),
-							selected = quarter == index,
-							onClick = { quarter = index },
+						Surface(
+							modifier = Modifier.weight(1f).clickable { quarter = index },
 							shape = RoundedCornerShape(14.dp),
-							label = { Text((index + 1).toString()) },
-						)
+							color = if (quarter == index) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainer,
+							contentColor = if (quarter == index) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+						) {
+							Box(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
+								Text((index + 1).toString(), style = MaterialTheme.typography.titleMedium)
+							}
+						}
 					}
 				}
 			}
@@ -102,7 +106,7 @@ private fun SubjectCard(subject: GradeSubject, text: (String) -> String, onClick
 
 @Composable
 internal fun SubjectDetailScreen(padding: PaddingValues, text: (String) -> String, viewModel: SchoolViewModel, selectedSubject: String, navigator: AppNavigator) {
-	LaunchedEffect(Unit) { viewModel.loadGrades() }
+	LaunchedEffect(viewModel.gradesPeriod) { viewModel.loadGrades(viewModel.gradesPeriod) }
 	val subject = viewModel.gradesState.readyValue()?.subjects?.firstOrNull { it.subjectName == selectedSubject }
 	if (subject == null) {
 		StateScreen(padding, text, "subject_title", "subject_detail_unavailable", "unsupported") { viewModel.retry(AppRoute.SubjectDetail) }
@@ -141,7 +145,7 @@ internal fun SubjectDetailScreen(padding: PaddingValues, text: (String) -> Strin
 
 @Composable
 internal fun CalculatorScreen(padding: PaddingValues, text: (String) -> String, viewModel: SchoolViewModel, selectedSubject: String, missing: Boolean) {
-	LaunchedEffect(Unit) { viewModel.loadGrades() }
+	LaunchedEffect(viewModel.gradesPeriod) { viewModel.loadGrades(viewModel.gradesPeriod) }
 	val subject = viewModel.gradesState.readyValue()?.subjects?.firstOrNull { it.subjectName == selectedSubject }
 	val components = remember(subject) {
 		listOf(
