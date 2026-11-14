@@ -12,6 +12,25 @@ import org.materialclass.api.SchoolGateway
 
 class DiaryDiagnosticsTest {
 	@Test
+	fun upgradeRequiredBodyDiagnosticsAllowOnlyFixedIndicators() {
+		val method = DiaryDiagnostics::class.java.methods.firstOrNull { it.name == "upgradeRequired" && it.parameterTypes.contentEquals(arrayOf(String::class.java, String::class.java)) }
+		assertTrue("Missing private-safe 426 diagnostics", method != null)
+		val messages = mutableListOf<String>()
+		val previous = DiaryDiagnostics.sink
+		try {
+			DiaryDiagnostics.sink = { messages.add(it) }
+			method!!.invoke(DiaryDiagnostics, "application/json; secret-content-type", "{\"message\":\"private-token cloudflare TLS\",\"private-key\":\"https://private.example/?token=secret\"}")
+			assertEquals(1, messages.size)
+			assertEquals("upgrade426 empty=false json=true html=false cloudflare=true tls=true version=false upgrade=false message=true error=false", messages.single())
+			assertFalse(messages.single().contains("private"))
+			messages.clear()
+			method.invoke(DiaryDiagnostics, "private-type", "private-secret")
+			assertEquals("upgrade426 empty=false json=false html=false cloudflare=false tls=false version=false upgrade=false message=false error=false", messages.single())
+		} finally {
+			DiaryDiagnostics.sink = previous
+		}
+	}
+	@Test
 	fun exceptionMessagesAndDynamicClassNamesNeverEnterLogs() {
 		val secret = "private-token-https://example.test/?account=private"
 		val exception = object : RuntimeException(secret) {}
