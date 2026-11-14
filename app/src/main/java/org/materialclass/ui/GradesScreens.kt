@@ -22,7 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Divider
+
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 
@@ -118,16 +118,17 @@ private fun SubjectCard(subject: GradeSubject, text: (String) -> String, onClick
 					Text(displayedScore, modifier = Modifier.widthIn(min = 34.dp).padding(horizontal = 8.dp, vertical = 8.dp), textAlign = TextAlign.Center, style = MaterialTheme.typography.titleMedium, color = assessmentColor(subject.finalScore, subject.scoreType))
 				}
 			}
-			Divider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 1.dp)
-			Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-				if (subject.schedules.any { it.score != null || it.sor != null || it.soch != null }) {
-					subject.schedules.forEach { schedule ->
-						if (schedule.score != null) GradeTile(schedule.score, subject.scoreType, schedule.date, null, text, schedule.markMax?.toDouble())
-						if (schedule.sor != null) GradeTile(schedule.sor, subject.scoreType, schedule.date, text("grade_category_sor"), text, schedule.sorMax?.toDoubleOrNull())
-						if (schedule.soch != null) GradeTile(schedule.soch, subject.scoreType, schedule.date, text("grade_category_soch"), text, schedule.sochMax?.toDoubleOrNull())
+			Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+				Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+					if (subject.schedules.any { it.score != null || it.sor != null || it.soch != null }) {
+						subject.schedules.forEach { schedule ->
+							if (schedule.score != null) GradeTile(schedule.score, subject.scoreType, schedule.date, null, text, schedule.markMax?.toDouble())
+							if (schedule.sor != null) GradeTile(schedule.sor, subject.scoreType, schedule.date, text("grade_category_sor"), text, schedule.sorMax?.toDoubleOrNull())
+							if (schedule.soch != null) GradeTile(schedule.soch, subject.scoreType, schedule.date, text("grade_category_soch"), text, schedule.sochMax?.toDoubleOrNull())
+						}
+					} else {
+						subject.scores.forEach { score -> GradeTile(score, subject.scoreType, null, null, text) }
 					}
-				} else {
-					subject.scores.forEach { score -> GradeTile(score, subject.scoreType, null, null, text) }
 				}
 			}
 		}
