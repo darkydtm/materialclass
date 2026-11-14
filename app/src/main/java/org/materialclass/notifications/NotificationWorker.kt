@@ -184,9 +184,9 @@ class NotificationProcessor(
 					}
 					result.items.forEach { item ->
 						if (state.hasSeen(accountId, generation, category, item.stableId)) return@forEach
-						state.markSeen(accountId, generation, category, item.stableId)
 						if (permissionGranted) {
 							publisher.publish(item)
+							state.markSeen(accountId, generation, category, item.stableId)
 							published++
 						}
 					}
