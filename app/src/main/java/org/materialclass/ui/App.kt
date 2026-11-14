@@ -70,18 +70,20 @@ fun MaterialClassApp(
 	}
 	val snackbarHostState = remember { SnackbarHostState() }
 	val backProgress = remember { Animatable(0f) }
+	var backDestination by remember { mutableStateOf<AppRoute?>(null) }
 	val screenWidth = with(LocalDensity.current) { configuration.screenWidthDp.dp.toPx() }
 
-	val backTarget = navigator.predictiveBackTarget()
-
 	PredictiveBackHandler(enabled = navigator.current !in loginRoutes) { events ->
+		backDestination = navigator.predictiveBackTarget()
 		try {
 			events.collect { event -> backProgress.snapTo(event.progress) }
 			backProgress.animateTo(1f, tween(150))
 			if (!navigator.handleBack()) context.findActivity()?.finish()
 			backProgress.snapTo(0f)
+			backDestination = null
 		} catch (_: CancellationException) {
 			withContext(NonCancellable) { backProgress.animateTo(0f, tween(150)) }
+			backDestination = null
 		}
 	}
 
@@ -92,11 +94,11 @@ fun MaterialClassApp(
 
 	MaterialClassTheme(theme) {
 		Box(modifier = Modifier.fillMaxSize().clipToBounds()) {
-			if (backTarget != null && backProgress.value > 0f) {
+			if (backDestination != null && backProgress.value > 0f) {
 				Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
 					AppScaffold(
 						navigator = navigator,
-						displayRoute = backTarget,
+						displayRoute = backDestination!!,
 						text = text,
 						viewModel = viewModel,
 						snackbarHostState = snackbarHostState,
