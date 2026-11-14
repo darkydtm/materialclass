@@ -26,6 +26,13 @@ class UiModelTest {
 	}
 
 	@Test
+	fun weekendDetectionSeparatesSaturdayAndSundayFromWeekdays() {
+		assertTrue(isWeekend(java.time.LocalDate.of(2026, 11, 14)))
+		assertTrue(isWeekend(java.time.LocalDate.of(2026, 11, 15)))
+		assertEquals(false, isWeekend(java.time.LocalDate.of(2026, 11, 13)))
+	}
+
+	@Test
 	fun interactiveScreensUse120HzFrameBudget() {
 		assertEquals(8.3f, INTERACTIVE_FRAME_BUDGET_MS)
 		assertEquals(AppRoute.entries.toSet(), interactiveScreenFrameBudgets.keys)

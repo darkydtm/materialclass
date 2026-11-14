@@ -22,6 +22,7 @@
 	<string name="student_name">Student</string>
 	<string name="student_context">School data</string>
 	<string name="day_progress">Today’s progress</string>
+	<string name="weekend">Weekend</string>
 	<string name="login">Login</string>
 	<string name="password">Password</string>
 	<string name="login_action">Sign in</string>

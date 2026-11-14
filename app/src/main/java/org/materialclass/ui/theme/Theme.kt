@@ -34,9 +34,14 @@ fun MaterialClassTheme(themeMode: ThemeMode, content: @Composable () -> Unit) {
 	val effectiveMode = if (themeMode == ThemeMode.SYSTEM) {
 		if (dark) ThemeMode.DARK else ThemeMode.LIGHT
 	} else themeMode
-	val colorScheme = if (themeMode != ThemeMode.BLACK && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+	val colorScheme = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
 		val context = LocalContext.current
-		if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+		val dynamic = if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+		if (themeMode == ThemeMode.BLACK) dynamic.copy(
+			background = Color.Black,
+			surface = Color.Black,
+			surfaceContainerLowest = Color.Black,
+		) else dynamic
 	} else when (effectiveMode) {
 		ThemeMode.BLACK -> darkColorScheme(
 			primary = Color(0xFFB5CCB6), onPrimary = Color(0xFF203526), primaryContainer = Color(0xFF263A2B), onPrimaryContainer = Color(0xFFD1E8D2),

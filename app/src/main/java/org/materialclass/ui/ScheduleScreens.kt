@@ -36,8 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
-import java.time.DayOfWeek
-import java.time.LocalDate
+
 import androidx.compose.ui.unit.dp
 import org.materialclass.data.GradeSchedule
 import org.materialclass.data.ScheduleLesson
@@ -59,7 +58,7 @@ internal fun HomeScreen(
 	val schedule = viewModel.scheduleState.readyValue()
 	val today = schedule?.days?.firstOrNull { it.isCurrent } ?: schedule?.days?.firstOrNull()
 	val homeState = viewModel.scheduleState.toUiState()
-	val weekend = LocalDate.now().dayOfWeek in setOf(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY)
+	val weekend = isWeekend()
 	val completedLessons = if (weekend) 0 else completedLessonCount(today?.lessons.orEmpty())
 	val lessonsTitle = if (weekend) "lessons_monday" else "lessons_today"
 	LazyColumn(
@@ -81,8 +80,12 @@ internal fun HomeScreen(
 			) {
 				Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 					Text(text("day_progress"), style = MaterialTheme.typography.labelLarge)
-					Text(if (today == null) text("no_data") else "$completedLessons / ${today.lessons.size}", style = MaterialTheme.typography.displaySmall)
-					if (today != null) LinearProgressIndicator(
+					if (weekend) {
+						Text(text("weekend"), style = MaterialTheme.typography.displaySmall)
+					} else {
+						Text(if (today == null) text("no_data") else "$completedLessons / ${today.lessons.size}", style = MaterialTheme.typography.displaySmall)
+					}
+					if (!weekend && today != null) LinearProgressIndicator(
 						progress = { if (today.lessons.isEmpty()) 0f else completedLessons.toFloat() / today.lessons.size },
 						modifier = Modifier.fillMaxWidth(),
 						color = MaterialTheme.colorScheme.primary,
@@ -155,8 +158,8 @@ internal fun ScheduleScreen(
 								contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
 							) {
 								Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-									Text(text("day_short_$index"), style = MaterialTheme.typography.labelMedium)
-									Text(dayNumber(schedule?.days?.getOrNull(index)?.dateLabel) ?: "-", style = MaterialTheme.typography.titleMedium)
+									Text(dayNumber(schedule?.days?.getOrNull(index)?.dateLabel) ?: "-", style = MaterialTheme.typography.labelMedium)
+									Text(text("day_short_$index"), style = MaterialTheme.typography.titleMedium)
 								}
 							}
 						}
@@ -201,9 +204,9 @@ private fun LessonCard(lesson: ScheduleLesson, grade: GradeSchedule?, onClick: (
 					Text(cabinet, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 				}
 			}
-			GradeCard(grade)
 			Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
 				Text(lesson.label ?: "", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+				GradeCard(grade)
 			}
 			lesson.homework?.let {
 				Text(
@@ -221,8 +224,9 @@ private fun LessonCard(lesson: ScheduleLesson, grade: GradeSchedule?, onClick: (
 
 @Composable
 private fun GradeCard(grade: GradeSchedule?) {
-	Card(shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer), modifier = Modifier.fillMaxWidth()) {
-		Text(grade?.score ?: "-", modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
+	val score = grade?.score?.takeIf(String::isNotBlank) ?: return
+	Card(shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+		Text(score, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
 	}
 }
 

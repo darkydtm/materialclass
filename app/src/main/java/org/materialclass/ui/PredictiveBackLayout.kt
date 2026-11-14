@@ -15,7 +15,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.AbstractComposeView
 import androidx.core.graphics.toColorInt
-import androidx.core.view.doOnPreDraw
+import android.view.animation.DecelerateInterpolator
 import androidx.customview.widget.ViewDragHelper
 import kotlin.math.abs
 import kotlin.math.roundToInt

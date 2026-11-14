@@ -321,7 +321,7 @@ class ConfirmedSchoolGateway(
 				parameters["period"] = key.substringAfter(':')
 				user.groupId?.let { parameters["groupId"] = it }
 				parameters["userId"] = user.userId
-				parameters["studentGroupUuids"] = user.studentGroupUuids.joinToString(",")
+				parameters["studentGroupUuids"] = user.studentGroupUuids.ifEmpty { listOfNotNull(user.studentGroupUuid) }.joinToString(",")
 			}
 			key == "homeworks" || key.startsWith("homeworks:") -> {
 				user.studentGroupUuid?.let { parameters["studentGroupUuid"] = it }
@@ -336,7 +336,7 @@ class ConfirmedSchoolGateway(
 			}
 			key.startsWith("journal:") -> {
 				parameters["userId"] = user.userId
-				parameters["studentGroupUuids"] = user.studentGroupUuids.joinToString(",")
+				parameters["studentGroupUuids"] = user.studentGroupUuids.ifEmpty { listOfNotNull(user.studentGroupUuid) }.joinToString(",")
 				if (key.startsWith("journal:")) {
 					parameters["dateFrom"] = key.substringAfter(':').substringBefore(':') + "T00:00:00.000Z"
 					parameters["dateTo"] = key.substringAfterLast(':') + "T00:00:00.000Z"
