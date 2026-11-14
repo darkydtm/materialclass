@@ -22,6 +22,7 @@
 	<string name="student_name">Ученик</string>
 	<string name="student_context">Учебные данные</string>
 	<string name="day_progress">Прогресс за день</string>
+	<string name="weekend">Выходной</string>
 	<string name="login">Логин</string>
 	<string name="password">Пароль</string>
 	<string name="login_action">Войти</string>

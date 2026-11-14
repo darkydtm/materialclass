@@ -77,8 +77,12 @@ internal fun HomeScreen(
 			Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
 				Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 					Text(text("day_progress"), style = MaterialTheme.typography.labelLarge)
-					Text(if (today == null) text("no_data") else "$completedLessons / ${today.lessons.size}", style = MaterialTheme.typography.displaySmall)
-					if (today != null) LinearProgressIndicator(
+					if (weekend) {
+						Text(text("weekend"), style = MaterialTheme.typography.displaySmall)
+					} else {
+						Text(if (today == null) text("no_data") else "$completedLessons / ${today.lessons.size}", style = MaterialTheme.typography.displaySmall)
+					}
+					if (!weekend && today != null) LinearProgressIndicator(
 						progress = { if (today.lessons.isEmpty()) 0f else completedLessons.toFloat() / today.lessons.size },
 						modifier = Modifier.fillMaxWidth(),
 						color = MaterialTheme.colorScheme.primary,

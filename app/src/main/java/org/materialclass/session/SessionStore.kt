@@ -119,6 +119,8 @@ private fun DataOutputStream.writeUserInfo(userInfo: UserInfo?) {
 	writeNullable(userInfo.chatToken)
 	writeNullable(userInfo.role)
 	writeBoolean(userInfo.hasStudentContext)
+	writeInt(userInfo.studentGroupUuids.size)
+	userInfo.studentGroupUuids.forEach(::writeUTF)
 }
 
 private fun DataOutputStream.writeNullable(value: String?) {
@@ -128,7 +130,7 @@ private fun DataOutputStream.writeNullable(value: String?) {
 
 private fun DataInputStream.readUserInfo(): UserInfo? {
 	if (!readBoolean()) return null
-	return UserInfo(
+	val user = UserInfo(
 		userId = readUTF(),
 		fullName = readNullable(),
 		schoolName = readNullable(),
@@ -143,6 +145,10 @@ private fun DataInputStream.readUserInfo(): UserInfo? {
 		role = readNullable(),
 		hasStudentContext = readBoolean(),
 	)
+	if (available() == 0) return user.copy(studentGroupUuids = listOfNotNull(user.studentGroupUuid))
+	val count = readInt()
+	require(count in 0..10000)
+	return user.copy(studentGroupUuids = List(count) { readUTF() })
 }
 
 private fun DataInputStream.readNullable(): String? = if (readBoolean()) readUTF() else null
