@@ -103,6 +103,15 @@ class ConfirmedSchoolGatewayTest {
 		assertEquals("2026", context.queryParameters["eduYear"])
 		assertEquals("07.09.2026", context.queryParameters["date"])
 		assertEquals("student-school-1", context.queryParameters["studentSchoolUuid"])
+		listOf("1", "2", "3", "4").forEach { period ->
+			val grades = gateway.readContext("synthetic-access", "grades:$period")
+			assertEquals(period, grades.queryParameters["period"])
+			assertEquals("quarter", grades.queryParameters["periodType"])
+		}
+		listOf("2026-09-14" to "14.09.2026", "2026-10-05" to "05.10.2026").forEach { (date, expected) ->
+			val schedule = gateway.readContext("synthetic-access", "schedule:$date:$date")
+			assertEquals(expected, schedule.queryParameters["date"])
+		}
 		assertTrue(gateway.profile() is GatewayReadResult.Success)
 	}
 
