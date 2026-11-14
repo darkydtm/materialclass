@@ -98,14 +98,17 @@ class SchoolRepositoryImpl(
 	override fun observeJournal(range: DateRange) = observation<JournalGradesModel>(journalKey(range))
 	override fun observeProfile() = observation<ProfileModel>(PROFILE)
 
-	override fun refreshHome() = refresh(HOME) { gateway.home(it) }
-	override fun refreshDiary(range: DateRange) = refresh(diaryKey(range)) { gateway.diary(it) }
-	override fun refreshSchedule(range: DateRange) = refresh(scheduleKey(range)) { gateway.schedule(it) }
+	override fun refreshHome() { refresh(HOME) { gateway.home(it) } }
+	override fun refreshDiary(range: DateRange) { refresh(diaryKey(range)) { gateway.diary(it) } }
+	override fun refreshSchedule(range: DateRange) { refresh(scheduleKey(range)) { gateway.schedule(it) } }
 	fun refreshScheduleFor(session: ActiveSession, range: DateRange) = refresh(scheduleKey(range), session) { gateway.schedule(it) }
-	override fun refreshGrades(period: String) = refresh(gradesKey(period)) { gateway.grades(it) }
-	override fun refreshHomeworks() = refresh(HOMEWORKS) { gateway.homeworks(it) }
-	override fun refreshJournal(range: DateRange) = refresh(journalKey(range)) { gateway.journalGrades(it) }
-	override fun refreshProfile() = refresh(PROFILE) { gateway.profile() }
+	override fun refreshGrades(period: String) {
+		refresh(gradesKey(period)) { gateway.grades(it) }
+	}
+	fun refreshGradesFor(session: ActiveSession, period: String) = refresh(gradesKey(period), session) { gateway.grades(it) }
+	override fun refreshHomeworks() { refresh(HOMEWORKS) { gateway.homeworks(it) } }
+	override fun refreshJournal(range: DateRange) { refresh(journalKey(range)) { gateway.journalGrades(it) } }
+	override fun refreshProfile() { refresh(PROFILE) { gateway.profile() } }
 	override fun logout() {
 		if (gateway.logout() !is GatewayReadResult.Success) return
 		sessions.withSessionLock { synchronized(lock) { states.clear(); observations.values.forEach { it.update(DataState.Loading) } } }
@@ -120,24 +123,35 @@ class SchoolRepositoryImpl(
 			}
 	}
 
-	private fun <T> refresh(key: String, expectedSession: ActiveSession? = null, call: (ReadContext) -> GatewayReadResult<T>) {
+	private fun <T> refresh(key: String, expectedSession: ActiveSession? = null, call: (ReadContext) -> GatewayReadResult<T>): Boolean {
 		if (key.startsWith("grades:")) DiaryDiagnostics.record(DiaryStage.REPOSITORY, DiaryOutcome.START)
-		val session = sessions.currentSession() ?: return if (expectedSession == null) publishFailureIfCurrent(key, null, AppError.LoginRequired) else Unit
-		if (expectedSession != null && session != expectedSession) return
+		val session = sessions.currentSession() ?: run {
+			if (expectedSession == null) publishFailureIfCurrent(key, null, AppError.LoginRequired)
+			return false
+		}
+		if (expectedSession != null && session != expectedSession) return false
 		sessions.withSessionLock {
 			synchronized(lock) {
 				if (sessions.currentSession() == session && states[key] == null) restoreSlice<T>(key, session)
 			}
 		}
-		val token = sessions.tokenFor(session) ?: return if (expectedSession == null) publishFailureIfCurrent(key, session, AppError.LoginRequired) else Unit
-		val result = try { call(context(token, key)) } catch (exception: Exception) {
+		val token = sessions.tokenFor(session) ?: run {
+			if (expectedSession == null) publishFailureIfCurrent(key, session, AppError.LoginRequired)
+			return false
+		}
+		val result = try { call(context(token, key)) } catch (exception: InterruptedException) {
+			Thread.currentThread().interrupt()
+			throw exception
+		} catch (exception: java.util.concurrent.CancellationException) {
+			throw exception
+		} catch (exception: Exception) {
 			if (key.startsWith("grades:")) DiaryDiagnostics.record(DiaryStage.REPOSITORY, DiaryOutcome.FAILURE, error = AppError.Network, exception = exception)
 			GatewayReadResult.Failure(AppError.Network)
 		}
-		sessions.withSessionLock {
+		return sessions.withSessionLock {
 			synchronized(lock) {
-				if (sessions.currentSession() != session) return@synchronized
-				handleResult(key, session, result)
+				if (sessions.currentSession() != session || Thread.currentThread().isInterrupted) false
+				else handleResult(key, session, result)
 			}
 		}
 	}
@@ -145,16 +159,19 @@ class SchoolRepositoryImpl(
 	private fun publishFailureIfCurrent(key: String, session: ActiveSession?, error: AppError) = sessions.withSessionLock {
 		if (sessions.currentSession() == session) synchronized(lock) { handleFailure(key, error) }
 	}
-	private fun <T> handleResult(key: String, session: ActiveSession, result: GatewayReadResult<T>) {
-		when (result) {
-			is GatewayReadResult.Success -> commit(key, session, result.value)
-			GatewayReadResult.Empty -> {
+	private fun <T> handleResult(key: String, session: ActiveSession, result: GatewayReadResult<T>): Boolean = when (result) {
+		is GatewayReadResult.Success -> commit(key, session, result.value)
+		GatewayReadResult.Empty -> {
+			if (writeSlices(session, key, CachedSlice(EMPTY_PAYLOAD, now()))) {
 				states[key] = DataState.Empty
 				update(key, DataState.Empty)
-				writeSlices(session, key, CachedSlice(EMPTY_PAYLOAD, now()))
+				true
+			} else {
+				handleFailure(key, AppError.Network)
+				false
 			}
-			is GatewayReadResult.Failure -> handleFailure(key, result.error)
 		}
+		is GatewayReadResult.Failure -> { handleFailure(key, result.error); false }
 	}
 
 	private fun handleFailure(key: String, error: AppError) {
@@ -179,7 +196,7 @@ class SchoolRepositoryImpl(
 		emitFailure(key, error)
 	}
 
-	private fun <T> commit(key: String, session: ActiveSession, value: T) {
+	private fun <T> commit(key: String, session: ActiveSession, value: T): Boolean {
 		val snapshot = Snapshot(session.accountId, session.generation, value, now())
 		val payload = runCatching {
 			java.io.ByteArrayOutputStream().also { output -> java.io.ObjectOutputStream(output).use { it.writeObject(value) } }.toByteArray()
@@ -190,10 +207,11 @@ class SchoolRepositoryImpl(
 		}.getOrNull()
 		if (payload == null || !writeSlices(session, key, CachedSlice(payload, snapshot.capturedAt))) {
 			handleFailure(key, AppError.Network)
-			return
+			return false
 		}
 		states[key] = DataState.Ready(snapshot)
 		update(key, DataState.Ready(snapshot))
+		return true
 	}
 
 	@Suppress("UNCHECKED_CAST")

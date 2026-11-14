@@ -177,6 +177,8 @@ class AppPreferences(context: Context) {
 
 	fun newGradeNotifications(): Boolean = preferences.getBoolean(NEW_GRADE_NOTIFICATIONS, false)
 	fun homeworkNotifications(): Boolean = preferences.getBoolean(HOMEWORK_NOTIFICATIONS, false)
+	fun gradesPeriod(): String = preferences.getString(GRADES_PERIOD, "1")?.takeIf { it in listOf("1", "2", "3", "4") } ?: "1"
+	fun setGradesPeriod(value: String) { preferences.edit().putString(GRADES_PERIOD, value).apply() }
 	fun backgroundWork(): Boolean = preferences.getBoolean(BACKGROUND_WORK, false)
 	fun backgroundInterval(): Float = preferences.getInt(BACKGROUND_INTERVAL, 30).toFloat()
 	fun setLanguage(value: AppLanguage) { preferences.edit().putString(LANGUAGE, value.name).apply() }
@@ -192,6 +194,7 @@ class AppPreferences(context: Context) {
 		const val THEME = "theme"
 		const val NEW_GRADE_NOTIFICATIONS = "notifications.new-grade"
 		const val HOMEWORK_NOTIFICATIONS = "notifications.homework"
+		const val GRADES_PERIOD = "grades.period"
 		const val BACKGROUND_WORK = "background-work.enabled"
 		const val BACKGROUND_INTERVAL = "background-work.interval"
 	}
@@ -200,6 +203,8 @@ class AppPreferences(context: Context) {
 class SchoolViewModel(
 	private val repository: SchoolRepository? = null,
 	private val loginHandler: (LoginCredentials) -> GatewayLoginResult = { GatewayLoginResult.Failure(AppError.Network) },
+	initialGradesPeriod: String = "1",
+	private val onGradesPeriod: (String) -> Unit = {},
 ) {
 	private val io = Executors.newCachedThreadPool()
 	private var loginRequest = 0L
@@ -214,7 +219,7 @@ class SchoolViewModel(
 		private set
 	var gradesState: DataState<GradesModel>? by mutableStateOf(null)
 		private set
-	var gradesPeriod: String by mutableStateOf("1")
+	var gradesPeriod: String by mutableStateOf(initialGradesPeriod)
 		private set
 
 	private fun week(offset: Int = 0, nextWeekOnWeekend: Boolean = false): DateRange {
@@ -267,6 +272,7 @@ class SchoolViewModel(
 	fun loadGrades(period: String = "1") {
 		DiaryDiagnostics.record(DiaryStage.LOAD, DiaryOutcome.START)
 		gradesPeriod = period
+		onGradesPeriod(period)
 		val source = repository ?: run { gradesState = null; return }
 		val observation = source.observeGrades(period)
 		observation.observe { if (gradesPeriod == period) gradesState = it }

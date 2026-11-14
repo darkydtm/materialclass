@@ -42,7 +42,7 @@ import org.materialclass.grades.GradeComponent
 
 @Composable
 internal fun DiaryScreen(padding: PaddingValues, text: (String) -> String, viewModel: SchoolViewModel, navigator: AppNavigator, onSubjectSelected: (String) -> Unit) {
-	var quarter by rememberSaveable { mutableIntStateOf(0) }
+	var quarter by rememberSaveable { mutableIntStateOf((viewModel.gradesPeriod.toIntOrNull() ?: 1) - 1) }
 	LaunchedEffect(quarter) { viewModel.loadGrades((quarter + 1).toString()) }
 	val grades = viewModel.gradesState.readyValue()
 	LazyColumn(modifier = Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {

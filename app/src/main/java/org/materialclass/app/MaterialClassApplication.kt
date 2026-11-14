@@ -3,7 +3,6 @@ package org.materialclass.app
 import android.app.Application
 import java.time.Instant
 import java.time.LocalDate
-import org.materialclass.data.DateRange
 import org.materialclass.notifications.NotificationScheduler
 import org.materialclass.ui.AppPreferences
 import org.materialclass.api.ConfirmedSchoolGateway
@@ -73,11 +72,11 @@ class ApplicationRuntime(application: Application) {
 		}
 	}
 
-	fun refreshBackgroundCache() {
-		if (!preferences.backgroundWork()) return
-		val session = sessionCoordinator.currentSession() ?: return
-		val today = LocalDate.now()
-		val monday = today.minusDays((today.dayOfWeek.value - 1).toLong())
-		repository.refreshScheduleFor(session, DateRange(monday, monday.plusDays(6)))
-	}
+	fun refreshBackgroundCache(): Boolean = BackgroundCacheRefresh(
+		enabled = preferences::backgroundWork,
+		session = sessionCoordinator::currentSession,
+		today = LocalDate::now,
+		schedule = repository::refreshScheduleFor,
+		grades = { session -> repository.refreshGradesFor(session, preferences.gradesPeriod()) },
+	).run()
 }

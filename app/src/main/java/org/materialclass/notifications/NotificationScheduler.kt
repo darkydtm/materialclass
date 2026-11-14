@@ -125,7 +125,6 @@ class NotificationWorker(
 	params: WorkerParameters,
 ) : CoroutineWorker(context, params) {
 	override suspend fun doWork(): Result {
-		(applicationContext as org.materialclass.app.MaterialClassApplication).runtime.refreshBackgroundCache()
-		return Result.success()
+		return if ((applicationContext as org.materialclass.app.MaterialClassApplication).runtime.refreshBackgroundCache()) Result.success() else Result.retry()
 	}
 }

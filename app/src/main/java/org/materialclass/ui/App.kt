@@ -55,7 +55,7 @@ fun MaterialClassApp(
 	var backgroundWork by remember(actualPreferences) { mutableStateOf(actualPreferences.backgroundWork()) }
 	var backgroundInterval by remember(actualPreferences) { mutableStateOf(actualPreferences.backgroundInterval()) }
 	val navigator = remember { AppNavigator(if (startAuthenticated) AppRoute.Home else AppRoute.Login) }
-	val viewModel = remember(repository, loginHandler) { SchoolViewModel(repository, loginHandler) }
+	val viewModel = remember(repository, loginHandler) { SchoolViewModel(repository, loginHandler, actualPreferences.gradesPeriod(), actualPreferences::setGradesPeriod) }
 	var selectedSubject by rememberSaveable { mutableStateOf("") }
 	var selectedLesson by rememberSaveable { mutableStateOf("") }
 	val text: (String) -> String = remember(context, configuration) {

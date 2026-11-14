@@ -52,6 +52,27 @@ class SchoolRepositoryTest {
 	}
 
 	@Test
+	fun backgroundGradesUseSelectedPeriodAndPreserveScheduleOnHttp426() {
+		val fixture = Fixture()
+		val keys = mutableListOf<String>()
+		val repository = SchoolRepositoryImpl(fixture.gateway, fixture.sessions, fixture.store, { capturedAt }, { token, key ->
+			keys += key
+			ReadContext(token)
+		})
+		fixture.gateway.gradesResult = GatewayReadResult.Success(GradesModel(1))
+		repository.refreshGrades("3")
+		fixture.gateway.scheduleResult = GatewayReadResult.Success(ScheduleModel(2, 1))
+		assertTrue(repository.refreshScheduleFor(session, range))
+		val saved = fixture.store.read(session)
+		fixture.gateway.gradesResult = GatewayReadResult.Failure(AppError.HttpStatus(426))
+
+		assertFalse(repository.refreshGradesFor(session, "3"))
+		assertEquals("grades:3", keys.last())
+		assertEquals(saved, fixture.store.read(session))
+		assertEquals(AppError.HttpStatus(426), (repository.observeGrades("3").current as DataState.Error).error)
+	}
+
+	@Test
 	fun backgroundScheduleResponseAfterAccountReplacementIsDiscarded() {
 		val fixture = Fixture()
 		val started = CountDownLatch(1)
