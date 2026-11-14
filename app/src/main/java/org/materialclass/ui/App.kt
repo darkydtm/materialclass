@@ -1,9 +1,14 @@
 package org.materialclass.ui
 
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.PredictiveBackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
@@ -34,6 +39,12 @@ fun MaterialClassApp(
 	startAuthenticated: Boolean = false,
 ) {
 	val context = LocalContext.current
+	val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+	val requestNotificationPermission = {
+		if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+			notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+		}
+	}
 	val actualPreferences = preferences ?: remember(context) { AppPreferences(context) }
 	val configuration = LocalConfiguration.current
 	val language = AppLanguage.entries.firstOrNull { it.tag == configuration.locales[0].language } ?: AppLanguage.RU
@@ -98,9 +109,9 @@ fun MaterialClassApp(
 					onLanguage = { actualPreferences.setLanguage(it) },
 					onTheme = { theme = it; actualPreferences.setTheme(it) },
 					newGradeNotifications = newGradeNotifications,
-					onNewGradeNotifications = { newGradeNotifications = it; actualPreferences.setNewGradeNotifications(it) },
+					onNewGradeNotifications = { newGradeNotifications = it; actualPreferences.setNewGradeNotifications(it); if (it) requestNotificationPermission() },
 					homeworkNotifications = homeworkNotifications,
-					onHomeworkNotifications = { homeworkNotifications = it; actualPreferences.setHomeworkNotifications(it) },
+					onHomeworkNotifications = { homeworkNotifications = it; actualPreferences.setHomeworkNotifications(it); if (it) requestNotificationPermission() },
 					backgroundWork = backgroundWork,
 					onBackgroundWork = { backgroundWork = it; actualPreferences.setBackgroundWork(it) },
 					backgroundInterval = backgroundInterval,
