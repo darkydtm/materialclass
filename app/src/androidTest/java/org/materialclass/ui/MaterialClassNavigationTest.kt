@@ -30,7 +30,7 @@ class MaterialClassNavigationTest {
 	@Test
 	fun predictiveProgressRevealsThePreviousScreenWithoutTintingIt() {
 		lateinit var layout: PredictiveBackLayout
-		composeRule.activity.setContent {
+		composeRule.setContent {
 			AndroidView(
 				modifier = Modifier.fillMaxSize().testTag("back-layout"),
 				factory = { PredictiveBackLayout(it).also { view -> layout = view } },
