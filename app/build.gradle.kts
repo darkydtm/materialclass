@@ -117,6 +117,7 @@ dependencies {
 	testImplementation(libs.junit)
 	androidTestImplementation(libs.androidx.test.ext.junit)
 	androidTestImplementation(libs.androidx.test.runner)
+	androidTestImplementation("androidx.work:work-testing:${libs.versions.workManager.get()}")
 	androidTestImplementation(platform(libs.androidx.compose.bom))
 	androidTestImplementation(libs.androidx.compose.ui.test.junit4)
 	debugImplementation("androidx.compose.ui:ui-test-manifest")
