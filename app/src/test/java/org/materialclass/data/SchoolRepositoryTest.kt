@@ -33,6 +33,24 @@ class SchoolRepositoryTest {
 	}
 
 	@Test
+	fun cachedGradesPreserveNestedSchedulesAndScoreEntries() {
+		val fixture = Fixture()
+		val model = GradesModel(1, listOf(GradeSubject(
+			subjectName = "Math",
+			finalScore = "8",
+			schedules = listOf(GradeSchedule("lesson-1", "14.11.2026", "09:00", 10, "regular", "8")),
+			scoreEntries = listOf(GradeScoreEntry("FO", "8", "10")),
+		)))
+		fixture.gateway.gradesResult = GatewayReadResult.Success(model)
+		fixture.repository.refreshGrades("2")
+		assertEquals(model, (fixture.repository.observeGrades("2").current as DataState.Ready).snapshot.value)
+		fixture.gateway.gradesResult = GatewayReadResult.Failure(AppError.Offline)
+		val restarted = SchoolRepositoryImpl(fixture.gateway, fixture.sessions, fixture.store, { capturedAt })
+		restarted.refreshGrades("2")
+		assertEquals(model, (restarted.observeGrades("2").current as DataState.Error).snapshot?.value)
+	}
+
+	@Test
 	fun cachedOfflineDataIsStaleAndRetainsItsLastSuccessTimestamp() {
 		val fixture = Fixture()
 		fixture.gateway.diaryResult = GatewayReadResult.Success(DiaryModel(3))
@@ -143,11 +161,12 @@ private class FakeSessionAccess(@Volatile var active: ActiveSession?) : SessionA
 private class FakeGateway : RepositoryGateway {
 	var diaryResult: GatewayReadResult<DiaryModel> = GatewayReadResult.Failure(AppError.Offline)
 	var scheduleResult: GatewayReadResult<ScheduleModel> = GatewayReadResult.Failure(AppError.Offline)
+	var gradesResult: GatewayReadResult<GradesModel> = GatewayReadResult.Failure(AppError.UnsupportedContract)
 	var diaryCall: (() -> GatewayReadResult<DiaryModel>)? = null
 	override fun home(context: ReadContext) = GatewayReadResult.Failure<HomeModel>(AppError.UnsupportedContract)
 	override fun diary(context: ReadContext) = diaryCall?.invoke() ?: diaryResult
 	override fun schedule(context: ReadContext) = scheduleResult
-	override fun grades(context: ReadContext) = GatewayReadResult.Failure<GradesModel>(AppError.UnsupportedContract)
+	override fun grades(context: ReadContext) = gradesResult
 	override fun homeworks(context: ReadContext) = GatewayReadResult.Failure<HomeworksModel>(AppError.UnsupportedContract)
 	override fun journalGrades(context: ReadContext) = GatewayReadResult.Failure<JournalGradesModel>(AppError.UnsupportedContract)
 	override fun profile() = GatewayReadResult.Failure<ProfileModel>(AppError.UnsupportedContract)

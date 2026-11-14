@@ -211,7 +211,7 @@ class ConfirmedSchoolGateway(
 		val journal = when (val result = gateway.journalGrades(journalContext)) {
 			is GatewayReadResult.Success -> result.value
 			GatewayReadResult.Empty -> null
-			is GatewayReadResult.Failure -> null
+			is GatewayReadResult.Failure -> return GatewayReadResult.Failure(result.error)
 		}
 		val bySchedule = journal?.grades.orEmpty().associateBy { it.scheduleUuid }
 		return GatewayReadResult.Success(

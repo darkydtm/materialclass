@@ -111,6 +111,22 @@ class GradesSourcesTest {
 	}
 
 	@Test
+	fun gradesPropagateJournalFailureInsteadOfReturningUnscoredSubjects() {
+		val result = ConfirmedSchoolGateway(
+			SchoolGateway(SyntheticGradesTransport { request ->
+				if (request.url.substringBefore('?').endsWith("/diary/subjects")) {
+					HttpResponseData(200, "application/json", "{\"data\":[{\"subjectName\":\"Math\",\"schedules\":[{\"uuid\":\"lesson-1\",\"date\":\"14.11.2026\"}]}]}")
+				} else {
+					HttpResponseData(403, "application/json", "{}")
+				}
+			}),
+			FakeGradesSessionController(),
+		).grades(context)
+
+		assertEquals(GatewayReadResult.Failure<GradesModel>(AppError.HttpStatus(403)), result)
+	}
+
+	@Test
 	fun journalRequestsEachStudentGroupUuidSeparately() {
 		val calls = mutableListOf<HttpRequestData>()
 		val result = SchoolGateway(SyntheticGradesTransport { request ->
