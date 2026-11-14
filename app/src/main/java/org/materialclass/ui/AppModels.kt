@@ -277,12 +277,18 @@ class SchoolViewModel(
 
 	fun loadGrades(period: String = "1") {
 		DiaryDiagnostics.record(DiaryStage.LOAD, DiaryOutcome.START)
-		gradesPeriod = period
-		onGradesPeriod(period)
+		if (period != gradesPeriod) return
 		val source = repository ?: run { gradesState = null; return }
 		val observation = source.observeGrades(period)
 		observation.observe { if (gradesPeriod == period) gradesState = it }
 		io.execute { source.refreshGrades(period) }
+	}
+
+	fun selectGradesPeriod(period: String) {
+		if (period !in listOf("1", "2", "3", "4") || period == gradesPeriod) return
+		gradesPeriod = period
+		onGradesPeriod(period)
+		loadGrades(period)
 	}
 
 	fun loadProfile() {

@@ -43,8 +43,8 @@ import org.materialclass.grades.GradeComponent
 
 @Composable
 internal fun DiaryScreen(padding: PaddingValues, text: (String) -> String, viewModel: SchoolViewModel, navigator: AppNavigator, onSubjectSelected: (String) -> Unit) {
-	var quarter by rememberSaveable { mutableIntStateOf((viewModel.gradesPeriod.toIntOrNull() ?: 1) - 1) }
-	LaunchedEffect(quarter) { viewModel.loadGrades((quarter + 1).toString()) }
+	val quarter = (viewModel.gradesPeriod.toIntOrNull() ?: 1) - 1
+	LaunchedEffect(Unit) { viewModel.loadGrades(viewModel.gradesPeriod) }
 	val grades = viewModel.gradesState.readyValue()
 	LazyColumn(modifier = Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
 		item {
@@ -53,7 +53,7 @@ internal fun DiaryScreen(padding: PaddingValues, text: (String) -> String, viewM
 				Row(modifier = Modifier.padding(5.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
 					(0..3).forEach { index ->
 						Surface(
-							modifier = Modifier.weight(1f).clickable { quarter = index },
+							modifier = Modifier.weight(1f).clickable { viewModel.selectGradesPeriod((index + 1).toString()) },
 							shape = RoundedCornerShape(14.dp),
 							color = if (quarter == index) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainer,
 							contentColor = if (quarter == index) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
