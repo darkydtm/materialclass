@@ -26,8 +26,9 @@ val debugSigningConfigured = listOf(
 val releaseTaskRequested = gradle.startParameter.taskNames.any {
 	it.contains("Release", ignoreCase = true)
 }
-val debugTaskRequested = gradle.startParameter.taskNames.any {
-	it.contains("Debug", ignoreCase = true)
+val debugBuildTaskRequested = gradle.startParameter.taskNames.any {
+	it.contains("assembleDebug", ignoreCase = true) ||
+		it.contains("bundleDebug", ignoreCase = true)
 }
 
 if (releaseTaskRequested && !releaseSigningConfigured) {
@@ -36,7 +37,7 @@ if (releaseTaskRequested && !releaseSigningConfigured) {
 			"ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, and ANDROID_KEY_PASSWORD.",
 	)
 }
-if (debugTaskRequested && !debugSigningConfigured) {
+if (debugBuildTaskRequested && !debugSigningConfigured) {
 	throw GradleException(
 		"Debug signing is not configured. Set ANDROID_DEBUG_KEYSTORE_PATH, " +
 			"ANDROID_DEBUG_KEYSTORE_PASSWORD, ANDROID_DEBUG_KEY_ALIAS, and " +
