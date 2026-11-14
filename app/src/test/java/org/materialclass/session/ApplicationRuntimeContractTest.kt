@@ -11,6 +11,12 @@ class ApplicationRuntimeContractTest {
 	}
 
 	@Test
+	fun applicationRuntimeExposesNotificationExecution() {
+		val runtime = Class.forName("org.materialclass.app.ApplicationRuntime")
+		assertTrue("Worker must execute notifications through the shared runtime", runtime.methods.any { it.name == "runBackgroundNotifications" && it.parameterCount == 0 })
+	}
+
+	@Test
 	fun applicationOwnsTheSharedRuntimeForActivityAndWorker() {
 		val application = runCatching { Class.forName("org.materialclass.app.MaterialClassApplication") }.getOrNull()
 		assertTrue("Application-scoped runtime owner is missing", application != null)
