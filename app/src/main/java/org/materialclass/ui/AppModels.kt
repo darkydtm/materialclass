@@ -273,7 +273,11 @@ class SchoolViewModel(
 		val range = week(weekOffset, nextWeekOnWeekend = true)
 		val request = ++scheduleRequest
 		val observation = source.observeSchedule(range)
-		observation.observe { if (scheduleRequest == request) scheduleState = it }
+		observation.observe { state ->
+			android.os.Handler(android.os.Looper.getMainLooper()).post {
+				if (scheduleRequest == request) scheduleState = state
+			}
+		}
 		io.execute { source.refreshSchedule(range) }
 	}
 
@@ -291,7 +295,11 @@ class SchoolViewModel(
 		val source = repository ?: run { gradesState = null; return }
 		val request = ++gradesRequest
 		val observation = source.observeGrades(period)
-		observation.observe { if (gradesRequest == request && gradesPeriod == period) gradesState = it }
+		observation.observe { state ->
+			android.os.Handler(android.os.Looper.getMainLooper()).post {
+				if (gradesRequest == request && gradesPeriod == period) gradesState = state
+			}
+		}
 		io.execute { source.refreshGrades(period) }
 	}
 
