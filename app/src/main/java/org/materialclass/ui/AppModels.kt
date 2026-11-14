@@ -337,6 +337,9 @@ internal fun completedLessonCount(lessons: List<ScheduleLesson>, now: LocalTime 
 		end != null && now >= end
 	}
 
+internal fun isWeekend(date: LocalDate = LocalDate.now()): Boolean =
+	date.dayOfWeek in setOf(java.time.DayOfWeek.SATURDAY, java.time.DayOfWeek.SUNDAY)
+
 internal fun gradeForLesson(grades: GradesModel?, lesson: ScheduleLesson): GradeSchedule? =
 	lesson.uuid?.takeIf(String::isNotBlank)?.let { uuid -> grades?.subjects.orEmpty()
 		.asSequence()

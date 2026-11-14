@@ -12,7 +12,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.AbstractComposeView
 import androidx.core.graphics.toColorInt
-import androidx.core.view.doOnPreDraw
+import android.view.animation.DecelerateInterpolator
 import androidx.customview.widget.ViewDragHelper
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -67,6 +67,8 @@ internal class PredictiveBackLayout(
 		this.gestureEnabled = gestureEnabled
 		backgroundLayer.setBackgroundColor(backgroundColor)
 		if (this.currentRoute != currentRoute) {
+			contentLayer.animate().cancel()
+			contentLayer.translationX = 0f
 			val swapAfterClose = awaitingContentSwap
 			awaitingContentSwap = false
 			contentSwapPending = false
@@ -78,26 +80,25 @@ internal class PredictiveBackLayout(
 			backgroundLayer.alpha = 1f
 			positionShadow(0)
 			if (swapAfterClose) {
-				contentLayer.visibility = INVISIBLE
-				contentSwapPending = true
-				swapPreviousContent = previousContent
+				contentSwapPending = false
+				swapPreviousContent = null
 				contentLayer.updateContent(currentContent)
-				contentLayer.post {
-					if (contentSwapPending) {
-						contentSwapPending = false
-						contentLayer.visibility = VISIBLE
-						contentLayer.doOnPreDraw {
-							previousLayer.updateContent(swapPreviousContent)
-							previousLayer.visibility = if (swapPreviousContent == null) INVISIBLE else VISIBLE
-							swapPreviousContent = null
-						}
-					}
-				}
+				contentLayer.visibility = VISIBLE
+				previousLayer.updateContent(null)
+				previousLayer.visibility = INVISIBLE
 			} else {
 				previousLayer.updateContent(previousContent)
 				contentLayer.updateContent(currentContent)
 				previousLayer.visibility = if (previousContent == null) INVISIBLE else VISIBLE
 				contentLayer.visibility = VISIBLE
+				if (previousContent != null && currentRoute !in primaryRoutes && currentRoute !in loginRoutes) {
+					contentLayer.translationX = width.toFloat()
+					contentLayer.animate()
+						.translationX(0f)
+						.setDuration(280L)
+						.setInterpolator(DecelerateInterpolator())
+						.start()
+				}
 			}
 		} else {
 			contentSwapPending = false

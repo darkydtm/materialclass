@@ -36,8 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
-import java.time.DayOfWeek
-import java.time.LocalDate
+
 import androidx.compose.ui.unit.dp
 import org.materialclass.data.GradeSchedule
 import org.materialclass.data.ScheduleLesson
@@ -59,7 +58,7 @@ internal fun HomeScreen(
 	val schedule = viewModel.scheduleState.readyValue()
 	val today = schedule?.days?.firstOrNull { it.isCurrent } ?: schedule?.days?.firstOrNull()
 	val homeState = viewModel.scheduleState.toUiState()
-	val weekend = LocalDate.now().dayOfWeek in setOf(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY)
+	val weekend = isWeekend()
 	val completedLessons = if (weekend) 0 else completedLessonCount(today?.lessons.orEmpty())
 	val lessonsTitle = if (weekend) "lessons_monday" else "lessons_today"
 	LazyColumn(
