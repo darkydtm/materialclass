@@ -107,6 +107,30 @@ class ProductionNotificationDataSourceTest {
 	}
 
 	@Test
+	fun syntheticGatewayFeedsRunnerBaselineAndNewItems() {
+		val published = mutableListOf<NotificationItem>()
+		val runner = NotificationWorkerRunner(source, NotificationProcessor(InMemoryNotificationStateStore(), object : NotificationPublisher {
+			override fun publish(item: NotificationItem): NotificationPublishResult {
+				published += item
+				return NotificationPublishResult.PUBLISHED
+			}
+			override fun cancelAll() = Unit
+		}, sessions), { sessions.currentSession() == it })
+		val enabled = NotificationPreferences(newGradeEnabled = true, homeworkEnabled = true)
+		grades = GatewayReadResult.Success(JournalGradesModel(listOf(grade("old", "5")), 1, 0))
+		homework = GatewayReadResult.Success(HomeworksModel(listOf(task("old"))))
+		assertEquals(NotificationRunStatus.BASELINE, runner.run(session, enabled, true).status)
+		grades = GatewayReadResult.Success(JournalGradesModel(listOf(grade("old", "5"), grade("new", "4")), 1, 0))
+		homework = GatewayReadResult.Success(HomeworksModel(listOf(task("old"), task("new"))))
+		assertEquals(NotificationRunStatus.PERMISSION_DENIED, runner.run(session, enabled, false).status)
+		assertEquals(2, runner.run(session, enabled, true).publishedCount)
+		assertEquals(0, runner.run(session, enabled, true).publishedCount)
+		assertEquals(setOf(NotificationCategory.NEW_GRADE, NotificationCategory.HOMEWORK), published.map { it.category }.toSet())
+		grades = GatewayReadResult.Failure(AppError.Offline)
+		assertEquals(NotificationRunStatus.OFFLINE, runner.run(session, enabled, true).status)
+	}
+
+	@Test
 	fun unexpectedSourceFailureDoesNotExposeDataOrReportSuccess() {
 		val broken = ProductionNotificationDataSource(sessions, { _, _ -> throw IllegalStateException("synthetic private data") }, { range }, { grades }, { homework })
 		assertEquals(CategoryReadResult.Failed, broken.readNewGrades(session))

@@ -190,6 +190,45 @@ class NotificationLifecycleTest {
 	}
 
 	@Test
+	fun disabledSettingDuringReadPreventsPublication() {
+		val entered = java.util.concurrent.CountDownLatch(1)
+		val resume = java.util.concurrent.CountDownLatch(1)
+		val publisher = RecordingNotificationPublisher()
+		val state = InMemoryNotificationStateStore()
+		val enabled = NotificationPreferences(newGradeEnabled = true)
+		var currentPreferences = enabled
+		var items = emptyList<NotificationItem>()
+		var blockRead = false
+		val source = object : NotificationDataSource {
+			override fun readNewGrades(session: NotificationSession): CategoryReadResult {
+				if (blockRead) {
+					entered.countDown()
+					check(resume.await(5, java.util.concurrent.TimeUnit.SECONDS))
+				}
+				return CategoryReadResult.Available(items)
+			}
+			override fun readHomework(session: NotificationSession) = CategoryReadResult.Unsupported
+		}
+		val runner = NotificationWorkerRunner(source, NotificationProcessor(state, publisher, sessions), { sessions.currentSession() == it })
+		assertEquals(NotificationRunStatus.BASELINE, runner.run(session, enabled, true) { currentPreferences }.status)
+		items = listOf(NotificationItem(NotificationCategory.NEW_GRADE, "new", "Grade", "5"))
+		blockRead = true
+		val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+		try {
+			val result = executor.submit<NotificationRunResult> { runner.run(session, enabled, true) { currentPreferences } }
+			assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+			sessions.withSessionLock { currentPreferences = NotificationPreferences() }
+			resume.countDown()
+			assertEquals(0, result.get(5, java.util.concurrent.TimeUnit.SECONDS).publishedCount)
+			assertTrue(publisher.items.isEmpty())
+			assertFalse(state.hasSeen(session.activeSession.accountId.value, session.activeSession.generation, NotificationCategory.NEW_GRADE, "new"))
+		} finally {
+			resume.countDown()
+			executor.shutdownNow()
+		}
+	}
+
+	@Test
 	fun concurrentDeliveriesArePublishedOnce() {
 		val state = InMemoryNotificationStateStore()
 		val publisher = RecordingNotificationPublisher()
