@@ -34,6 +34,22 @@ class NotificationLifecycleTest {
 	}
 
 	@Test
+	fun failedGenerationWriteIsReportedWithoutPublishing() {
+		val state = object : NotificationStateStore by InMemoryNotificationStateStore() {
+			override fun reset(accountId: String, generation: Generation) {
+				throw IllegalStateException("synthetic write failure")
+			}
+		}
+		val publisher = RecordingNotificationPublisher()
+		val processor = NotificationProcessor(state, publisher, sessions)
+		val result = processor.process(session, settings, true, mapOf(
+			NotificationCategory.NEW_GRADE to CategoryReadResult.Available(emptyList()),
+		))
+		assertEquals(NotificationRunStatus.FAILED, result.status)
+		assertTrue(publisher.items.isEmpty())
+	}
+
+	@Test
 	fun firstAvailableReadCreatesBaselineWithoutPublishingOldItems() {
 		val publisher = RecordingNotificationPublisher()
 		val processor = NotificationProcessor(InMemoryNotificationStateStore(), publisher, sessions)
