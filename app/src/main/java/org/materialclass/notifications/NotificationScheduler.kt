@@ -125,7 +125,8 @@ class NotificationWorker(
 	params: WorkerParameters,
 ) : CoroutineWorker(context, params) {
 	override suspend fun doWork(): Result {
-		val runtime = NotificationWorkerRuntimeRegistry.runtime ?: return Result.success()
+		(applicationContext as org.materialclass.app.MaterialClassApplication).runtime
+		val runtime = NotificationWorkerRuntimeRegistry.runtime ?: return Result.failure()
 		runtime.run()
 		return Result.success()
 	}
