@@ -83,21 +83,16 @@ internal class PredictiveBackLayout(
 			backgroundLayer.alpha = 1f
 			positionShadow(0)
 			if (swapAfterClose) {
-				contentLayer.visibility = INVISIBLE
-				contentSwapPending = true
-				swapPreviousContent = previousContent
+				val oldContent = contentLayer
+				contentLayer = previousLayer
+				previousLayer = oldContent
+				previousLayer.bringToFront()
+				shadowLayer.bringToFront()
+				contentLayer.bringToFront()
 				contentLayer.updateContent(currentContent)
-				contentLayer.post {
-					if (contentSwapPending) {
-						contentSwapPending = false
-						contentLayer.visibility = VISIBLE
-						contentLayer.doOnPreDraw {
-							previousLayer.updateContent(swapPreviousContent)
-							previousLayer.visibility = if (swapPreviousContent == null) INVISIBLE else VISIBLE
-							swapPreviousContent = null
-						}
-					}
-				}
+				previousLayer.updateContent(previousContent)
+				previousLayer.visibility = if (previousContent == null) INVISIBLE else VISIBLE
+				contentLayer.visibility = VISIBLE
 			} else {
 				if (opening) {
 					val oldContent = contentLayer
