@@ -20,6 +20,33 @@ class SchoolRepositoryTest {
 	private val capturedAt = Instant.parse("2026-01-02T03:04:05Z")
 
 	@Test
+	fun backgroundScheduleResponseAfterAccountReplacementIsDiscarded() {
+		val fixture = Fixture()
+		val started = CountDownLatch(1)
+		val release = CountDownLatch(1)
+		val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+		fixture.gateway.scheduleCall = {
+			started.countDown()
+			check(release.await(5, TimeUnit.SECONDS))
+			GatewayReadResult.Success(ScheduleModel(9, 1))
+		}
+		try {
+			val call = executor.submit { fixture.repository.refreshScheduleFor(session, range) }
+			assertTrue(started.await(5, TimeUnit.SECONDS))
+			val replacement = ActiveSession(AccountId("synthetic-other"), Generation(2))
+			fixture.sessions.withSessionLock { fixture.sessions.active = replacement }
+			release.countDown()
+			call.get(5, TimeUnit.SECONDS)
+			assertEquals(emptyMap<String, CachedSlice>(), (fixture.store.read(session) as SnapshotStoreRead.Hit).slices)
+			assertEquals(emptyMap<String, CachedSlice>(), (fixture.store.read(replacement) as SnapshotStoreRead.Hit).slices)
+			assertEquals(DataState.Loading, fixture.repository.observeSchedule(range).current)
+		} finally {
+			release.countDown()
+			executor.shutdownNow()
+		}
+	}
+
+	@Test
 	fun cachedScheduleSurvivesRepositoryRecreation() {
 		val fixture = Fixture()
 		val model = ScheduleModel(1, 1, listOf(ScheduleDay("Monday", false, false, listOf(ScheduleLesson("id", "Math", "09:00", "12", null, null, null, null)))))
@@ -183,9 +210,10 @@ private class FakeGateway : RepositoryGateway {
 	var scheduleResult: GatewayReadResult<ScheduleModel> = GatewayReadResult.Failure(AppError.Offline)
 	var gradesResult: GatewayReadResult<GradesModel> = GatewayReadResult.Failure(AppError.UnsupportedContract)
 	var diaryCall: (() -> GatewayReadResult<DiaryModel>)? = null
+	var scheduleCall: (() -> GatewayReadResult<ScheduleModel>)? = null
 	override fun home(context: ReadContext) = GatewayReadResult.Failure<HomeModel>(AppError.UnsupportedContract)
 	override fun diary(context: ReadContext) = diaryCall?.invoke() ?: diaryResult
-	override fun schedule(context: ReadContext) = scheduleResult
+	override fun schedule(context: ReadContext) = scheduleCall?.invoke() ?: scheduleResult
 	override fun grades(context: ReadContext) = gradesResult
 	override fun homeworks(context: ReadContext) = GatewayReadResult.Failure<HomeworksModel>(AppError.UnsupportedContract)
 	override fun journalGrades(context: ReadContext) = GatewayReadResult.Failure<JournalGradesModel>(AppError.UnsupportedContract)
