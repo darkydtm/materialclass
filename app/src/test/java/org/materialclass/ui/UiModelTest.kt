@@ -27,6 +27,40 @@ class UiModelTest {
 	}
 
 	@Test
+	fun primaryRouteBackReturnsToHomeAndHomeHasNoInAppBackTarget() {
+		val navigator = AppNavigator(AppRoute.Home)
+		navigator.selectPrimary(AppRoute.Schedule)
+
+		assertEquals(AppRoute.Home, navigator.predictiveBackTarget())
+		assertTrue(navigator.handleBack())
+		assertEquals(AppRoute.Home, navigator.current)
+		assertEquals(null, navigator.predictiveBackTarget())
+		assertEquals(false, navigator.handleBack())
+	}
+
+	@Test
+	fun secondaryRouteBackReturnsToPreviousSection() {
+		val navigator = AppNavigator(AppRoute.Home)
+		navigator.selectPrimary(AppRoute.Schedule)
+		navigator.go(AppRoute.LessonDetail)
+
+		assertEquals(AppRoute.Schedule, navigator.predictiveBackTarget())
+		assertTrue(navigator.handleBack())
+		assertEquals(AppRoute.Schedule, navigator.current)
+	}
+
+	@Test
+	fun selectingAnotherPrimaryRouteDropsSecondaryHistory() {
+		val navigator = AppNavigator(AppRoute.Home)
+		navigator.selectPrimary(AppRoute.Schedule)
+		navigator.go(AppRoute.LessonDetail)
+		navigator.selectPrimary(AppRoute.Settings)
+
+		assertEquals(AppRoute.Settings, navigator.current)
+		assertEquals(AppRoute.Home, navigator.predictiveBackTarget())
+	}
+
+	@Test
 	fun unsupportedContractIsRenderedAsUnavailableState() {
 		assertEquals(UiContent.Unsupported, UiContent.from(DataStateKind.Unsupported))
 		assertEquals(UiContent.Empty, UiContent.from(DataStateKind.Empty))

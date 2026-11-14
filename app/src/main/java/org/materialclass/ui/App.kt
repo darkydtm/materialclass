@@ -1,11 +1,14 @@
 package org.materialclass.ui
 
-
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -17,11 +20,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -67,11 +72,13 @@ fun MaterialClassApp(
 	val backProgress = remember { Animatable(0f) }
 	val screenWidth = with(LocalDensity.current) { configuration.screenWidthDp.dp.toPx() }
 
-	PredictiveBackHandler(enabled = navigator.current !in loginRoutes && navigator.canGoBack()) { events ->
+	val backTarget = navigator.predictiveBackTarget()
+
+	PredictiveBackHandler(enabled = navigator.current !in loginRoutes) { events ->
 		try {
 			events.collect { event -> backProgress.snapTo(event.progress) }
 			backProgress.animateTo(1f, tween(150))
-			navigator.back()
+			if (!navigator.handleBack()) context.findActivity()?.finish()
 			backProgress.snapTo(0f)
 		} catch (_: CancellationException) {
 			withContext(NonCancellable) { backProgress.animateTo(0f, tween(150)) }
@@ -84,11 +91,43 @@ fun MaterialClassApp(
 	}
 
 	MaterialClassTheme(theme) {
-		Surface(modifier = Modifier.fillMaxSize().offset { IntOffset((screenWidth * backProgress.value).toInt(), 0) }, color = MaterialTheme.colorScheme.background) {
-			if (navigator.current in loginRoutes) {
-				LoginFlow(text, viewModel, loginRoute(viewModel.loginState)) { viewModel.resetLogin(); navigator.reset(AppRoute.Login) }
-			} else {
-				AppScaffold(
+		Box(modifier = Modifier.fillMaxSize().clipToBounds()) {
+			if (backTarget != null && backProgress.value > 0f) {
+				Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+					AppScaffold(
+						navigator = navigator,
+						displayRoute = backTarget,
+						text = text,
+						viewModel = viewModel,
+						snackbarHostState = snackbarHostState,
+						language = language,
+						theme = theme,
+						selectedSubject = selectedSubject,
+						onSubjectSelected = { selectedSubject = it },
+						selectedLesson = selectedLesson,
+						onLessonSelected = { selectedLesson = it },
+						onLanguage = { actualPreferences.setLanguage(it) },
+						onTheme = { theme = it; actualPreferences.setTheme(it) },
+						newGradeNotifications = newGradeNotifications,
+						onNewGradeNotifications = { newGradeNotifications = it; actualPreferences.setNewGradeNotifications(it) },
+						homeworkNotifications = homeworkNotifications,
+						onHomeworkNotifications = { homeworkNotifications = it; actualPreferences.setHomeworkNotifications(it) },
+						backgroundWork = backgroundWork,
+						onBackgroundWork = { backgroundWork = it; actualPreferences.setBackgroundWork(it) },
+						backgroundInterval = backgroundInterval,
+						onBackgroundInterval = { backgroundInterval = it; actualPreferences.setBackgroundInterval(it) },
+						onLogout = { viewModel.logout(); navigator.reset(AppRoute.Login) },
+					)
+				}
+			}
+			Surface(
+				modifier = Modifier.fillMaxSize().offset { IntOffset((screenWidth * backProgress.value).toInt(), 0) }.zIndex(1f),
+				color = MaterialTheme.colorScheme.background,
+			) {
+				if (navigator.current in loginRoutes) {
+					LoginFlow(text, viewModel, loginRoute(viewModel.loginState)) { viewModel.resetLogin(); navigator.reset(AppRoute.Login) }
+				} else {
+					AppScaffold(
 					navigator = navigator,
 					text = text,
 					viewModel = viewModel,
@@ -110,8 +149,15 @@ fun MaterialClassApp(
 					backgroundInterval = backgroundInterval,
 					onBackgroundInterval = { backgroundInterval = it; actualPreferences.setBackgroundInterval(it) },
 					onLogout = { viewModel.logout(); navigator.reset(AppRoute.Login) },
-				)
+					)
+				}
 			}
 		}
 	}
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+	is Activity -> this
+	is ContextWrapper -> baseContext.findActivity()
+	else -> null
 }

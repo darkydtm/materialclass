@@ -47,6 +47,13 @@ enum class AppRoute {
 	Profile,
 }
 
+internal val primaryRoutes = listOf(
+	AppRoute.Home,
+	AppRoute.Diary,
+	AppRoute.Schedule,
+	AppRoute.Settings,
+)
+
 class AppNavigator(start: AppRoute) {
 	private val stack = mutableListOf(start)
 	private var route by mutableStateOf(start)
@@ -60,6 +67,14 @@ class AppNavigator(start: AppRoute) {
 		}
 	}
 
+	fun selectPrimary(next: AppRoute) {
+		require(next in primaryRoutes)
+		stack.clear()
+		stack += AppRoute.Home
+		if (next != AppRoute.Home) stack += next
+		route = next
+	}
+
 	fun back(): Boolean {
 		if (stack.size == 1) return false
 		stack.removeAt(stack.lastIndex)
@@ -68,6 +83,21 @@ class AppNavigator(start: AppRoute) {
 	}
 
 	fun canGoBack(): Boolean = stack.size > 1
+
+	fun predictiveBackTarget(): AppRoute? = when {
+		current == AppRoute.Home -> null
+		current in primaryRoutes -> AppRoute.Home
+		else -> stack.dropLast(1).lastOrNull { it in primaryRoutes } ?: AppRoute.Home
+	}
+
+	fun handleBack(): Boolean {
+		when {
+			current == AppRoute.Home -> return false
+			current in primaryRoutes -> selectPrimary(AppRoute.Home)
+			else -> selectPrimary(predictiveBackTarget() ?: AppRoute.Home)
+		}
+		return true
+	}
 
 	fun reset(next: AppRoute) {
 		stack.clear()
