@@ -2,6 +2,9 @@ package org.materialclass.ui
 
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import android.os.SystemClock
+import android.view.MotionEvent
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -28,6 +31,51 @@ import org.junit.Test
 class MaterialClassNavigationTest {
 	@get:Rule
 	val composeRule = createAndroidComposeRule<ComponentActivity>()
+
+	@Test
+	fun cancelledEdgeSwipeKeepsDetailAndShowsPreviousDuringDrag() {
+		lateinit var layout: PredictiveBackLayout
+		var closes = 0
+		composeRule.setContent {
+			AndroidView(
+				modifier = Modifier.fillMaxSize().testTag("back-layout"),
+				factory = { PredictiveBackLayout(it).also { view -> layout = view } },
+				update = { view ->
+					view.updateLayers(
+						android.graphics.Color.BLACK, true, AppRoute.Settings, AppRoute.SettingsTheme,
+						{ Box(Modifier.fillMaxSize().background(Color.Blue)) },
+						{ Box(Modifier.fillMaxSize().background(Color.Yellow)) },
+					) { closes++ }
+				},
+			)
+		}
+		composeRule.waitForIdle()
+		val position = IntArray(2)
+		composeRule.runOnUiThread { layout.getLocationOnScreen(position) }
+		val startX = position[0] + 10f
+		val y = position[1] + layout.height / 2f
+		val downTime = SystemClock.uptimeMillis()
+		fun send(action: Int, x: Float) {
+			val event = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), action, x, y, 0)
+			try {
+				InstrumentationRegistry.getInstrumentation().sendPointerSync(event)
+			} finally {
+				event.recycle()
+			}
+		}
+		send(MotionEvent.ACTION_DOWN, startX)
+		for (step in 1..10) {
+			SystemClock.sleep(20)
+			send(MotionEvent.ACTION_MOVE, startX + layout.width * 0.6f * step / 10)
+		}
+		composeRule.waitForIdle()
+		val pixels = composeRule.onNodeWithTag("back-layout").captureToImage().toPixelMap()
+		check(pixels[pixels.width / 4, pixels.height / 2] == Color.Blue) { "Swipe must reveal the previous screen" }
+		check(pixels[pixels.width * 3 / 4, pixels.height / 2] == Color.Yellow) { "Swipe must retain the detail screen" }
+		send(MotionEvent.ACTION_CANCEL, startX + layout.width * 0.6f)
+		composeRule.waitUntil(5_000) { layout.getChildAt(3).left == 0 }
+		composeRule.runOnIdle { check(closes == 0) { "Cancelled swipe closed the detail screen" } }
+	}
 
 	@Test
 	fun predictiveProgressRevealsThePreviousScreenWithoutTintingIt() {
