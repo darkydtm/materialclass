@@ -211,7 +211,7 @@ jobs:
         with:
           api-level: 35
           arch: x86_64
-          script: ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=org.materialclass.ui.MaterialClassNavigationTest#predictiveProgressRevealsThePreviousScreenWithoutTintingIt,org.materialclass.ui.MaterialClassNavigationTest#openingSecondaryScreenStartsAtRightEdge
+          script: ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=org.materialclass.ui.MaterialClassNavigationTest#predictiveProgressRevealsThePreviousScreenWithoutTintingIt,org.materialclass.ui.MaterialClassNavigationTest#openingSecondaryScreenStartsAtRightEdge,org.materialclass.ui.MaterialClassNavigationTest#previousScreenEffectDoesNotRestartWhenOpeningDetail
       - name: Upload instrumentation results
         if: always()
         uses: actions/upload-artifact@v6

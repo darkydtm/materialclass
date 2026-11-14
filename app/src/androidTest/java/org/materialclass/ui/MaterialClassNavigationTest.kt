@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toPixelMap
@@ -89,6 +91,35 @@ class MaterialClassNavigationTest {
 			check(layout.width > 0)
 			check(layout.getChildAt(3).left == layout.width) { "Opening screen must start at the right edge" }
 		}
+	}
+
+	@Test
+	fun previousScreenEffectDoesNotRestartWhenOpeningDetail() {
+		lateinit var layout: PredictiveBackLayout
+		var loads = 0
+		val previous: @Composable () -> Unit = {
+			LaunchedEffect(Unit) { loads++ }
+			Box(Modifier.fillMaxSize().background(Color.Blue))
+		}
+		composeRule.setContent {
+			AndroidView(
+				modifier = Modifier.fillMaxSize(),
+				factory = { PredictiveBackLayout(it).also { view -> layout = view } },
+				update = { view ->
+					view.updateLayers(android.graphics.Color.BLACK, false, null, AppRoute.Settings, null, previous) { }
+				},
+			)
+		}
+		composeRule.waitForIdle()
+		check(loads == 1)
+		composeRule.runOnUiThread {
+			layout.updateLayers(
+				android.graphics.Color.BLACK, true, AppRoute.Settings, AppRoute.SettingsTheme,
+				previous, { Box(Modifier.fillMaxSize().background(Color.Yellow)) },
+			) { }
+		}
+		composeRule.waitForIdle()
+		check(loads == 1) { "Opening detail restarted the previous screen effect: $loads" }
 	}
 
 	@Test
