@@ -151,8 +151,8 @@ internal fun ScheduleScreen(
 								contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
 							) {
 								Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-									Text(text("day_short_$index"), style = MaterialTheme.typography.labelMedium)
-									Text(dayNumber(schedule?.days?.getOrNull(index)?.dateLabel) ?: "-", style = MaterialTheme.typography.titleMedium)
+									Text(dayNumber(schedule?.days?.getOrNull(index)?.dateLabel) ?: "-", style = MaterialTheme.typography.labelMedium)
+									Text(text("day_short_$index"), style = MaterialTheme.typography.titleMedium)
 								}
 							}
 						}
@@ -197,9 +197,9 @@ private fun LessonCard(lesson: ScheduleLesson, grade: GradeSchedule?, onClick: (
 					Text(cabinet, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 				}
 			}
-			GradeCard(grade)
 			Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
 				Text(lesson.label ?: "", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+				GradeCard(grade)
 			}
 			lesson.homework?.let {
 				Text(
@@ -217,8 +217,9 @@ private fun LessonCard(lesson: ScheduleLesson, grade: GradeSchedule?, onClick: (
 
 @Composable
 private fun GradeCard(grade: GradeSchedule?) {
-	Card(shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer), modifier = Modifier.fillMaxWidth()) {
-		Text(grade?.score ?: "-", modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
+	val score = grade?.score?.takeIf(String::isNotBlank) ?: return
+	Card(shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+		Text(score, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
 	}
 }
 
