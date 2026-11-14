@@ -58,9 +58,9 @@ internal fun SettingsScreen(
 				val action = if (Build.VERSION.SDK_INT >= 33) Settings.ACTION_APP_LOCALE_SETTINGS else Settings.ACTION_APPLICATION_DETAILS_SETTINGS
 				context.startActivity(Intent(action, Uri.parse("package:${context.packageName}")))
 			}
-			SettingRow(text("theme"), text(if (theme == ThemeMode.BLACK) "theme_amoled" else "theme_${theme.name.lowercase(Locale.ROOT)}")) { navigator.go(AppRoute.SettingsTheme) }
-			SettingRow(text("notifications"), text("notifications_description")) { navigator.go(AppRoute.SettingsNotifications) }
-			SettingRow(text("background_work"), text("background_work_description")) { navigator.go(AppRoute.BackgroundWork) }
+			SettingRow(text("theme"), text(if (theme == ThemeMode.BLACK) "theme_amoled" else "theme_${theme.name.lowercase(Locale.ROOT)}")) { navigator.goFrom(AppRoute.Settings, AppRoute.SettingsTheme) {} }
+			SettingRow(text("notifications"), text("notifications_description")) { navigator.goFrom(AppRoute.Settings, AppRoute.SettingsNotifications) {} }
+			SettingRow(text("background_work"), text("background_work_description")) { navigator.goFrom(AppRoute.Settings, AppRoute.BackgroundWork) {} }
 		}
 	}
 }

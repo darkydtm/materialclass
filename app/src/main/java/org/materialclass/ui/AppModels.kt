@@ -60,6 +60,12 @@ class AppNavigator(start: AppRoute) {
 	val current: AppRoute
 		get() = route
 
+	fun goFrom(source: AppRoute, next: AppRoute, beforeNavigate: () -> Unit) {
+		if (current != source || current == next) return
+		beforeNavigate()
+		go(next)
+	}
+
 	fun go(next: AppRoute) {
 		if (current == next) return
 		if (next in primaryRoutes && current !in loginRoutes) {

@@ -73,7 +73,7 @@ internal fun AppScaffold(
 				},
 				actions = {
 					if (route in rootRoutes) {
-						IconButton(onClick = { navigator.go(AppRoute.Profile) }) {
+						IconButton(onClick = { navigator.goFrom(route, AppRoute.Profile) {} }) {
 							Icon(Icons.Default.AccountCircle, contentDescription = text("profile"))
 						}
 					}
@@ -90,7 +90,7 @@ internal fun AppScaffold(
 					rootRoutes.forEach { itemRoute ->
 						NavigationBarItem(
 							selected = route == itemRoute,
-							onClick = { navigator.go(itemRoute) },
+							onClick = { navigator.goFrom(route, itemRoute) {} },
 							icon = { Icon(itemRoute.icon(), contentDescription = null) },
 							label = { Text(text(itemRoute.labelKey())) },
 							colors = NavigationBarItemDefaults.colors(
@@ -110,7 +110,7 @@ internal fun AppScaffold(
 		when (route) {
 				AppRoute.Home -> HomeScreen(padding, text, viewModel, navigator, onLessonSelected)
 				AppRoute.HomeError -> StateScreen(padding, text, "nav_home", "error_load", "error_load_body") { viewModel.retry(AppRoute.HomeError) }
-				AppRoute.HomeEmpty -> StateScreen(padding, text, "nav_home", "empty_day", "empty_day_body") { navigator.go(AppRoute.Schedule) }
+				AppRoute.HomeEmpty -> StateScreen(padding, text, "nav_home", "empty_day", "empty_day_body") { navigator.goFrom(route, AppRoute.Schedule) {} }
 				AppRoute.Schedule -> ScheduleScreen(padding, text, viewModel, navigator, onLessonSelected)
 				AppRoute.ScheduleOffline -> StateScreen(padding, text, "week_title", "offline_title", "offline_body") { viewModel.retry(AppRoute.Schedule) }
 				AppRoute.LessonDetail -> LessonDetailScreen(padding, text, viewModel, selectedLesson)

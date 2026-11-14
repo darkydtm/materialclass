@@ -78,8 +78,7 @@ internal fun DiaryScreen(padding: PaddingValues, text: (String) -> String, viewM
 			) { index ->
 				val subject = grades.subjects[index]
 				SubjectCard(subject, text) {
-					subject.subjectName?.let(onSubjectSelected)
-					navigator.go(AppRoute.SubjectDetail)
+					navigator.goFrom(AppRoute.Diary, AppRoute.SubjectDetail) { subject.subjectName?.let(onSubjectSelected) }
 				}
 			}
 		}
@@ -142,7 +141,7 @@ internal fun SubjectDetailScreen(padding: PaddingValues, text: (String) -> Strin
 					}
 				}
 			}
-			Button(onClick = { navigator.go(if (subject.schedules.isEmpty()) AppRoute.CalculatorMissing else AppRoute.Calculator) }, modifier = Modifier.fillMaxWidth()) {
+			Button(onClick = { navigator.goFrom(AppRoute.SubjectDetail, if (subject.schedules.isEmpty()) AppRoute.CalculatorMissing else AppRoute.Calculator) {} }, modifier = Modifier.fillMaxWidth()) {
 				Text(text("calculation_title"))
 			}
 		}

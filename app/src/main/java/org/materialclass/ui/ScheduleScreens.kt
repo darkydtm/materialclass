@@ -105,8 +105,7 @@ internal fun HomeScreen(
 			) { index ->
 				val lesson = today.lessons[index]
 				LessonCard(lesson, gradeForLesson(viewModel.gradesState.readyValue(), lesson)) {
-					onLessonSelected(lesson.uuid.orEmpty())
-					navigator.go(AppRoute.LessonDetail)
+					navigator.goFrom(AppRoute.Home, AppRoute.LessonDetail) { onLessonSelected(lesson.uuid.orEmpty()) }
 				}
 			}
 		}
@@ -171,7 +170,7 @@ internal fun ScheduleScreen(
 		if (day == null) {
 			item { StatePanel(text, viewModel.scheduleState.toUiState(), { viewModel.retry(AppRoute.Schedule) }) }
 		} else if (day.lessons.isEmpty()) {
-			item { StatePanel(text, UiContent.Empty) { navigator.go(AppRoute.HomeEmpty) } }
+			item { StatePanel(text, UiContent.Empty) { navigator.goFrom(AppRoute.Schedule, AppRoute.HomeEmpty) {} } }
 		} else {
 			items(
 				count = day.lessons.size,
@@ -180,8 +179,7 @@ internal fun ScheduleScreen(
 			) { index ->
 				val lesson = day.lessons[index]
 				LessonCard(lesson, gradeForLesson(viewModel.gradesState.readyValue(), lesson)) {
-					onLessonSelected(lesson.uuid.orEmpty())
-					navigator.go(AppRoute.LessonDetail)
+					navigator.goFrom(AppRoute.Schedule, AppRoute.LessonDetail) { onLessonSelected(lesson.uuid.orEmpty()) }
 				}
 			}
 		}
