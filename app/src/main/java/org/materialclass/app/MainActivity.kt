@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import org.materialclass.ui.MaterialClassApp
+import org.materialclass.api.GatewayLoginResult
 
 class MainActivity : ComponentActivity() {
 	override fun onCreate(savedInstanceState: Bundle?) {
@@ -12,7 +13,10 @@ class MainActivity : ComponentActivity() {
 		setContent {
 			MaterialClassApp(
 				repository = runtime.repository,
-				loginHandler = runtime.gateway::loginForUi,
+				loginHandler = { credentials ->
+					runtime.gateway.loginForUi(credentials).also { if (it is GatewayLoginResult.Success) runtime.updateBackgroundSchedule() }
+				},
+				onBackgroundSettingsChanged = runtime::updateBackgroundSchedule,
 				startAuthenticated = runtime.startAuthenticated,
 			)
 		}

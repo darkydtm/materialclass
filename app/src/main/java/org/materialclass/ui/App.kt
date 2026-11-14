@@ -37,6 +37,7 @@ fun MaterialClassApp(
 	preferences: AppPreferences? = null,
 	loginHandler: (LoginCredentials) -> GatewayLoginResult = { GatewayLoginResult.Failure(AppError.Network) },
 	startAuthenticated: Boolean = false,
+	onBackgroundSettingsChanged: () -> Unit = {},
 ) {
 	val context = LocalContext.current
 	val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -113,9 +114,9 @@ fun MaterialClassApp(
 					homeworkNotifications = homeworkNotifications,
 					onHomeworkNotifications = { homeworkNotifications = it; actualPreferences.setHomeworkNotifications(it); if (it) requestNotificationPermission() },
 					backgroundWork = backgroundWork,
-					onBackgroundWork = { backgroundWork = it; actualPreferences.setBackgroundWork(it) },
+					onBackgroundWork = { backgroundWork = it; actualPreferences.setBackgroundWork(it); onBackgroundSettingsChanged() },
 					backgroundInterval = backgroundInterval,
-					onBackgroundInterval = { backgroundInterval = it; actualPreferences.setBackgroundInterval(it) },
+					onBackgroundInterval = { backgroundInterval = it; actualPreferences.setBackgroundInterval(it); onBackgroundSettingsChanged() },
 					onLogout = { viewModel.logout(); navigator.reset(AppRoute.Login) },
 				)
 			}

@@ -101,6 +101,7 @@ class SchoolRepositoryImpl(
 	override fun refreshHome() = refresh(HOME) { gateway.home(it) }
 	override fun refreshDiary(range: DateRange) = refresh(diaryKey(range)) { gateway.diary(it) }
 	override fun refreshSchedule(range: DateRange) = refresh(scheduleKey(range)) { gateway.schedule(it) }
+	fun refreshScheduleFor(session: ActiveSession, range: DateRange) = refresh(scheduleKey(range), session) { gateway.schedule(it) }
 	override fun refreshGrades(period: String) = refresh(gradesKey(period)) { gateway.grades(it) }
 	override fun refreshHomeworks() = refresh(HOMEWORKS) { gateway.homeworks(it) }
 	override fun refreshJournal(range: DateRange) = refresh(journalKey(range)) { gateway.journalGrades(it) }
@@ -119,15 +120,16 @@ class SchoolRepositoryImpl(
 			}
 	}
 
-	private fun <T> refresh(key: String, call: (ReadContext) -> GatewayReadResult<T>) {
+	private fun <T> refresh(key: String, expectedSession: ActiveSession? = null, call: (ReadContext) -> GatewayReadResult<T>) {
 		if (key.startsWith("grades:")) DiaryDiagnostics.record(DiaryStage.REPOSITORY, DiaryOutcome.START)
-		val session = sessions.currentSession() ?: return publishFailure(key, AppError.LoginRequired)
+		val session = sessions.currentSession() ?: return if (expectedSession == null) publishFailure(key, AppError.LoginRequired) else Unit
+		if (expectedSession != null && session != expectedSession) return
 		sessions.withSessionLock {
 			synchronized(lock) {
 				if (sessions.currentSession() == session && states[key] == null) restoreSlice<T>(key, session)
 			}
 		}
-		val token = sessions.tokenFor(session) ?: return publishFailure(key, AppError.LoginRequired)
+		val token = sessions.tokenFor(session) ?: return if (expectedSession == null && sessions.currentSession() == session) publishFailure(key, AppError.LoginRequired) else Unit
 		val result = try { call(context(token, key)) } catch (exception: Exception) {
 			if (key.startsWith("grades:")) DiaryDiagnostics.record(DiaryStage.REPOSITORY, DiaryOutcome.FAILURE, error = AppError.Network, exception = exception)
 			GatewayReadResult.Failure(AppError.Network)

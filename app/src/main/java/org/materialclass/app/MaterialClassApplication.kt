@@ -2,6 +2,10 @@ package org.materialclass.app
 
 import android.app.Application
 import java.time.Instant
+import java.time.LocalDate
+import org.materialclass.data.DateRange
+import org.materialclass.notifications.NotificationScheduler
+import org.materialclass.ui.AppPreferences
 import org.materialclass.api.ConfirmedSchoolGateway
 import org.materialclass.api.ReadContext
 import org.materialclass.api.SchoolGateway
@@ -25,6 +29,8 @@ class ApplicationRuntime(application: Application) {
 	val gateway: ConfirmedSchoolGateway
 	val repository: SchoolRepositoryImpl
 	private val sessionCoordinator: SessionCoordinator
+	private val preferences = AppPreferences(application)
+	private val applicationContext = application
 	val startAuthenticated: Boolean get() = sessionCoordinator.currentSession() != null
 
 	init {
@@ -33,7 +39,7 @@ class ApplicationRuntime(application: Application) {
 		val cipher = KeystoreCipher(keys)
 		val sessionStore = SessionStore(files, keys, cipher)
 		sessionCoordinator = SessionCoordinator(sessionStore, files, keys, cipher, object : SessionTaskRegistry {
-			override fun cancelAll() = Unit
+			override fun cancelAll() = NotificationScheduler(application).cancel()
 		})
 		sessionCoordinator.restore(Instant.now())
 		val confirmedGateway = ConfirmedSchoolGateway(
@@ -58,5 +64,20 @@ class ApplicationRuntime(application: Application) {
 			context = confirmedGateway::readContext,
 		)
 		gateway = confirmedGateway
+	}
+
+	fun updateBackgroundSchedule() {
+		sessionCoordinator.withSessionLock {
+			val scheduler = NotificationScheduler(applicationContext, preferences.backgroundInterval().toLong())
+			if (preferences.backgroundWork() && sessionCoordinator.currentSession() != null) scheduler.schedule() else scheduler.cancel()
+		}
+	}
+
+	fun refreshBackgroundCache() {
+		if (!preferences.backgroundWork()) return
+		val session = sessionCoordinator.currentSession() ?: return
+		val today = LocalDate.now()
+		val monday = today.minusDays((today.dayOfWeek.value - 1).toLong())
+		repository.refreshScheduleFor(session, DateRange(monday, monday.plusDays(6)))
 	}
 }

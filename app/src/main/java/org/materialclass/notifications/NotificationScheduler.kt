@@ -25,11 +25,11 @@ object NotificationSchedulePolicy {
 	const val REPEAT_INTERVAL_HOURS = 6L
 }
 
-class NotificationScheduler(private val context: Context) : NotificationWorkScheduler {
+class NotificationScheduler(private val context: Context, private val intervalMinutes: Long = 360) : NotificationWorkScheduler {
 	override fun schedule() {
 		val request = PeriodicWorkRequestBuilder<NotificationWorker>(
-			NotificationSchedulePolicy.REPEAT_INTERVAL_HOURS,
-			TimeUnit.HOURS,
+			intervalMinutes.coerceAtLeast(15),
+			TimeUnit.MINUTES,
 		)
 			.setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
 			.build()
@@ -125,9 +125,7 @@ class NotificationWorker(
 	params: WorkerParameters,
 ) : CoroutineWorker(context, params) {
 	override suspend fun doWork(): Result {
-		(applicationContext as org.materialclass.app.MaterialClassApplication).runtime
-		val runtime = NotificationWorkerRuntimeRegistry.runtime ?: return Result.failure()
-		runtime.run()
+		(applicationContext as org.materialclass.app.MaterialClassApplication).runtime.refreshBackgroundCache()
 		return Result.success()
 	}
 }
