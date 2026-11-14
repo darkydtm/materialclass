@@ -88,7 +88,7 @@ class NotificationLifecycleTest {
 	}
 
 	@Test
-	fun deniedPermissionSuppressesPublishingButStillDeduplicatesObservedItems() {
+	fun deniedPermissionRetainsUnpublishedItemsUntilPermissionIsGranted() {
 		val publisher = RecordingNotificationPublisher()
 		val processor = NotificationProcessor(InMemoryNotificationStateStore(), publisher)
 		val baseline = NotificationItem(NotificationCategory.NEW_GRADE, "grade-1", "Grade", "First")
@@ -99,8 +99,8 @@ class NotificationLifecycleTest {
 		val allowed = processor.process(session, settings, true, mapOf(NotificationCategory.NEW_GRADE to CategoryReadResult.Available(listOf(baseline, later))))
 
 		assertEquals(NotificationRunStatus.PERMISSION_DENIED, denied.status)
-		assertEquals(0, allowed.publishedCount)
-		assertTrue(publisher.items.isEmpty())
+		assertEquals(1, allowed.publishedCount)
+		assertEquals(listOf(later), publisher.items)
 	}
 
 	@Test
