@@ -220,7 +220,7 @@ class ConfirmedSchoolGateway(
 				subjects.subjects.map { subject ->
 					subject.copy(schedules = subject.schedules.map { schedule ->
 						val grade = bySchedule[schedule.uuid]
-						schedule.copy(score = grade?.mark, attendance = grade?.attendance, sor = grade?.sor, sorMax = grade?.sorMax, soch = grade?.soch, sochMax = grade?.sochMax)
+						schedule.copy(score = grade?.mark, markMax = grade?.markMax?.toIntOrNull() ?: schedule.markMax, attendance = grade?.attendance, sor = grade?.sor, sorMax = grade?.sorMax, soch = grade?.soch, sochMax = grade?.sochMax)
 					})
 				},
 			),
