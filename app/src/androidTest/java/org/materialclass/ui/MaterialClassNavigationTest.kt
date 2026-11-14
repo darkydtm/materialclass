@@ -3,6 +3,15 @@ package org.materialclass.ui
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.assertIsDisplayed
@@ -17,6 +26,34 @@ import org.junit.Test
 class MaterialClassNavigationTest {
 	@get:Rule
 	val composeRule = createAndroidComposeRule<ComponentActivity>()
+
+	@Test
+	fun predictiveProgressRevealsThePreviousScreenWithoutTintingIt() {
+		lateinit var layout: PredictiveBackLayout
+		composeRule.activity.setContent {
+			AndroidView(
+				modifier = Modifier.fillMaxSize().testTag("back-layout"),
+				factory = { PredictiveBackLayout(it).also { view -> layout = view } },
+				update = { view ->
+					view.updateLayers(
+						backgroundColor = android.graphics.Color.BLACK,
+						gestureEnabled = true,
+						previousRoute = AppRoute.Settings,
+						currentRoute = AppRoute.SettingsTheme,
+						previousContent = { Box(Modifier.fillMaxSize().background(Color.Blue)) },
+						currentContent = { Box(Modifier.fillMaxSize().background(Color.Yellow)) },
+						onClose = {},
+					)
+				},
+			)
+		}
+		composeRule.waitForIdle()
+		composeRule.runOnUiThread { layout.setPredictiveProgress(0.5f) }
+		composeRule.waitForIdle()
+		val pixels = composeRule.onNodeWithTag("back-layout").captureToImage().toPixelMap()
+		check(pixels[pixels.width / 4, pixels.height / 2] == Color.Blue)
+		check(pixels[pixels.width * 3 / 4, pixels.height / 2] == Color.Yellow)
+	}
 
 	@Test
 	fun loginFailureShowsLocalizedValidation() {

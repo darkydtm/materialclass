@@ -189,11 +189,43 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  navigation-instrumentation:
+    needs: prepare-debug
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run navigation instrumentation
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          script: ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=org.materialclass.ui.MaterialClassNavigationTest#predictiveProgressRevealsThePreviousScreenWithoutTintingIt
+      - name: Upload instrumentation results
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: navigation-instrumentation-results
+          path: app/build/outputs/androidTest-results
+          if-no-files-found: warn
+
   merge-to-main:
     needs:
       - debug-unit-tests
       - debug-lint
       - debug-apk
+      - navigation-instrumentation
     if: github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main' && github.event.pull_request.head.ref != 'main' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
