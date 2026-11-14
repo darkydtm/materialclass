@@ -33,6 +33,54 @@ class MaterialClassNavigationTest {
 	val composeRule = createAndroidComposeRule<ComponentActivity>()
 
 	@Test
+	fun completedEdgeSwipeReturnsToPreviousScreen() {
+		lateinit var layout: PredictiveBackLayout
+		var closes = 0
+		composeRule.setContent {
+			AndroidView(
+				modifier = Modifier.fillMaxSize().testTag("back-layout"),
+				factory = { PredictiveBackLayout(it).also { view -> layout = view } },
+				update = { view ->
+					view.updateLayers(
+						android.graphics.Color.BLACK, true, AppRoute.Settings, AppRoute.SettingsTheme,
+						{ Box(Modifier.fillMaxSize().background(Color.Blue)) },
+						{ Box(Modifier.fillMaxSize().background(Color.Yellow)) },
+					) { closes++ }
+				},
+			)
+		}
+		composeRule.waitForIdle()
+		val position = IntArray(2)
+		composeRule.runOnUiThread { layout.getLocationOnScreen(position) }
+		val startX = position[0] + 10f
+		val y = position[1] + layout.height / 2f
+		val downTime = SystemClock.uptimeMillis()
+		fun send(action: Int, x: Float) {
+			val event = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), action, x, y, 0)
+			try {
+				InstrumentationRegistry.getInstrumentation().sendPointerSync(event)
+			} finally {
+				event.recycle()
+			}
+		}
+		send(MotionEvent.ACTION_DOWN, startX)
+		for (step in 1..10) {
+			SystemClock.sleep(20)
+			send(MotionEvent.ACTION_MOVE, startX + layout.width * 0.6f * step / 10)
+		}
+		send(MotionEvent.ACTION_UP, startX + layout.width * 0.6f)
+		composeRule.waitUntil(5_000) { closes == 1 }
+		composeRule.runOnUiThread {
+			layout.updateLayers(android.graphics.Color.BLACK, false, null, AppRoute.Settings, null,
+				{ Box(Modifier.fillMaxSize().background(Color.Blue)) }) { closes++ }
+		}
+		composeRule.waitForIdle()
+		val pixels = composeRule.onNodeWithTag("back-layout").captureToImage().toPixelMap()
+		check(pixels[pixels.width / 2, pixels.height / 2] == Color.Blue)
+		check(closes == 1)
+	}
+
+	@Test
 	fun cancelledEdgeSwipeKeepsDetailAndShowsPreviousDuringDrag() {
 		lateinit var layout: PredictiveBackLayout
 		var closes = 0
