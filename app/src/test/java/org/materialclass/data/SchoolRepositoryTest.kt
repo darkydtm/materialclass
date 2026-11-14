@@ -43,6 +43,15 @@ class SchoolRepositoryTest {
 	}
 
 	@Test
+	fun backgroundScheduleFailureReportsUnsuccessfulRefresh() {
+		val fixture = Fixture()
+		fixture.gateway.scheduleResult = GatewayReadResult.Failure(AppError.Offline)
+		val method = fixture.repository.javaClass.getMethod("refreshScheduleFor", ActiveSession::class.java, DateRange::class.java)
+
+		assertEquals(false, method.invoke(fixture.repository, session, range))
+	}
+
+	@Test
 	fun backgroundScheduleResponseAfterAccountReplacementIsDiscarded() {
 		val fixture = Fixture()
 		val started = CountDownLatch(1)
