@@ -39,6 +39,9 @@
 	<string name="retry">Retry</string>
 	<string name="back">Back</string>
 	<string name="grade_comparison">Grade comparison</string>
+	<string name="grade_category_fo">FA</string>
+	<string name="grade_category_sor">SAS</string>
+	<string name="grade_category_soch">SAT</string>
 	<string name="grade_comparison_unavailable">Classmates\' grades are unavailable.</string>
 	<string name="open_schedule">Open schedule</string>
 	<string name="open_lesson">Open lesson</string>

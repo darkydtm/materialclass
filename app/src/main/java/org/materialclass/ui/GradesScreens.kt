@@ -123,8 +123,8 @@ private fun SubjectCard(subject: GradeSubject, text: (String) -> String, onClick
 				if (subject.schedules.any { it.score != null || it.sor != null || it.soch != null }) {
 					subject.schedules.forEach { schedule ->
 						if (schedule.score != null) GradeTile(schedule.score, subject.scoreType, schedule.date, null, text, schedule.markMax?.toDouble())
-						if (schedule.sor != null) GradeTile(schedule.sor, subject.scoreType, schedule.date, "СОР", text, schedule.sorMax?.toDoubleOrNull())
-						if (schedule.soch != null) GradeTile(schedule.soch, subject.scoreType, schedule.date, "СОЧ", text, schedule.sochMax?.toDoubleOrNull())
+						if (schedule.sor != null) GradeTile(schedule.sor, subject.scoreType, schedule.date, text("grade_category_sor"), text, schedule.sorMax?.toDoubleOrNull())
+						if (schedule.soch != null) GradeTile(schedule.soch, subject.scoreType, schedule.date, text("grade_category_soch"), text, schedule.sochMax?.toDoubleOrNull())
 					}
 				} else {
 					subject.scores.forEach { score -> GradeTile(score, subject.scoreType, null, null, text) }
@@ -202,7 +202,7 @@ internal fun SubjectDetailScreen(padding: PaddingValues, text: (String) -> Strin
 					val contribution = if (values.isEmpty() || availableWeight == 0) null else (values.average() * weights.getValue(category) / availableWeight).toInt()
 					Card(shape = RowShape, modifier = Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
 						Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-							Text(when (category) { GradeCategory.FO -> "ФО"; GradeCategory.SOR -> "СОР"; GradeCategory.SOCH -> "СОЧ" }, style = MaterialTheme.typography.labelMedium)
+							Text(text(when (category) { GradeCategory.FO -> "grade_category_fo"; GradeCategory.SOR -> "grade_category_sor"; GradeCategory.SOCH -> "grade_category_soch" }), style = MaterialTheme.typography.labelMedium)
 							Text(if (contribution == null) "-" else "$contribution/${weights.getValue(category)}%", style = MaterialTheme.typography.titleMedium)
 						}
 					}
@@ -215,9 +215,9 @@ internal fun SubjectDetailScreen(padding: PaddingValues, text: (String) -> Strin
 			Text("${scoredSchedules.size}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
 			androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
 				scoredSchedules.forEach { schedule ->
-					if (schedule.score != null) GradeTile(schedule.score, subject.scoreType, schedule.date, "ФО", text, schedule.markMax?.toDouble())
-					if (schedule.sor != null) GradeTile(schedule.sor, subject.scoreType, schedule.date, "СОР", text, schedule.sorMax?.toDoubleOrNull())
-					if (schedule.soch != null) GradeTile(schedule.soch, subject.scoreType, schedule.date, "СОЧ", text, schedule.sochMax?.toDoubleOrNull())
+					if (schedule.score != null) GradeTile(schedule.score, subject.scoreType, schedule.date, text("grade_category_fo"), text, schedule.markMax?.toDouble())
+					if (schedule.sor != null) GradeTile(schedule.sor, subject.scoreType, schedule.date, text("grade_category_sor"), text, schedule.sorMax?.toDoubleOrNull())
+					if (schedule.soch != null) GradeTile(schedule.soch, subject.scoreType, schedule.date, text("grade_category_soch"), text, schedule.sochMax?.toDoubleOrNull())
 				}
 			}
 		}

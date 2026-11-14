@@ -39,6 +39,9 @@
 	<string name="retry">Повторить</string>
 	<string name="back">Назад</string>
 	<string name="grade_comparison">Сравнение оценок</string>
+	<string name="grade_category_fo">ФО</string>
+	<string name="grade_category_sor">СОР</string>
+	<string name="grade_category_soch">СОЧ</string>
 	<string name="grade_comparison_unavailable">Данные об оценках одноклассников недоступны.</string>
 	<string name="open_schedule">Открыть расписание</string>
 	<string name="open_lesson">Открыть урок</string>
