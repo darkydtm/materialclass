@@ -17,6 +17,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.core.view.drawToBitmap
 import androidx.activity.ComponentActivity
+import android.os.SystemClock
+import android.view.MotionEvent
+import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -25,6 +28,62 @@ import org.junit.runner.RunWith
 class PredictiveBackLayoutTest {
 	@get:Rule
 	val composeRule = createAndroidComposeRule<ComponentActivity>()
+
+	@Test
+	fun consecutiveEdgeSwipesNavigateImmediatelyAfterFirstClose() {
+		lateinit var layout: PredictiveBackLayout
+		val navigator = AppNavigator(AppRoute.Settings)
+		navigator.go(AppRoute.SettingsTheme)
+		navigator.go(AppRoute.BackgroundWork)
+		var route by mutableStateOf(navigator.current)
+		var closes = 0
+		composeRule.setContent {
+			AndroidView(
+				modifier = Modifier.fillMaxSize(),
+				factory = { PredictiveBackLayout(it).also { view -> layout = view } },
+				update = { view ->
+					view.updateLayers(
+						android.graphics.Color.BLACK,
+						gestureEnabled = navigator.canGoBack(),
+						previousRoute = navigator.previousOrNull(),
+						currentRoute = route,
+						previousContent = { Box(Modifier.fillMaxSize().background(routeColor(navigator.previousOrNull()))) },
+						currentContent = { Box(Modifier.fillMaxSize().background(routeColor(route))) },
+					) {
+						closes++
+						navigator.back()
+						route = navigator.current
+					}
+				},
+			)
+		}
+		composeRule.waitForIdle()
+		val position = IntArray(2)
+		composeRule.runOnUiThread { layout.getLocationOnScreen(position) }
+		fun swipe() {
+			val startX = position[0] + 10f
+			val y = position[1] + layout.height / 2f
+			val downTime = SystemClock.uptimeMillis()
+			fun send(action: Int, x: Float) {
+				val event = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), action, x, y, 0)
+				try {
+					InstrumentationRegistry.getInstrumentation().sendPointerSync(event)
+				} finally {
+					event.recycle()
+				}
+			}
+			send(MotionEvent.ACTION_DOWN, startX)
+			for (step in 1..10) {
+				SystemClock.sleep(20)
+				send(MotionEvent.ACTION_MOVE, startX + layout.width * 0.6f * step / 10)
+			}
+			send(MotionEvent.ACTION_UP, startX + layout.width * 0.6f)
+		}
+		swipe()
+		composeRule.waitUntil(5_000) { closes == 1 && navigator.current == AppRoute.SettingsTheme }
+		swipe()
+		composeRule.waitUntil(5_000) { closes == 2 && navigator.current == AppRoute.Settings }
+	}
 
 	@Test
 	fun immediateNextBackAfterCompletedCloseWorksAndCancelledBackKeepsRoute() {
