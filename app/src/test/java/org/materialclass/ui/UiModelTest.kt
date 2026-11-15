@@ -6,6 +6,19 @@ import org.junit.Test
 
 class UiModelTest {
 	@Test
+	fun subjectFinalGradeUsesAvailableMarksWhenServerGradeIsMissing() {
+		val subject = org.materialclass.data.GradeSubject(
+			subjectName = "Math",
+			finalScore = null,
+			schedules = listOf(org.materialclass.data.GradeSchedule("lesson", null, null, 10, null, score = "8")),
+		)
+		val helper = Class.forName("org.materialclass.ui.AppModelsKt").declaredMethods.firstOrNull { it.name == "effectiveFinalScore" }
+		assertTrue("A shared final grade calculation must exist", helper != null)
+		helper!!.isAccessible = true
+		assertEquals("4", helper.invoke(null, subject))
+	}
+
+	@Test
 	fun profileNameNormalizesEveryPart() {
 		assertEquals("Иванов Иван Иванович", normalizedFullName("  ИВАНОВ   иВАН ИВАНОВИЧ "))
 		assertEquals(null, normalizedFullName("  "))
