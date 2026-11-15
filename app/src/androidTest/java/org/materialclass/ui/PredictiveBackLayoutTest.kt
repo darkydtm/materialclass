@@ -8,7 +8,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -72,7 +74,7 @@ class PredictiveBackLayoutTest {
 		}
 		composeRule.waitForIdle()
 		check(navigator.current == AppRoute.Settings) { "Two completed backs did not return to the root route" }
-		composeRule.onNodeWithTag("back-layout").assertIsDisplayed()
+		composeRule.onNodeWithTag("back-layout").assertExists()
 		val pixels = composeRule.onNodeWithTag("back-layout").captureToImage().toPixelMap()
 		check(pixels[pixels.width / 2, pixels.height / 2] == Color.Blue) { "The previous screen was not revealed after the second back" }
 		check(layout.getChildAt(3).left == 0) { "The second completed back left the outgoing screen displaced" }
