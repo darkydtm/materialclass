@@ -1,4 +1,11 @@
 <resources>
+	<string name="debug_title">Дебаг</string>
+	<string name="debug_new_grade">Получение новой оценки</string>
+	<string name="debug_homework">Публикация нового домашнего задания</string>
+	<string name="debug_export_logs">Выгрузить логи</string>
+	<string name="debug_logs_copied">Логи скопированы</string>
+	<string name="debug_logs_failed">Не удалось получить логи</string>
+	<string name="debug_sample">Тестовое событие</string>
 	<string name="comparison_above">Выше, чем у</string>
 	<string name="comparison_you">Вы</string>
 	<string name="comparison_mean">Средняя</string>

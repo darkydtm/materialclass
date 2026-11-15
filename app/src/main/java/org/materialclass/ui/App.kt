@@ -39,6 +39,7 @@ fun MaterialClassApp(
 	startAuthenticated: Boolean = false,
 	onBackgroundSettingsChanged: () -> Unit = {},
 	onNotificationSettingsChange: (() -> Unit) -> Unit = { it() },
+	onSimulateNotification: (org.materialclass.notifications.NotificationCategory) -> org.materialclass.notifications.NotificationRunResult = { org.materialclass.notifications.NotificationRunResult(org.materialclass.notifications.NotificationRunStatus.NO_SESSION) },
 ) {
 	val context = LocalContext.current
 	val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -120,6 +121,7 @@ fun MaterialClassApp(
 					onBackgroundInterval = { backgroundInterval = it; actualPreferences.setBackgroundInterval(it); onBackgroundSettingsChanged() },
 					onLogout = { viewModel.logout(); navigator.reset(AppRoute.Login) },
 					onBack = { if (backLayout != null) backLayout?.commitPredictiveBack() else navigator.back() },
+					onSimulateNotification = onSimulateNotification,
 				)
 			}
 		}

@@ -1,4 +1,11 @@
 <resources>
+	<string name="debug_title">Debug</string>
+	<string name="debug_new_grade">Receive a new grade</string>
+	<string name="debug_homework">Publish new homework</string>
+	<string name="debug_export_logs">Export logs</string>
+	<string name="debug_logs_copied">Logs copied</string>
+	<string name="debug_logs_failed">Could not read logs</string>
+	<string name="debug_sample">Test event</string>
 	<string name="comparison_above">Higher than</string>
 	<string name="comparison_you">You</string>
 	<string name="comparison_mean">Average</string>

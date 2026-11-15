@@ -18,6 +18,7 @@ class MainActivity : ComponentActivity() {
 				},
 				onBackgroundSettingsChanged = runtime::updateBackgroundSchedule,
 				onNotificationSettingsChange = runtime::changeNotificationSettings,
+				onSimulateNotification = runtime::simulateNotification,
 				startAuthenticated = runtime.startAuthenticated,
 			)
 		}

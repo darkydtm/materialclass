@@ -25,6 +25,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -56,6 +61,7 @@ internal fun AppScaffold(
 	onBackgroundInterval: (Float) -> Unit,
 	onLogout: () -> Unit,
 	onBack: () -> Unit = { navigator.back() },
+	onSimulateNotification: (org.materialclass.notifications.NotificationCategory) -> org.materialclass.notifications.NotificationRunResult = { org.materialclass.notifications.NotificationRunResult(org.materialclass.notifications.NotificationRunStatus.NO_SESSION) },
 ) {
 	val titleKey = route.titleKey()
 	val rootRoutes = primaryRoutes.toList()
@@ -89,6 +95,13 @@ internal fun AppScaffold(
 				) {
 					rootRoutes.forEach { itemRoute ->
 						NavigationBarItem(
+							modifier = if (itemRoute == AppRoute.Settings) Modifier.pointerInput(route) {
+								awaitEachGesture {
+									awaitFirstDown(requireUnconsumed = false)
+									val released = withTimeoutOrNull(3000L) { waitForUpOrCancellation(); true } ?: false
+									if (!released) navigator.go(AppRoute.Debug)
+								}
+							} else Modifier,
 							selected = route == itemRoute,
 							onClick = { navigator.goFrom(route, itemRoute) {} },
 							icon = { Icon(itemRoute.icon(), contentDescription = null) },
@@ -117,6 +130,7 @@ internal fun AppScaffold(
 				AppRoute.Diary -> DiaryScreen(padding, text, viewModel, navigator, onSubjectSelected)
 				AppRoute.SubjectDetail -> SubjectDetailScreen(padding, text, viewModel, selectedSubject, navigator)
 				AppRoute.GradeComparison -> GradeComparisonScreen(padding, text, viewModel)
+				AppRoute.Debug -> DebugScreen(padding, text, onSimulateNotification)
 				AppRoute.Calculator -> CalculatorScreen(padding, text, viewModel, selectedSubject, false)
 				AppRoute.CalculatorMissing -> CalculatorScreen(padding, text, viewModel, selectedSubject, true)
 				AppRoute.Settings -> SettingsScreen(
@@ -157,6 +171,7 @@ internal fun AppRoute.titleKey(): String = when (this) {
 	AppRoute.LessonDetail -> "lesson_title"
 	AppRoute.SubjectDetail -> "subject_title"
 	AppRoute.GradeComparison -> "grade_comparison"
+	AppRoute.Debug -> "debug_title"
 	AppRoute.Calculator, AppRoute.CalculatorMissing -> "calculation_title"
 	AppRoute.Settings -> "nav_settings"
 	AppRoute.SettingsLanguage -> "language"

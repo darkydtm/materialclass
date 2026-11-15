@@ -125,6 +125,18 @@ class ApplicationRuntime(application: Application) {
 		return notificationRunner.run(notificationSession, notificationPreferences(), granted, ::notificationPreferences)
 	}
 
+	fun simulateNotification(category: org.materialclass.notifications.NotificationCategory): NotificationRunResult {
+		val active = sessionCoordinator.currentSession() ?: return NotificationRunResult(NotificationRunStatus.NO_SESSION)
+		val session = NotificationSession(active, !sessionCoordinator.tokenFor(active).isNullOrBlank())
+		if (!session.tokenPresent) return NotificationRunResult(NotificationRunStatus.NO_TOKEN)
+		val processor = NotificationProcessor(org.materialclass.notifications.InMemoryNotificationStateStore(), notificationPublisher, sessionCoordinator)
+		val preferences = NotificationPreferences(newGradeEnabled = true, homeworkEnabled = true)
+		val granted = (android.os.Build.VERSION.SDK_INT < 33 || applicationContext.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) && NotificationManagerCompat.from(applicationContext).areNotificationsEnabled()
+		processor.process(session, preferences, granted, mapOf(category to org.materialclass.notifications.CategoryReadResult.Available(emptyList())))
+		val item = org.materialclass.notifications.NotificationItem(category, java.util.UUID.randomUUID().toString(), "", applicationContext.getString(org.materialclass.R.string.debug_sample))
+		return processor.process(session, preferences, granted, mapOf(category to org.materialclass.notifications.CategoryReadResult.Available(listOf(item))))
+	}
+
 	fun refreshBackgroundCache(): Boolean = BackgroundCacheRefresh(
 		enabled = preferences::backgroundWork,
 		session = sessionCoordinator::currentSession,

@@ -76,6 +76,11 @@ android {
 		targetSdk = 36
 		versionCode = 1
 		versionName = "0.1.0"
+		val branch = providers.environmentVariable("GITHUB_HEAD_REF").orElse(providers.environmentVariable("GITHUB_REF_NAME")).orElse(providers.exec { commandLine("git", "branch", "--show-current") }.standardOutput.asText).get().trim()
+		val revision = providers.environmentVariable("GITHUB_SHA").orElse(providers.exec { commandLine("git", "rev-parse", "--short", "HEAD") }.standardOutput.asText).get().trim()
+		buildConfigField("String", "BUILD_BRANCH", "\"${branch.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
+		buildConfigField("String", "BUILD_REVISION", "\"${revision.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
+		buildConfigField("String", "BUILD_DATE", "\"${java.time.Instant.now()}\"")
 
 		testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 	}
@@ -86,6 +91,7 @@ android {
 
 	buildFeatures {
 		compose = true
+		buildConfig = true
 	}
 
 	compileOptions {

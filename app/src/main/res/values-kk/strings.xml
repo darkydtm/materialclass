@@ -1,4 +1,11 @@
 <resources>
+	<string name="debug_title">Дебаг</string>
+	<string name="debug_new_grade">Жаңа баға алу</string>
+	<string name="debug_homework">Жаңа үй тапсырмасын жариялау</string>
+	<string name="debug_export_logs">Логтарды көшіру</string>
+	<string name="debug_logs_copied">Логтар көшірілді</string>
+	<string name="debug_logs_failed">Логтарды оқу мүмкін болмады</string>
+	<string name="debug_sample">Тест оқиғасы</string>
 	<string name="comparison_above">Жоғары нәтиже</string>
 	<string name="comparison_you">Сіз</string>
 	<string name="comparison_mean">Орташа</string>

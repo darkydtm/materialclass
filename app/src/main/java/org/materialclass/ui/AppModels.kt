@@ -45,6 +45,7 @@ enum class AppRoute {
 	Diary,
 	SubjectDetail,
 	GradeComparison,
+	Debug,
 	Calculator,
 	CalculatorMissing,
 	Settings,
