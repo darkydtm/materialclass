@@ -1,4 +1,9 @@
 <resources>
+	<string name="comparison_above">Жоғары нәтиже</string>
+	<string name="comparison_you">Сіз</string>
+	<string name="comparison_mean">Орташа</string>
+	<string name="comparison_median">Медиана</string>
+	<string name="comparison_best">Үздік</string>
 	<string name="quarter">Тоқсан</string>
 	<string name="app_name">MaterialClass</string>
 	<string name="home">Басты бет</string>

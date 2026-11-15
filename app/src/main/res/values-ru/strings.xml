@@ -1,4 +1,9 @@
 <resources>
+	<string name="comparison_above">Выше, чем у</string>
+	<string name="comparison_you">Вы</string>
+	<string name="comparison_mean">Средняя</string>
+	<string name="comparison_median">Медиана</string>
+	<string name="comparison_best">Лучшая</string>
 	<string name="quarter">Четверть</string>
 	<string name="app_name">MaterialClass</string>
 	<string name="home">Главная</string>

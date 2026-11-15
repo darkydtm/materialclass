@@ -116,6 +116,7 @@ internal fun AppScaffold(
 				AppRoute.LessonDetail -> LessonDetailScreen(padding, text, viewModel, selectedLesson)
 				AppRoute.Diary -> DiaryScreen(padding, text, viewModel, navigator, onSubjectSelected)
 				AppRoute.SubjectDetail -> SubjectDetailScreen(padding, text, viewModel, selectedSubject, navigator)
+				AppRoute.GradeComparison -> GradeComparisonScreen(padding, text, viewModel)
 				AppRoute.Calculator -> CalculatorScreen(padding, text, viewModel, selectedSubject, false)
 				AppRoute.CalculatorMissing -> CalculatorScreen(padding, text, viewModel, selectedSubject, true)
 				AppRoute.Settings -> SettingsScreen(
@@ -155,6 +156,7 @@ internal fun AppRoute.titleKey(): String = when (this) {
 	AppRoute.Schedule, AppRoute.ScheduleOffline -> "nav_schedule"
 	AppRoute.LessonDetail -> "lesson_title"
 	AppRoute.SubjectDetail -> "subject_title"
+	AppRoute.GradeComparison -> "grade_comparison"
 	AppRoute.Calculator, AppRoute.CalculatorMissing -> "calculation_title"
 	AppRoute.Settings -> "nav_settings"
 	AppRoute.SettingsLanguage -> "language"

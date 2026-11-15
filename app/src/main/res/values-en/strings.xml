@@ -1,4 +1,9 @@
 <resources>
+	<string name="comparison_above">Higher than</string>
+	<string name="comparison_you">You</string>
+	<string name="comparison_mean">Average</string>
+	<string name="comparison_median">Median</string>
+	<string name="comparison_best">Best</string>
 	<string name="quarter">Quarter</string>
 	<string name="app_name">MaterialClass</string>
 	<string name="home">Home</string>

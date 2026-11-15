@@ -44,6 +44,7 @@ enum class AppRoute {
 	LessonDetail,
 	Diary,
 	SubjectDetail,
+	GradeComparison,
 	Calculator,
 	CalculatorMissing,
 	Settings,
@@ -238,6 +239,12 @@ class SchoolViewModel(
 		private set
 	var gradesPeriod: String by mutableStateOf(initialGradesPeriod)
 		private set
+	var comparisonSelection: Pair<String, String>? by mutableStateOf(null)
+		private set
+
+	fun selectComparison(uuid: String, type: String) {
+		comparisonSelection = uuid to type
+	}
 
 	private fun week(offset: Int = 0, nextWeekOnWeekend: Boolean = false): DateRange {
 			val today = LocalDate.now()
