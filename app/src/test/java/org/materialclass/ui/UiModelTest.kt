@@ -207,6 +207,21 @@ class UiModelTest {
 	}
 
 	@Test
+	fun journalGradesMatchLessonUuidAndPreserveAllAssessments() {
+		val grade = org.materialclass.data.JournalGrade("lesson-1", null, null, "12", "24", null, "8", "10", null, "15", "30")
+		val journal = org.materialclass.data.JournalGradesModel(listOf(grade), 1, 0)
+		val lesson = org.materialclass.data.ScheduleLesson("lesson-1", null, null, null, null, null, null, null)
+		val result = journalGradeForLesson(journal, lesson)!!
+		assertEquals("8", result.score)
+		assertEquals(10, result.markMax)
+		assertEquals("12", result.sor)
+		assertEquals("15", result.sorMax)
+		assertEquals("24", result.soch)
+		assertEquals("30", result.sochMax)
+		assertEquals(null, journalGradeForLesson(journal, lesson.copy(uuid = "another")))
+	}
+
+	@Test
 	fun creditSubjectIsDetectedFromFinalOrLessonAssessment() {
 		assertTrue(isCreditSubject(org.materialclass.data.GradeSubject("Safety", "Зачет", emptyList())))
 		assertTrue(isCreditSubject(org.materialclass.data.GradeSubject("Safety", null, listOf(org.materialclass.data.GradeSchedule("lesson", null, null, null, null, "Незачет")))))

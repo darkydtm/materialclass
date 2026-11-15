@@ -52,7 +52,6 @@ internal fun HomeScreen(
 ) {
 	LaunchedEffect(Unit) {
 		viewModel.loadSchedule()
-		viewModel.loadGrades(viewModel.gradesPeriod)
 		viewModel.loadProfile()
 	}
 	val profile = viewModel.profileState.readyValue()
@@ -105,7 +104,7 @@ internal fun HomeScreen(
 				contentType = { "lesson" },
 			) { index ->
 				val lesson = today.lessons[index]
-				LessonCard(lesson, gradeForLesson(viewModel.gradesState.readyValue(), lesson)) {
+				LessonCard(lesson, journalGradeForLesson(viewModel.scheduleGradesState.readyValue(), lesson)) {
 					navigator.goFrom(AppRoute.Home, AppRoute.LessonDetail) { onLessonSelected(lesson.uuid.orEmpty()) }
 				}
 			}
@@ -124,7 +123,6 @@ internal fun ScheduleScreen(
 	var weekOffset by rememberSaveable { mutableIntStateOf(0) }
 	var selectedDay by rememberSaveable { mutableIntStateOf(0) }
 	LaunchedEffect(weekOffset) { viewModel.loadSchedule(weekOffset) }
-	LaunchedEffect(Unit) { viewModel.loadGrades(viewModel.gradesPeriod) }
 	val schedule = viewModel.scheduleState.readyValue()
 	val safeSelectedDay = selectedDay.coerceIn(0, (schedule?.days?.lastIndex ?: 0).coerceAtLeast(0))
 	val day = schedule?.days?.getOrNull(safeSelectedDay)
@@ -179,7 +177,7 @@ internal fun ScheduleScreen(
 				contentType = { "lesson" },
 			) { index ->
 				val lesson = day.lessons[index]
-				LessonCard(lesson, gradeForLesson(viewModel.gradesState.readyValue(), lesson)) {
+				LessonCard(lesson, journalGradeForLesson(viewModel.scheduleGradesState.readyValue(), lesson)) {
 					navigator.goFrom(AppRoute.Schedule, AppRoute.LessonDetail) { onLessonSelected(lesson.uuid.orEmpty()) }
 				}
 			}

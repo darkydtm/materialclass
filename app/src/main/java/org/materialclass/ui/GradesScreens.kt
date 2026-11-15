@@ -39,6 +39,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -137,6 +139,7 @@ private fun SubjectCard(subject: GradeSubject, text: (String) -> String, onClick
 @Composable
 internal fun gradeContainerColor(value: String?, scoreType: String?, maximum: Double? = null): androidx.compose.ui.graphics.Color {
 	val colors = MaterialTheme.colorScheme
+	val dark = colors.surface.luminance() < 0.5f
 	return when (assessmentKind(value, scoreType)) {
 		AssessmentKind.Fail -> colors.errorContainer
 		AssessmentKind.Credit -> colors.primaryContainer
@@ -147,10 +150,11 @@ internal fun gradeContainerColor(value: String?, scoreType: String?, maximum: Do
 			val percent = if (number != null && max != null && max > 0) number * 100 / max else if (number != null) number * 10 else null
 			when {
 				percent == null -> colors.surfaceContainerHigh
-				percent < 35 -> colors.errorContainer
-				percent < 65 -> colors.tertiaryContainer
+				percent < 20 -> colors.errorContainer
+				percent < 35 -> if (dark) Color(0xFF8C4A2F) else Color(0xFFFFDBCF)
+				percent < 65 -> if (dark) Color(0xFF705B00) else Color(0xFFFFDF9E)
 				percent < 85 -> colors.secondaryContainer
-				else -> colors.primaryContainer
+				else -> if (dark) Color(0xFF374B3B) else Color(0xFFD1E8D2)
 			}
 		}
 	}
@@ -159,12 +163,20 @@ internal fun gradeContainerColor(value: String?, scoreType: String?, maximum: Do
 @Composable
 internal fun gradeContentColor(value: String?, scoreType: String?, maximum: Double? = null): androidx.compose.ui.graphics.Color {
 	val colors = MaterialTheme.colorScheme
-	return when (gradeContainerColor(value, scoreType, maximum)) {
-		colors.errorContainer -> colors.onErrorContainer
-		colors.tertiaryContainer -> colors.onTertiaryContainer
-		colors.secondaryContainer -> colors.onSecondaryContainer
-		colors.primaryContainer -> colors.onPrimaryContainer
-		else -> colors.onSurface
+	val container = gradeContainerColor(value, scoreType, maximum)
+	return when {
+		container == Color(0xFF374B3B) -> Color(0xFFD1E8D2)
+		container == Color(0xFFD1E8D2) -> Color(0xFF0C1F13)
+		container == Color(0xFF8C4A2F) -> Color(0xFFFFDBCF)
+		container == Color(0xFFFFDBCF) -> Color(0xFF351000)
+		container == Color(0xFF705B00) -> Color(0xFFFFDF9E)
+		container == Color(0xFFFFDF9E) -> Color(0xFF241A00)
+		container == colors.errorContainer -> colors.onErrorContainer
+		container == colors.secondaryContainer -> colors.onSecondaryContainer
+		container == colors.primaryContainer -> colors.onPrimaryContainer
+		container == colors.surfaceContainerHigh -> colors.onSurface
+		container.luminance() < 0.5f -> Color(0xFFFFDFCF)
+		else -> Color(0xFF241A00)
 	}
 }
 
