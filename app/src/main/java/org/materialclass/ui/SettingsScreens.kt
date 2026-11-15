@@ -61,7 +61,7 @@ internal fun SettingsScreen(
 			}
 			SettingRow(text("theme"), text(if (theme == ThemeMode.BLACK) "theme_amoled" else "theme_${theme.name.lowercase(Locale.ROOT)}")) { navigator.goFrom(AppRoute.Settings, AppRoute.SettingsTheme) {} }
 			SettingRow(text("notifications"), text("notifications_description")) { navigator.goFrom(AppRoute.Settings, AppRoute.SettingsNotifications) {} }
-			SettingRow(text("vibration"), text("vibration_description")) { navigator.goFrom(AppRoute.Settings, AppRoute.SettingsVibration) {} }
+
 			SettingRow(text("background_work"), text("background_work_description")) { navigator.goFrom(AppRoute.Settings, AppRoute.BackgroundWork) {} }
 		}
 	}
