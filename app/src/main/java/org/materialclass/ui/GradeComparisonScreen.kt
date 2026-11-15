@@ -86,18 +86,26 @@ private fun ComparisonContent(comparison: GradeComparison, text: (String) -> Str
 					}
 				}
 			}
-			Text("${selected ?: "-"}: ${counts[selected] ?: 0}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+			Text("${selected ?: "-"}: ${(counts[selected] ?: 0) + if (selected != null && selected == own) 1 else 0}", color = MaterialTheme.colorScheme.onSurfaceVariant)
 		}
 	}
 	val total = others + if (own != null) 1 else 0
 	val sum = counts.entries.sumOf { it.key.toLong() * it.value } + (own ?: 0)
 	val median = if (total == 0) null else {
-		val middle = (total - 1) / 2
+		val lowerMiddle = (total - 1) / 2
+		val upperMiddle = total / 2
 		var accumulated = 0
-		scores.firstOrNull { score -> accumulated += (counts[score] ?: 0) + if (score == own) 1 else 0; accumulated > middle }
+		var lowerScore: Int? = null
+		var upperScore: Int? = null
+		scores.forEach { score ->
+			accumulated += (counts[score] ?: 0) + if (score == own) 1 else 0
+			if (lowerScore == null && accumulated > lowerMiddle) lowerScore = score
+			if (upperScore == null && accumulated > upperMiddle) upperScore = score
+		}
+		(lowerScore!!.toDouble() + upperScore!!.toDouble()) / 2
 	}
 	Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-		listOf(text("comparison_mean") to if (total == 0) "-" else String.format(locale, "%.1f", sum.toDouble() / total), text("comparison_median") to (median?.toString() ?: "-"), text("comparison_best") to (scores.lastOrNull()?.toString() ?: "-")).forEach { (label, value) ->
+		listOf(text("comparison_mean") to if (total == 0) "-" else String.format(locale, "%.1f", sum.toDouble() / total), text("comparison_median") to (median?.let { String.format(locale, "%.1f", it) } ?: "-"), text("comparison_best") to (scores.lastOrNull()?.toString() ?: "-")).forEach { (label, value) ->
 			Card(modifier = Modifier.weight(1f), shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
 				Column(modifier = Modifier.padding(12.dp)) { Text(value, style = MaterialTheme.typography.headlineSmall); Text(label, style = MaterialTheme.typography.labelSmall) }
 			}
