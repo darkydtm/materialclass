@@ -219,6 +219,8 @@ class SchoolViewModel(
 	initialGradesPeriod: String = "1",
 	private val onGradesPeriod: (String) -> Unit = {},
 ) {
+	fun gradeComparison(uuid: String, type: String): org.materialclass.api.GatewayReadResult<org.materialclass.data.GradeComparison> =
+		repository?.gradeComparison(uuid, type) ?: org.materialclass.api.GatewayReadResult.Failure(AppError.LoginRequired)
 	private val io = Executors.newCachedThreadPool()
 	private var loginRequest = 0L
 	private var scheduleRequest = 0L

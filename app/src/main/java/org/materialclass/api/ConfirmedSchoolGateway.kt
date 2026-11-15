@@ -236,6 +236,8 @@ class ConfirmedSchoolGateway(
 
 	fun journalGrades(context: ReadContext): GatewayReadResult<JournalGradesModel> = gateway.journalGrades(context)
 
+	fun gradeComparison(context: ReadContext, uuid: String, type: String) = gateway.gradeComparison(context, uuid, type)
+
 	fun downloadSubjectsExcel(context: ReadContext): HttpResult = gateway.downloadSubjectsExcel(context)
 
 	fun educationYears(context: ReadContext): GatewayReadResult<SystemDataModel> = gateway.educationYears(context)

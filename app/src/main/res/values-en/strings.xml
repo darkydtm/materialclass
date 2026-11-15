@@ -43,6 +43,8 @@
 	<string name="grade_category_sor">SAS</string>
 	<string name="grade_category_soch">SAT</string>
 	<string name="grade_comparison_unavailable">Classmates\' grades are unavailable.</string>
+	<string name="grade_comparison_yours">Your score</string>
+	<string name="grade_comparison_distribution">Score - number of students</string>
 	<string name="open_schedule">Open schedule</string>
 	<string name="open_lesson">Open lesson</string>
 	<string name="open_subject">Open subject</string>

@@ -250,6 +250,10 @@ data class SystemDataModel(
 	val itemCount: Int?,
 )
 
+data class ComparisonMark(val score: Int?, val grade: String?)
+data class ClassmateMark(val score: Int?, val grade: String?, val count: Int)
+data class GradeComparison(val maxScore: Int?, val studentMark: ComparisonMark, val otherMarks: List<ClassmateMark>)
+
 data class GradeSchedule(
 	val uuid: String?,
 	val date: String?,
