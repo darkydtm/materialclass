@@ -19,6 +19,16 @@ class UiModelTest {
 	}
 
 	@Test
+	fun numericGradeColorProgressesFromRedThroughYellowToGreen() {
+		val helper = Class.forName("org.materialclass.ui.AppModelsKt").declaredMethods.firstOrNull { it.name == "gradeHue" }
+		assertTrue("Grade hue must be calculated independently of theme accents", helper != null)
+		helper!!.isAccessible = true
+		assertEquals(0f, helper.invoke(null, 20.0) as Float, 0.001f)
+		assertEquals(60f, helper.invoke(null, 60.0) as Float, 0.001f)
+		assertEquals(120f, helper.invoke(null, 100.0) as Float, 0.001f)
+	}
+
+	@Test
 	fun profileNameNormalizesEveryPart() {
 		assertEquals("Иванов Иван Иванович", normalizedFullName("  ИВАНОВ   иВАН ИВАНОВИЧ "))
 		assertEquals(null, normalizedFullName("  "))
