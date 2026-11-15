@@ -248,7 +248,7 @@ class SchoolGateway(
 		var firstFailure: AppError? = null
 		val grades = mutableListOf<org.materialclass.data.JournalGrade>()
 		groups.forEach { group ->
-			val parameters = context.queryParameters - "studentGroupUuids" + ("studentGroupUuid" to group)
+			val parameters = context.queryParameters.filterKeys { it in setOf("userId", "dateFrom", "dateTo") } + ("studentGroupUuid" to group)
 			val request = HttpRequestData(
 				method = "GET",
 				url = buildUrl(JOURNAL_PATH, parameters, JOURNAL_BASE_URL),
