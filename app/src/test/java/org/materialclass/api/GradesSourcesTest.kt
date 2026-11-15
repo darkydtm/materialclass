@@ -133,6 +133,30 @@ class GradesSourcesTest {
 	}
 
 	@Test
+	fun gradeRequestsSendOnlyParametersForTheirRespectiveServices() {
+		val calls = mutableListOf<HttpRequestData>()
+		val source = ReadContext(
+			"synthetic-access",
+			mapOf("schoolId" to "school", "eduYear" to "2026", "groupId" to "class", "periodType" to "quarter", "period" to "2", "userId" to "student", "studentGroupUuids" to "group-a"),
+			"synthetic-chat",
+		)
+		val gateway = ConfirmedSchoolGateway(
+			SchoolGateway(SyntheticGradesTransport { request ->
+				calls += request
+				if (request.url.substringBefore('?').endsWith("/diary/subjects")) {
+					HttpResponseData(200, "application/json", "{\"data\":[{\"subjectName\":\"Math\",\"schedules\":[{\"uuid\":\"lesson-1\",\"date\":\"14.11.2026\"}]}]}")
+				} else HttpResponseData(200, "application/json", "{\"data\":{}}")
+			}),
+			FakeGradesSessionController(),
+		)
+		assertTrue(gateway.grades(source) is GatewayReadResult.Success)
+		fun keys(request: HttpRequestData) = java.net.URI(request.url).rawQuery.split('&').map { it.substringBefore('=') }.toSet()
+		assertEquals(setOf("schoolId", "eduYear", "groupId", "periodType", "period"), keys(calls[0]))
+		assertEquals(setOf("userId", "studentGroupUuid", "dateFrom", "dateTo"), keys(calls[1]))
+		assertEquals("Bearer synthetic-chat", calls[1].headers["Authorization"])
+	}
+
+	@Test
 	fun gradesPropagateJournalFailureInsteadOfReturningUnscoredSubjects() {
 		val result = ConfirmedSchoolGateway(
 			SchoolGateway(SyntheticGradesTransport { request ->

@@ -191,7 +191,8 @@ class ConfirmedSchoolGateway(
 	fun subjects(context: ReadContext): GatewayReadResult<SubjectsModel> = gateway.subjects(context)
 
 	fun grades(context: ReadContext): GatewayReadResult<GradesModel> {
-		val subjects = when (val result = gateway.subjects(context)) {
+		val subjectContext = context.copy(queryParameters = context.queryParameters.filterKeys { it in setOf("schoolId", "eduYear", "periodType", "period", "groupId") })
+		val subjects = when (val result = gateway.subjects(subjectContext)) {
 			is GatewayReadResult.Success -> result.value
 			GatewayReadResult.Empty -> return GatewayReadResult.Empty
 			is GatewayReadResult.Failure -> return GatewayReadResult.Failure(result.error)
@@ -203,7 +204,7 @@ class ConfirmedSchoolGateway(
 		val firstDate = dates.first()
 		val lastDate = dates.last()
 		val journalContext = context.copy(
-			queryParameters = context.queryParameters + mapOf(
+			queryParameters = context.queryParameters.filterKeys { it in setOf("userId", "studentGroupUuids", "studentGroupUuid", "eduYear") } + mapOf(
 				"dateFrom" to journalDate(firstDate),
 				"dateTo" to journalDate(lastDate),
 			),
