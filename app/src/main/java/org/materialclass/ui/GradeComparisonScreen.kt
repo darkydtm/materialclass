@@ -1,6 +1,8 @@
 package org.materialclass.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -62,6 +64,8 @@ private fun ComparisonContent(comparison: GradeComparison, text: (String) -> Str
 	val others = counts.values.sum()
 	val lower = if (own == null) null else counts.filterKeys { it < own }.values.sum()
 	var selected by remember(comparison) { mutableStateOf(own) }
+	var chartVisible by remember(comparison) { mutableStateOf(false) }
+	LaunchedEffect(comparison) { chartVisible = true }
 	Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer), modifier = Modifier.fillMaxWidth()) {
 		Column(modifier = Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
 			Text("${text("grade_comparison_yours")}: ${own ?: text("no_data")}${comparison.maxScore?.let { "/$it" }.orEmpty()}", style = MaterialTheme.typography.labelLarge)
@@ -74,9 +78,10 @@ private fun ComparisonContent(comparison: GradeComparison, text: (String) -> Str
 			Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).height(170.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Bottom) {
 				scores.forEach { score ->
 					val count = counts[score] ?: 0
+					val height by animateDpAsState(targetValue = (if (chartVisible) 6 + 110 * count / maxCount else 6).dp, animationSpec = spring(), label = "comparisonBar")
 					Column(modifier = Modifier.width(42.dp).clickable { selected = score }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom) {
 						if (score == own) Text(text("comparison_you"), style = MaterialTheme.typography.labelSmall)
-						Box(modifier = Modifier.fillMaxWidth().height((6 + 110 * count / maxCount).dp).background(if (score == selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(8.dp)))
+						Box(modifier = Modifier.fillMaxWidth().height(height).background(if (score == selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(8.dp)))
 						Text(score.toString(), style = MaterialTheme.typography.labelLarge)
 					}
 				}

@@ -40,7 +40,7 @@ internal fun DebugScreen(padding: PaddingValues, text: (String) -> String, simul
 		Button(onClick = { scope.launch { status = withContext(Dispatchers.IO) { simulate(NotificationCategory.HOMEWORK).status.name } } }, modifier = Modifier.fillMaxWidth()) { Text(text("debug_homework")) }
 		Button(onClick = {
 			scope.launch {
-				val logs = withContext(Dispatchers.IO) { runCatching { Runtime.getRuntime().exec(arrayOf("logcat", "-d", "--pid=${Process.myPid()}" )).inputStream.bufferedReader().use { it.readText() } }.getOrNull() }
+				val logs = withContext(Dispatchers.IO) { runCatching { val process = Runtime.getRuntime().exec(arrayOf("logcat", "-d", "--pid=${Process.myPid()}")); val output = process.inputStream.bufferedReader().use { it.readText() }; check(process.waitFor() == 0); output }.getOrNull() }
 				if (logs == null) status = text("debug_logs_failed") else {
 					(context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("MaterialClass logcat", logs))
 					status = text("debug_logs_copied")
