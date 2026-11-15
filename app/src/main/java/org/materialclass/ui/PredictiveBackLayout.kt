@@ -150,6 +150,10 @@ internal class PredictiveBackLayout(
 		openingAnimator?.cancel()
 		closeDispatched = true
 		val start = if (width == 0) 1f else contentLayer.left.toFloat() / width
+		if (start >= 1f) {
+			finishPredictiveBack()
+			return
+		}
 		openingAnimator = ValueAnimator.ofFloat(start, 1f).apply {
 			duration = (300L * (1f - start)).toLong()
 			addUpdateListener { setPredictiveProgress(it.animatedValue as Float) }
@@ -157,14 +161,16 @@ internal class PredictiveBackLayout(
 				private var cancelled = false
 				override fun onAnimationCancel(animation: Animator) { cancelled = true }
 				override fun onAnimationEnd(animation: Animator) {
-					if (!cancelled) {
-						awaitingContentSwap = true
-						onClose?.invoke()
-					}
+					if (!cancelled) finishPredictiveBack()
 				}
 			})
 			start()
 		}
+	}
+
+	private fun finishPredictiveBack() {
+		awaitingContentSwap = true
+		onClose?.invoke()
 	}
 
 	fun cancelPredictiveBack() {
