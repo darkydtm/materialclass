@@ -7,6 +7,13 @@ import org.junit.Test
 
 class ExtendedContractsTest {
 	@Test
+	fun mapsLessonThemeFromScheduleFields() {
+		val result = ContractMapper.mapSchedule("""{"data":{"days":[{"schedule":[{"scheduleUuid":"a","theme":{"name":"Fractions"}},{"scheduleUuid":"b","currentLessonTheme":"Geometry"},{"scheduleUuid":"c","themeName":"Algebra"}]}]}}""")
+		val lessons = (result as GatewayReadResult.Success).value.days.single().lessons
+		assertEquals(listOf("Fractions", "Geometry", "Algebra"), lessons.map { it.theme })
+	}
+
+	@Test
 	fun mapsConfirmedHomeworkJournalAndSystemShapes() {
 		val homeworks = ContractMapper.mapHomeworks("{\"data\":[{\"uuid\":\"h-1\",\"subjectName\":\"Math\",\"theme\":null,\"currentLessonTheme\":\"Fractions\",\"body\":\"Read\",\"date\":\"2026-11-13\",\"hasFiles\":true}]}")
 		val homework = (homeworks as GatewayReadResult.Success).value.items.single()

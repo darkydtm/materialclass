@@ -306,7 +306,7 @@ private fun Map<String, JsonValue>.toScheduleDay(): ScheduleDay {
 				?.takeUnless { it.equals("regular", ignoreCase = true) },
 			teacher = item.textValue("teacher", "teacherFio"),
 			type = item["type"]?.textValue(),
-			theme = item["theme"]?.asText(),
+			theme = item.textValue("theme", "currentLessonTheme", "themeName"),
 			homework = item.textValue("homeworkBody", "homework", "body"),
 		)
 	}
