@@ -24,6 +24,7 @@ import org.materialclass.data.DiaryModel
 import org.materialclass.data.GradeSchedule
 import org.materialclass.data.GradeSubject
 import org.materialclass.data.GradesModel
+import org.materialclass.data.JournalGradesModel
 import org.materialclass.data.ProfileModel
 import org.materialclass.data.ScheduleDay
 import org.materialclass.data.ScheduleLesson
@@ -226,6 +227,7 @@ class SchoolViewModel(
 	private val io = Executors.newCachedThreadPool()
 	private var loginRequest = 0L
 	private var scheduleRequest = 0L
+	private var scheduleGradesRequest = 0L
 	private var gradesRequest = 0L
 	var loginState: LoginUiState by mutableStateOf(LoginUiState.Ready)
 		private set
@@ -237,6 +239,8 @@ class SchoolViewModel(
 	var profileState: DataState<ProfileModel>? by mutableStateOf(null)
 		private set
 	var gradesState: DataState<GradesModel>? by mutableStateOf(null)
+		private set
+	var scheduleGradesState: DataState<JournalGradesModel>? by mutableStateOf(null)
 		private set
 	var gradesPeriod: String by mutableStateOf(initialGradesPeriod)
 		private set
@@ -284,6 +288,13 @@ class SchoolViewModel(
 		val source = repository ?: run { scheduleState = null; return }
 		val range = week(weekOffset, nextWeekOnWeekend = true)
 		val request = ++scheduleRequest
+		val gradeRequest = ++scheduleGradesRequest
+		scheduleGradesState = null
+		source.observeJournal(range).observe { state ->
+			android.os.Handler(android.os.Looper.getMainLooper()).post {
+				if (scheduleGradesRequest == gradeRequest) scheduleGradesState = state
+			}
+		}
 		val observation = source.observeSchedule(range)
 		observation.observe { state ->
 			android.os.Handler(android.os.Looper.getMainLooper()).post {
@@ -291,6 +302,7 @@ class SchoolViewModel(
 			}
 		}
 		io.execute { source.refreshSchedule(range) }
+		io.execute { source.refreshJournal(range) }
 	}
 
 	fun loadDiary() {
@@ -350,12 +362,14 @@ class SchoolViewModel(
 	fun logout() {
 		loginRequest++
 		scheduleRequest++
+		scheduleGradesRequest++
 		gradesRequest++
 		repository?.logout()
 		scheduleState = null
 		diaryState = null
 		profileState = null
 		gradesState = null
+		scheduleGradesState = null
 	}
 
 	fun resetLogin() {
@@ -409,6 +423,12 @@ internal fun gradeForLesson(grades: GradesModel?, lesson: ScheduleLesson): Grade
 		.flatMap { it.schedules.asSequence() }
 		.firstOrNull { it.uuid == uuid }
 	}
+
+internal fun journalGradeForLesson(journal: JournalGradesModel?, lesson: ScheduleLesson): GradeSchedule? {
+	val uuid = lesson.uuid?.takeIf(String::isNotBlank) ?: return null
+	val grade = journal?.grades?.firstOrNull { it.scheduleUuid == uuid } ?: return null
+	return GradeSchedule(uuid, null, null, grade.markMax?.toIntOrNull(), null, grade.mark, grade.attendance, grade.sor, grade.sorMax, grade.soch, grade.sochMax)
+}
 
 internal fun stableItemKey(kind: String, index: Int, identity: String?): String =
 	identity?.takeIf(String::isNotBlank)?.let { "$kind:$it" } ?: "$kind:index:$index"
@@ -497,6 +517,11 @@ internal fun assessmentText(value: String?, scoreType: String?, credit: String, 
 	AssessmentKind.Fail -> fail
 	AssessmentKind.Empty -> noData
 	AssessmentKind.Numeric -> value.orEmpty()
+}
+
+internal fun assessmentWithMaximum(value: String?, scoreType: String?, maximum: String?, credit: String, fail: String, noData: String): String {
+	val display = assessmentText(value, scoreType, credit, fail, noData)
+	return if (assessmentKind(value, scoreType) == AssessmentKind.Numeric && !maximum.isNullOrBlank() && '/' !in display) "$display/$maximum" else display
 }
 
 @Composable

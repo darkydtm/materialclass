@@ -46,13 +46,13 @@ internal fun StateScreen(padding: PaddingValues, text: (String) -> String, bar: 
 }
 
 @Composable
-internal fun StatePanel(text: (String) -> String, state: UiContent, retry: (() -> Unit)? = null) {
+internal fun StatePanel(text: (String) -> String, state: UiContent, emptyText: String = "empty_day", retry: (() -> Unit)? = null) {
 	Card(shape = RowShape, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
 		Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
 			when (state) {
 				UiContent.Loading -> CircularProgressIndicator(modifier = Modifier.size(32.dp))
 				UiContent.Ready -> Text(text("ready"))
-				UiContent.Empty -> Text(text("empty_day"))
+				UiContent.Empty -> Text(text(emptyText))
 				UiContent.Offline -> Text(text("offline_title"))
 				UiContent.Stale -> Text(text("offline_title"))
 				UiContent.Error -> Text(text("error_load"), color = MaterialTheme.colorScheme.error)

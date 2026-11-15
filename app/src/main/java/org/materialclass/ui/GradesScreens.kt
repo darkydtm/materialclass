@@ -190,7 +190,7 @@ internal fun GradeTile(value: String?, scoreType: String?, date: String?, type: 
 		if (!type.isNullOrBlank()) Text(type, style = MaterialTheme.typography.labelSmall, maxLines = 1)
 		Surface(onClick = { if (!uuid.isNullOrBlank() && comparisonType != null && viewModel != null && navigator != null) { viewModel.selectComparison(uuid, comparisonType); navigator.go(AppRoute.GradeComparison) } }, shape = RoundedCornerShape(11.dp), color = gradeContainerColor(value, scoreType, maximum), contentColor = gradeContentColor(value, scoreType, maximum), modifier = Modifier.widthIn(min = 44.dp)) {
 			Box(modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp), contentAlignment = Alignment.Center) {
-				Text(assessmentText(value, scoreType, text("credit"), text("fail"), text("no_data")), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+				Text(assessmentWithMaximum(value, scoreType, maximumLabel, text("credit"), text("fail"), text("no_data")), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
 			}
 		}
 		if (!date.isNullOrBlank()) Text(date.substringBefore('T'), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

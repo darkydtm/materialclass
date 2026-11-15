@@ -52,7 +52,6 @@ internal fun HomeScreen(
 ) {
 	LaunchedEffect(Unit) {
 		viewModel.loadSchedule()
-		viewModel.loadGrades(viewModel.gradesPeriod)
 		viewModel.loadProfile()
 	}
 	val profile = viewModel.profileState.readyValue()
@@ -97,7 +96,7 @@ internal fun HomeScreen(
 		}
 		item { Text(text(lessonsTitle), style = MaterialTheme.typography.titleLarge) }
 		if (today == null) {
-			item { StatePanel(text, homeState, { viewModel.retry(AppRoute.Schedule) }) }
+			item { StatePanel(text, homeState) { viewModel.retry(AppRoute.Schedule) } }
 		} else {
 			items(
 				count = today.lessons.size,
@@ -105,7 +104,7 @@ internal fun HomeScreen(
 				contentType = { "lesson" },
 			) { index ->
 				val lesson = today.lessons[index]
-				LessonCard(lesson, gradeForLesson(viewModel.gradesState.readyValue(), lesson)) {
+				LessonCard(lesson, journalGradeForLesson(viewModel.scheduleGradesState.readyValue(), lesson)) {
 					navigator.goFrom(AppRoute.Home, AppRoute.LessonDetail) { onLessonSelected(lesson.uuid.orEmpty()) }
 				}
 			}
@@ -124,7 +123,6 @@ internal fun ScheduleScreen(
 	var weekOffset by rememberSaveable { mutableIntStateOf(0) }
 	var selectedDay by rememberSaveable { mutableIntStateOf(0) }
 	LaunchedEffect(weekOffset) { viewModel.loadSchedule(weekOffset) }
-	LaunchedEffect(Unit) { viewModel.loadGrades(viewModel.gradesPeriod) }
 	val schedule = viewModel.scheduleState.readyValue()
 	val safeSelectedDay = selectedDay.coerceIn(0, (schedule?.days?.lastIndex ?: 0).coerceAtLeast(0))
 	val day = schedule?.days?.getOrNull(safeSelectedDay)
@@ -169,7 +167,7 @@ internal fun ScheduleScreen(
 		}
 		item { Text(day?.dateLabel ?: text("no_data"), style = MaterialTheme.typography.titleLarge) }
 		if (day == null) {
-			item { StatePanel(text, viewModel.scheduleState.toUiState(), { viewModel.loadSchedule(weekOffset) }) }
+			item { StatePanel(text, viewModel.scheduleState.toUiState()) { viewModel.loadSchedule(weekOffset) } }
 		} else if (day.lessons.isEmpty()) {
 			item { StatePanel(text, UiContent.Empty) { navigator.goFrom(AppRoute.Schedule, AppRoute.HomeEmpty) {} } }
 		} else {
@@ -179,7 +177,7 @@ internal fun ScheduleScreen(
 				contentType = { "lesson" },
 			) { index ->
 				val lesson = day.lessons[index]
-				LessonCard(lesson, gradeForLesson(viewModel.gradesState.readyValue(), lesson)) {
+				LessonCard(lesson, journalGradeForLesson(viewModel.scheduleGradesState.readyValue(), lesson)) {
 					navigator.goFrom(AppRoute.Schedule, AppRoute.LessonDetail) { onLessonSelected(lesson.uuid.orEmpty()) }
 				}
 			}
@@ -223,9 +221,17 @@ private fun LessonCard(lesson: ScheduleLesson, grade: GradeSchedule?, onClick: (
 
 @Composable
 private fun GradeCard(grade: GradeSchedule?) {
-	val score = grade?.score?.takeIf(String::isNotBlank) ?: return
-	Card(shape = RoundedCornerShape(11.dp), colors = CardDefaults.cardColors(containerColor = gradeContainerColor(score, null, grade.markMax?.toDouble()), contentColor = gradeContentColor(score, null, grade.markMax?.toDouble()))) {
-		Text(score, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.titleMedium)
+	if (grade == null) return
+	val scores = listOf(grade.score to grade.markMax?.toString(), grade.sor to grade.sorMax, grade.soch to grade.sochMax)
+	Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+		scores.forEachIndexed { index, (score, maximum) ->
+			if (!score.isNullOrBlank()) {
+				val max = maximum?.toDoubleOrNull()
+				Card(shape = RoundedCornerShape(11.dp), colors = CardDefaults.cardColors(containerColor = gradeContainerColor(score, null, max), contentColor = gradeContentColor(score, null, max))) {
+					Text(if (index == 0) score else assessmentWithMaximum(score, null, maximum, score, score, score), modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.titleMedium)
+				}
+			}
+		}
 	}
 }
 
