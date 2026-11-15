@@ -29,6 +29,9 @@
 	<string name="subject_detail">Subject</string>
 	<string name="login_prompt">Sign in to continue</string>
 	<string name="login_welcome">Welcome back</string>
+	<string name="vibration">Vibration</string>
+	<string name="vibration_description">Light feedback on press</string>
+	<string name="vibration_strength">Vibration strength</string>
 	<string name="home_description">Schedule, homework, and grades in one place.</string>
 	<string name="week_title">Schedule</string>
 	<string name="diary_title">Diary</string>

@@ -61,8 +61,25 @@ internal fun SettingsScreen(
 			}
 			SettingRow(text("theme"), text(if (theme == ThemeMode.BLACK) "theme_amoled" else "theme_${theme.name.lowercase(Locale.ROOT)}")) { navigator.goFrom(AppRoute.Settings, AppRoute.SettingsTheme) {} }
 			SettingRow(text("notifications"), text("notifications_description")) { navigator.goFrom(AppRoute.Settings, AppRoute.SettingsNotifications) {} }
+			SettingRow(text("vibration"), text("vibration_description")) { navigator.goFrom(AppRoute.Settings, AppRoute.SettingsVibration) {} }
 			SettingRow(text("background_work"), text("background_work_description")) { navigator.goFrom(AppRoute.Settings, AppRoute.BackgroundWork) {} }
 		}
+	}
+}
+
+@Composable
+internal fun VibrationScreen(padding: PaddingValues, text: (String) -> String) {
+	val context = LocalContext.current
+	val preferences = remember(context) { AppPreferences(context) }
+	var enabled by remember { androidx.compose.runtime.mutableStateOf(preferences.vibrationEnabled()) }
+	var strength by remember { androidx.compose.runtime.mutableStateOf(preferences.vibrationStrength().toFloat()) }
+	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+		NotificationRow(text, text("vibration"), text("vibration_description"), enabled) {
+			enabled = it
+			preferences.setVibrationEnabled(it)
+		}
+		Text(text("vibration_strength"), style = MaterialTheme.typography.labelLarge)
+		Slider(value = strength, onValueChange = { strength = it; preferences.setVibrationStrength(it.toInt()) }, valueRange = 1f..255f, enabled = enabled)
 	}
 }
 

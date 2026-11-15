@@ -29,6 +29,9 @@
 	<string name="subject_detail">Предмет</string>
 	<string name="login_prompt">Войдите, чтобы продолжить</string>
 	<string name="login_welcome">С возвращением</string>
+	<string name="vibration">Вибрация</string>
+	<string name="vibration_description">Лёгкий отклик при нажатии</string>
+	<string name="vibration_strength">Сила вибрации</string>
 	<string name="home_description">Расписание, задания и оценки - в одном месте.</string>
 	<string name="week_title">Расписание</string>
 	<string name="diary_title">Дневник</string>

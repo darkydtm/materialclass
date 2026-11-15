@@ -149,6 +149,7 @@ internal fun AppScaffold(
 					text(key)
 				}
 				AppRoute.SettingsNotifications -> NotificationsScreen(padding, text, newGradeNotifications, onNewGradeNotifications, homeworkNotifications, onHomeworkNotifications)
+				AppRoute.SettingsVibration -> VibrationScreen(padding, text)
 				AppRoute.BackgroundWork -> BackgroundWorkScreen(padding, text, backgroundWork, onBackgroundWork, backgroundInterval, onBackgroundInterval)
 				AppRoute.Profile -> ProfileScreen(padding, text, viewModel, onLogout)
 				else -> Unit
@@ -177,6 +178,7 @@ internal fun AppRoute.titleKey(): String = when (this) {
 	AppRoute.SettingsLanguage -> "language"
 	AppRoute.SettingsTheme -> "theme"
 	AppRoute.SettingsNotifications -> "notifications_title"
+	AppRoute.SettingsVibration -> "vibration"
 	AppRoute.BackgroundWork -> "background_work"
 	AppRoute.Profile -> "profile"
 	else -> "app_name"

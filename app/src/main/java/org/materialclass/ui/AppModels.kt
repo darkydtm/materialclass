@@ -53,6 +53,7 @@ enum class AppRoute {
 	SettingsLanguage,
 	SettingsTheme,
 	SettingsNotifications,
+	SettingsVibration,
 	BackgroundWork,
 	Profile,
 }
@@ -196,6 +197,10 @@ class AppPreferences(context: Context) {
 	fun gradesPeriod(): String = preferences.getString(GRADES_PERIOD, "1")?.takeIf { it in listOf("1", "2", "3", "4") } ?: "1"
 	fun setGradesPeriod(value: String) { preferences.edit().putString(GRADES_PERIOD, value).apply() }
 	fun backgroundWork(): Boolean = preferences.getBoolean(BACKGROUND_WORK, false)
+	fun vibrationEnabled(): Boolean = preferences.getBoolean("vibration.enabled", false)
+	fun vibrationStrength(): Int = preferences.getInt("vibration.strength", 96).coerceIn(1, 255)
+	fun setVibrationEnabled(value: Boolean) { preferences.edit().putBoolean("vibration.enabled", value).apply() }
+	fun setVibrationStrength(value: Int) { preferences.edit().putInt("vibration.strength", value.coerceIn(1, 255)).apply() }
 	fun backgroundInterval(): Float = preferences.getInt(BACKGROUND_INTERVAL, 30).toFloat()
 	fun setLanguage(value: AppLanguage) { preferences.edit().putString(LANGUAGE, value.name).apply() }
 	fun setTheme(value: ThemeMode) { preferences.edit().putString(THEME, value.name).apply() }
