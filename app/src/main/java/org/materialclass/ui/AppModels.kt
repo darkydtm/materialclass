@@ -471,6 +471,8 @@ internal fun effectiveFinalScore(subject: GradeSubject): String? =
 	subject.finalScore?.takeIf { it.isNotBlank() }
 		?: if (isCreditSubject(subject)) null else org.materialclass.grades.GradeCalculator.calculate(gradeComponents(subject.schedules)).grade?.toString()
 
+internal fun gradeHue(percent: Double): Float = ((percent.coerceIn(20.0, 100.0) - 20.0) * 1.5).toFloat()
+
 internal fun assessmentText(value: String?, scoreType: String?, credit: String, fail: String, noData: String): String = when (assessmentKind(value, scoreType)) {
 	AssessmentKind.Credit -> credit
 	AssessmentKind.Fail -> fail

@@ -39,6 +39,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -146,13 +148,8 @@ internal fun gradeContainerColor(value: String?, scoreType: String?, maximum: Do
 			val number = value?.substringBefore('/')?.trim()?.toDoubleOrNull()
 			val max = maximum ?: value?.substringAfter('/', "")?.toDoubleOrNull()
 			val percent = if (number != null && max != null && max > 0) number * 100 / max else if (number != null) number * 10 else null
-			when {
-				percent == null -> colors.surfaceContainerHigh
-				percent < 35 -> colors.errorContainer
-				percent < 65 -> colors.tertiaryContainer
-				percent < 85 -> colors.secondaryContainer
-				else -> colors.primaryContainer
-			}
+			if (percent == null || !percent.isFinite()) colors.surfaceContainerHigh
+			else Color.hsl(gradeHue(percent), 0.48f, if (colors.surface.luminance() < 0.5f) 0.27f else 0.86f)
 		}
 	}
 }
@@ -160,12 +157,16 @@ internal fun gradeContainerColor(value: String?, scoreType: String?, maximum: Do
 @Composable
 internal fun gradeContentColor(value: String?, scoreType: String?, maximum: Double? = null): androidx.compose.ui.graphics.Color {
 	val colors = MaterialTheme.colorScheme
-	return when (gradeContainerColor(value, scoreType, maximum)) {
+	val container = gradeContainerColor(value, scoreType, maximum)
+	return when (assessmentKind(value, scoreType)) {
+		AssessmentKind.Numeric -> if (container.luminance() < 0.5f) Color.White else Color.Black
+		else -> when (container) {
 		colors.errorContainer -> colors.onErrorContainer
 		colors.tertiaryContainer -> colors.onTertiaryContainer
 		colors.secondaryContainer -> colors.onSecondaryContainer
 		colors.primaryContainer -> colors.onPrimaryContainer
 		else -> colors.onSurface
+		}
 	}
 }
 
