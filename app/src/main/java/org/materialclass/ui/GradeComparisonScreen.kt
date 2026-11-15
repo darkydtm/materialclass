@@ -74,10 +74,10 @@ private fun ComparisonContent(comparison: GradeComparison, text: (String) -> Str
 	}
 	Card(shape = CardShape, modifier = Modifier.fillMaxWidth()) {
 		Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-			val maxCount = (counts.values.maxOrNull() ?: 0).coerceAtLeast(1)
+			val maxCount = (scores.maxOfOrNull { score -> (counts[score] ?: 0) + if (score == own) 1 else 0 } ?: 0).coerceAtLeast(1)
 			Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).height(170.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Bottom) {
 				scores.forEach { score ->
-					val count = counts[score] ?: 0
+					val count = (counts[score] ?: 0) + if (score == own) 1 else 0
 					val height by animateDpAsState(targetValue = (if (chartVisible) 6 + 110 * count / maxCount else 6).dp, animationSpec = spring(), label = "comparisonBar")
 					Column(modifier = Modifier.width(42.dp).clickable { selected = score }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom) {
 						if (score == own) Text(text("comparison_you"), style = MaterialTheme.typography.labelSmall)

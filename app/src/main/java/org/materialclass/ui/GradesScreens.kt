@@ -101,7 +101,7 @@ internal fun DiaryScreen(padding: PaddingValues, text: (String) -> String, viewM
 		}
 			}
 			}
-		if (viewModel.quarterNotStarted && (grades == null || grades.subjects.none { it.schedules.any { schedule -> schedule.score != null || schedule.sor != null || schedule.soch != null } || it.scores.isNotEmpty() || !it.finalScore.isNullOrBlank() })) {
+		if (viewModel.quarterNotStarted && (viewModel.gradesState is org.materialclass.data.DataState.Empty || (viewModel.gradesState is org.materialclass.data.DataState.Ready && grades?.subjects?.none { it.schedules.any { schedule -> schedule.score != null || schedule.sor != null || schedule.soch != null } || it.scores.isNotEmpty() || !it.finalScore.isNullOrBlank() } == true))) {
 			item { Card(shape = RowShape, modifier = Modifier.fillMaxWidth()) { Text(text("quarter_not_started"), modifier = Modifier.padding(20.dp)) } }
 		} else if (grades == null) {
 			item { StatePanel(text, viewModel.gradesState.toUiState(), { viewModel.retry(AppRoute.Diary) }) }
