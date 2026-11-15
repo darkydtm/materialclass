@@ -43,6 +43,8 @@
 	<string name="grade_category_sor">БЖБ</string>
 	<string name="grade_category_soch">ТЖБ</string>
 	<string name="grade_comparison_unavailable">Сыныптастардың бағалары қолжетімсіз.</string>
+	<string name="grade_comparison_yours">Сіздің бағаңыз</string>
+	<string name="grade_comparison_distribution">Ұпай - оқушылар саны</string>
 	<string name="open_schedule">Кестені ашу</string>
 	<string name="open_lesson">Сабақты ашу</string>
 	<string name="open_subject">Пәнді ашу</string>

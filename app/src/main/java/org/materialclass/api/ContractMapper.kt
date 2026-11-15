@@ -26,6 +26,29 @@ import org.materialclass.data.SystemDataModel
 
 /** Map only fields observed in the confirmed responses. */
 object ContractMapper {
+	fun mapGradeComparison(body: String): GatewayReadResult<org.materialclass.data.GradeComparison> = try {
+		val root = JsonParser(body).parseObject()
+		fun Map<String, JsonValue>.number(key: String): Int? = when (val value = get(key)) {
+			JsonValue.NullValue -> null
+			is JsonValue.NumberValue -> value.value.toInt()
+			else -> throw IllegalArgumentException("invalid number")
+		}
+		fun Map<String, JsonValue>.grade(): String? = when (val value = get("grade")) {
+			JsonValue.NullValue -> null
+			is JsonValue.StringValue -> value.value
+			else -> throw IllegalArgumentException("invalid grade")
+		}
+		val student = root.requiredObject("studentMark")
+		val marks = root.requiredArray("otherMarks").map { value ->
+			val mark = value.asObject()
+			org.materialclass.data.ClassmateMark(mark.number("score"), mark.grade(), mark.number("count")?.takeIf { it >= 0 } ?: throw IllegalArgumentException("invalid count"))
+		}
+		val result = org.materialclass.data.GradeComparison(root.number("maxScore"), org.materialclass.data.ComparisonMark(student.number("score"), student.grade()), marks)
+		if (result.studentMark.score == null && marks.isEmpty()) GatewayReadResult.Empty else GatewayReadResult.Success(result)
+	} catch (_: Exception) {
+		GatewayReadResult.Failure(AppError.InvalidResponse)
+	}
+
 	fun mapLoginResponse(body: String): GatewayLoginResult = try {
 		val root = JsonParser(body).parseObject()
 		val accessToken = root.requiredString("access_token")

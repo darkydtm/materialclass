@@ -16,6 +16,7 @@ interface SchoolRepository {
 	fun observeHomeworks(): RepositoryObservation<HomeworksModel>
 	fun observeJournal(range: DateRange): RepositoryObservation<JournalGradesModel>
 	fun observeProfile(): RepositoryObservation<ProfileModel>
+	fun gradeComparison(uuid: String, type: String): GatewayReadResult<GradeComparison> = GatewayReadResult.Failure(AppError.UnsupportedContract)
 	fun refreshHome()
 	fun refreshDiary(range: DateRange)
 	fun refreshSchedule(range: DateRange)
@@ -33,6 +34,7 @@ interface RepositoryGateway {
 	fun grades(context: ReadContext): GatewayReadResult<GradesModel>
 	fun homeworks(context: ReadContext): GatewayReadResult<HomeworksModel> = GatewayReadResult.Failure(AppError.UnsupportedContract)
 	fun journalGrades(context: ReadContext): GatewayReadResult<JournalGradesModel> = GatewayReadResult.Failure(AppError.UnsupportedContract)
+	fun gradeComparison(context: ReadContext, uuid: String, type: String): GatewayReadResult<GradeComparison> = GatewayReadResult.Failure(AppError.UnsupportedContract)
 	fun profile(): GatewayReadResult<ProfileModel>
 	fun logout(): GatewayReadResult<Unit> = GatewayReadResult.Success(Unit)
 }
@@ -98,6 +100,12 @@ class SchoolRepositoryImpl(
 	override fun observeHomeworks() = observation<HomeworksModel>(HOMEWORKS)
 	override fun observeJournal(range: DateRange) = observation<JournalGradesModel>(journalKey(range))
 	override fun observeProfile() = observation<ProfileModel>(PROFILE)
+	override fun gradeComparison(uuid: String, type: String): GatewayReadResult<GradeComparison> {
+		val session = sessions.currentSession() ?: return GatewayReadResult.Failure(AppError.LoginRequired)
+		val token = sessions.tokenFor(session) ?: return GatewayReadResult.Failure(AppError.LoginRequired)
+		val result = gateway.gradeComparison(context(token, "comparison"), uuid, type)
+		return sessions.withSessionLock { if (sessions.currentSession() == session) result else GatewayReadResult.Failure(AppError.LoginRequired) }
+	}
 
 	override fun refreshHome() { refresh(HOME) { gateway.home(it) } }
 	override fun refreshDiary(range: DateRange) { refresh(diaryKey(range)) { gateway.diary(it) } }

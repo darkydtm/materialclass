@@ -157,6 +157,12 @@ class SchoolGateway(
 	fun journalGrades(context: ReadContext): GatewayReadResult<JournalGradesModel> =
 		readJournal(context, ContractMapper::mapJournalGrades)
 
+	fun gradeComparison(context: ReadContext, uuid: String, type: String): GatewayReadResult<org.materialclass.data.GradeComparison> {
+		if (uuid.isBlank() || type !in setOf("formattedScore", "sor", "soch")) return GatewayReadResult.Failure(AppError.InvalidResponse)
+		val result = read(context.copy(queryParameters = context.queryParameters.filterKeys { it == "schoolId" }), "/api/mobile/comparison/classroom/lesson", ContractMapper::mapGradeComparison, mapOf("uuid" to uuid, "type" to type))
+		return if (result is GatewayReadResult.Failure && result.error == AppError.HttpStatus(404)) GatewayReadResult.Empty else result
+	}
+
 	fun downloadSubjectsExcel(context: ReadContext): HttpResult =
 		readBinary(context, SUBJECTS_EXCEL_PATH)
 
@@ -181,7 +187,7 @@ class SchoolGateway(
 		if (context.accessToken.isBlank()) return GatewayReadResult.Failure(AppError.Unauthorized)
 		val request = HttpRequestData(
 			method = "GET",
-			url = buildUrl(path, context.queryParameters + extraParameters),
+			url = buildUrl(path, (if (path == "/api/mobile/comparison/classroom/lesson") emptyMap() else context.queryParameters) + extraParameters),
 			headers = buildMap {
 				put("User-Agent", USER_AGENT)
 				put("Accept", "application/json")

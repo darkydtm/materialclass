@@ -76,6 +76,7 @@ class ApplicationRuntime(application: Application) {
 				override fun grades(context: ReadContext) = confirmedGateway.grades(context)
 				override fun homeworks(context: ReadContext) = confirmedGateway.homeworks(context)
 				override fun journalGrades(context: ReadContext) = confirmedGateway.journalGrades(context)
+				override fun gradeComparison(context: ReadContext, uuid: String, type: String) = confirmedGateway.gradeComparison(context, uuid, type)
 				override fun profile() = confirmedGateway.profile()
 				override fun logout() = confirmedGateway.logout()
 			},
