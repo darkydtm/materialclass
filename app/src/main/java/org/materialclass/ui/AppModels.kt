@@ -232,6 +232,8 @@ class SchoolViewModel(
 	private val io = Executors.newCachedThreadPool()
 	private var loginRequest = 0L
 	private var scheduleRequest = 0L
+	private var diaryRequest = 0L
+	private var scheduleRange: DateRange? = null
 	private var scheduleGradesRequest = 0L
 	private var gradesRequest = 0L
 	var loginState: LoginUiState by mutableStateOf(LoginUiState.Ready)
@@ -292,6 +294,7 @@ class SchoolViewModel(
 	fun loadSchedule(weekOffset: Int = 0) {
 		val source = repository ?: run { scheduleState = null; return }
 		val range = week(weekOffset, nextWeekOnWeekend = true)
+		scheduleRange = range
 		val request = ++scheduleRequest
 		val gradeRequest = ++scheduleGradesRequest
 		scheduleGradesState = null
@@ -312,9 +315,14 @@ class SchoolViewModel(
 
 	fun loadDiary() {
 		val source = repository ?: run { diaryState = null; return }
-		val range = week()
+		val range = scheduleRange ?: week()
+		val request = ++diaryRequest
 		val observation = source.observeDiary(range)
-		observation.observe { diaryState = it }
+		observation.observe { state ->
+			android.os.Handler(android.os.Looper.getMainLooper()).post {
+				if (diaryRequest == request) diaryState = state
+			}
+		}
 		io.execute { source.refreshDiary(range) }
 	}
 
@@ -367,6 +375,7 @@ class SchoolViewModel(
 	fun logout() {
 		loginRequest++
 		scheduleRequest++
+		diaryRequest++
 		scheduleGradesRequest++
 		gradesRequest++
 		repository?.logout()

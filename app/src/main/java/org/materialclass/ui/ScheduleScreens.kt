@@ -246,6 +246,9 @@ internal fun LessonDetailScreen(padding: PaddingValues, text: (String) -> String
 		StateScreen(padding, text, "lesson_title", "lesson_detail_unavailable", "unsupported") { viewModel.retry(AppRoute.Schedule) }
 		return
 	}
+	LaunchedEffect(selectedLesson) { viewModel.loadDiary() }
+	val diaryTheme = viewModel.diaryState.readyValue()?.days.orEmpty().flatMap { it.subjects }
+		.firstOrNull { it.scheduleUuid != null && it.scheduleUuid == lesson.uuid }?.theme
 	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
 		Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
 			Text(lesson.label.orEmpty(), style = MaterialTheme.typography.headlineLarge)
@@ -253,7 +256,7 @@ internal fun LessonDetailScreen(padding: PaddingValues, text: (String) -> String
 		Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
 			Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 				Text(text("lesson_topic"), style = MaterialTheme.typography.labelLarge)
-				Text(lesson.theme ?: text("no_data"), style = MaterialTheme.typography.headlineSmall)
+				Text(lesson.theme?.takeIf(String::isNotBlank) ?: diaryTheme?.takeIf(String::isNotBlank) ?: text("no_data"), style = MaterialTheme.typography.headlineSmall)
 				Text(text("homework"), style = MaterialTheme.typography.labelLarge)
 				Text(lesson.homework ?: text("no_data"))
 			}
