@@ -19,6 +19,16 @@ class UiModelTest {
 	}
 
 	@Test
+	fun finalGradePreservesServerValueAndHandlesMissingCategories() {
+		val schedule = org.materialclass.data.GradeSchedule("lesson", null, null, 10, null, score = "8", sor = "6", sorMax = "10")
+		val subject = org.materialclass.data.GradeSubject("Math", null, listOf(schedule))
+		assertEquals("4", effectiveFinalScore(subject))
+		assertEquals("5", effectiveFinalScore(subject.copy(finalScore = "5")))
+		assertEquals(null, effectiveFinalScore(subject.copy(scoreType = "credit")))
+		assertEquals(null, effectiveFinalScore(subject.copy(schedules = emptyList())))
+	}
+
+	@Test
 	fun numericGradeColorProgressesFromRedThroughYellowToGreen() {
 		val helper = Class.forName("org.materialclass.ui.AppModelsKt").declaredMethods.firstOrNull { it.name == "gradeHue" }
 		assertTrue("Grade hue must be calculated independently of theme accents", helper != null)
