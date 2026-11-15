@@ -27,7 +27,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.VerticalDivider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Surface
 
 import androidx.compose.material3.Text
@@ -134,17 +134,16 @@ private fun SubjectCard(subject: GradeSubject, text: (String) -> String, viewMod
 					Text(displayedScore, modifier = Modifier.widthIn(min = 34.dp).padding(horizontal = 8.dp, vertical = 8.dp), textAlign = TextAlign.Center, style = MaterialTheme.typography.titleMedium)
 				}
 			}
-				Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+				HorizontalDivider()
+				Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
 					if (subject.schedules.any { it.score != null || it.sor != null || it.soch != null }) {
-						var first = true
-						@Composable fun separator() { if (!first) VerticalDivider(modifier = Modifier.height(36.dp)); first = false }
 						subject.schedules.forEach { schedule ->
-							if (schedule.score != null) { separator(); GradeTile(schedule.score, subject.scoreType, schedule.date, null, text, schedule.markMax?.toDouble(), uuid = schedule.uuid, comparisonType = "formattedScore", viewModel = viewModel, navigator = navigator) }
-							if (schedule.sor != null) { separator(); GradeTile(schedule.sor, subject.scoreType, schedule.date, text("grade_category_sor"), text, schedule.sorMax?.toDoubleOrNull(), schedule.sorMax, schedule.uuid, "sor", viewModel, navigator) }
-							if (schedule.soch != null) { separator(); GradeTile(schedule.soch, subject.scoreType, schedule.date, text("grade_category_soch"), text, schedule.sochMax?.toDoubleOrNull(), schedule.sochMax, schedule.uuid, "soch", viewModel, navigator) }
+							if (schedule.score != null) GradeTile(schedule.score, subject.scoreType, schedule.date, text("grade_category_fo"), text, schedule.markMax?.toDouble(), uuid = schedule.uuid, comparisonType = "formattedScore", viewModel = viewModel, navigator = navigator)
+							if (schedule.sor != null) GradeTile(schedule.sor, subject.scoreType, schedule.date, text("grade_category_sor"), text, schedule.sorMax?.toDoubleOrNull(), schedule.sorMax, schedule.uuid, "sor", viewModel, navigator)
+							if (schedule.soch != null) GradeTile(schedule.soch, subject.scoreType, schedule.date, text("grade_category_soch"), text, schedule.sochMax?.toDoubleOrNull(), schedule.sochMax, schedule.uuid, "soch", viewModel, navigator)
 						}
 					} else {
-						subject.scores.forEachIndexed { index, score -> if (index > 0) VerticalDivider(modifier = Modifier.height(36.dp)); GradeTile(score, subject.scoreType, null, null, text) }
+						subject.scores.forEach { score -> GradeTile(score, subject.scoreType, null, null, text) }
 					}
 				}
 		}
@@ -187,7 +186,9 @@ internal fun gradeContentColor(value: String?, scoreType: String?, maximum: Doub
 @Composable
 internal fun GradeTile(value: String?, scoreType: String?, date: String?, type: String?, text: (String) -> String, maximum: Double? = null, maximumLabel: String? = null, uuid: String? = null, comparisonType: String? = null, viewModel: SchoolViewModel? = null, navigator: AppNavigator? = null) {
 	Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp)) {
-		if (!type.isNullOrBlank()) Text(type, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+		Box(modifier = Modifier.height(18.dp), contentAlignment = Alignment.Center) {
+			if (!type.isNullOrBlank()) Text(type, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+		}
 		Surface(onClick = { if (!uuid.isNullOrBlank() && comparisonType != null && viewModel != null && navigator != null) { viewModel.selectComparison(uuid, comparisonType); navigator.go(AppRoute.GradeComparison) } }, shape = RoundedCornerShape(11.dp), color = gradeContainerColor(value, scoreType, maximum), contentColor = gradeContentColor(value, scoreType, maximum), modifier = Modifier.widthIn(min = 44.dp)) {
 			Box(modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp), contentAlignment = Alignment.Center) {
 				Text(assessmentWithMaximum(value, scoreType, maximumLabel, text("credit"), text("fail"), text("no_data")), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
