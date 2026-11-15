@@ -193,7 +193,7 @@ private fun dayNumber(value: String?): String? {
 
 @Composable
 private fun LessonCard(lesson: ScheduleLesson, grade: GradeSchedule?, onClick: () -> Unit) {
-	Card(onClick = onClick, shape = LessonShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer), modifier = Modifier.fillMaxWidth()) {
+	Card(onClick = onClick, shape = LessonShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh), modifier = Modifier.fillMaxWidth()) {
 		Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
 			Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
 				Text(lesson.timeslot ?: "", style = MaterialTheme.typography.titleMedium)
@@ -249,7 +249,7 @@ internal fun LessonDetailScreen(padding: PaddingValues, text: (String) -> String
 				Text(lesson.homework ?: text("no_data"))
 			}
 		}
-		Card(shape = CardShape) {
+		Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
 			Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
 				Text(text("attachments"), style = MaterialTheme.typography.titleMedium)
 				Text(text("attachments_empty"), color = MaterialTheme.colorScheme.onSurfaceVariant)

@@ -47,7 +47,7 @@ internal fun StateScreen(padding: PaddingValues, text: (String) -> String, bar: 
 
 @Composable
 internal fun StatePanel(text: (String) -> String, state: UiContent, retry: (() -> Unit)? = null) {
-	Card(shape = RowShape, modifier = Modifier.fillMaxWidth()) {
+	Card(shape = RowShape, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
 		Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
 			when (state) {
 				UiContent.Loading -> CircularProgressIndicator(modifier = Modifier.size(32.dp))
