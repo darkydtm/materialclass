@@ -467,6 +467,10 @@ internal fun isCreditSubject(subject: GradeSubject): Boolean =
 	assessmentKind(subject.finalScore, subject.scoreType) in setOf(AssessmentKind.Credit, AssessmentKind.Fail) ||
 		subject.schedules.any { assessmentKind(it.score, subject.scoreType) in setOf(AssessmentKind.Credit, AssessmentKind.Fail) }
 
+internal fun effectiveFinalScore(subject: GradeSubject): String? =
+	subject.finalScore?.takeIf { it.isNotBlank() }
+		?: if (isCreditSubject(subject)) null else org.materialclass.grades.GradeCalculator.calculate(gradeComponents(subject.schedules)).grade?.toString()
+
 internal fun assessmentText(value: String?, scoreType: String?, credit: String, fail: String, noData: String): String = when (assessmentKind(value, scoreType)) {
 	AssessmentKind.Credit -> credit
 	AssessmentKind.Fail -> fail
@@ -505,7 +509,7 @@ internal fun gradeSubjectRows(subjects: List<GradeSubject>, unknown: String, noD
 			stableKey = keys[index],
 			subjectName = subject.subjectName,
 			name = subject.subjectName ?: unknown,
-			finalScore = subject.finalScore ?: noData,
+			finalScore = effectiveFinalScore(subject) ?: noData,
 			quarter1 = subject.quarter1 ?: noData,
 			quarter2 = subject.quarter2 ?: noData,
 			quarter3 = subject.quarter3 ?: noData,
@@ -531,7 +535,7 @@ internal fun findGradeSubject(subjects: List<GradeSubject>, selected: String): G
 internal fun gradeSubjectDetailRow(subject: GradeSubject, unknown: String, noData: String): SubjectDetailRow =
 	SubjectDetailRow(
 		title = subject.subjectName.orEmpty(),
-		finalGrade = subject.finalScore ?: noData,
+		finalGrade = effectiveFinalScore(subject) ?: noData,
 		scheduleRows = gradeScheduleRows(subject.schedules, unknown),
 		hasSchedules = subject.schedules.isNotEmpty(),
 	)

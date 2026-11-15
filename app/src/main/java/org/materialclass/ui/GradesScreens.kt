@@ -48,7 +48,7 @@ import org.materialclass.grades.GradeCalculator
 import org.materialclass.grades.GradeCategory
 import org.materialclass.grades.GradeComponent
 
-private fun gradeComponents(schedules: List<GradeSchedule>): List<GradeComponent> = schedules.flatMap { schedule ->
+internal fun gradeComponents(schedules: List<GradeSchedule>): List<GradeComponent> = schedules.flatMap { schedule ->
 	fun component(category: GradeCategory, value: String?, maximum: String?): GradeComponent? {
 		val score = value?.toDoubleOrNull() ?: return null
 		val max = maximum?.toDoubleOrNull() ?: return null
@@ -108,12 +108,13 @@ internal fun DiaryScreen(padding: PaddingValues, text: (String) -> String, viewM
 
 @Composable
 private fun SubjectCard(subject: GradeSubject, text: (String) -> String, onClick: () -> Unit) {
-	val displayedScore = assessmentText(subject.finalScore, subject.scoreType, text("credit"), text("fail"), text("no_data"))
+	val finalScore = effectiveFinalScore(subject)
+	val displayedScore = assessmentText(finalScore, subject.scoreType, text("credit"), text("fail"), text("no_data"))
 	Card(onClick = onClick, shape = RowShape, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
 		Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 			Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
 				Text(subject.subjectName ?: text("unknown"), modifier = Modifier.weight(1f).padding(end = 8.dp), style = MaterialTheme.typography.titleLarge)
-				Surface(shape = RoundedCornerShape(10.dp), color = gradeContainerColor(subject.finalScore, subject.scoreType, 5.0), contentColor = gradeContentColor(subject.finalScore, subject.scoreType, 5.0)) {
+				Surface(shape = RoundedCornerShape(10.dp), color = gradeContainerColor(finalScore, subject.scoreType, 5.0), contentColor = gradeContentColor(finalScore, subject.scoreType, 5.0)) {
 					Text(displayedScore, modifier = Modifier.widthIn(min = 34.dp).padding(horizontal = 8.dp, vertical = 8.dp), textAlign = TextAlign.Center, style = MaterialTheme.typography.titleMedium)
 				}
 			}
@@ -202,12 +203,13 @@ internal fun SubjectDetailScreen(padding: PaddingValues, text: (String) -> Strin
 	}
 	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
 		val credit = isCreditSubject(subject)
+		val finalScore = effectiveFinalScore(subject)
 		Text(subject.subjectName.orEmpty(), style = MaterialTheme.typography.headlineLarge)
-		Card(shape = CardShape, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = gradeContainerColor(subject.finalScore, subject.scoreType, 5.0), contentColor = gradeContentColor(subject.finalScore, subject.scoreType, 5.0))) {
+		Card(shape = CardShape, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = gradeContainerColor(finalScore, subject.scoreType, 5.0), contentColor = gradeContentColor(finalScore, subject.scoreType, 5.0))) {
 			Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
 				Text(text("final_grade"), style = MaterialTheme.typography.labelLarge)
 				Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-					Text(assessmentText(subject.finalScore, subject.scoreType, text("credit"), text("fail"), text("no_data")), style = MaterialTheme.typography.displaySmall)
+					Text(assessmentText(finalScore, subject.scoreType, text("credit"), text("fail"), text("no_data")), style = MaterialTheme.typography.displaySmall)
 					GradeCalculator.calculate(gradeComponents(subject.schedules)).percentage?.let { percentage ->
 						Text("(${percentage.toInt()}%)", style = MaterialTheme.typography.titleMedium)
 					}
