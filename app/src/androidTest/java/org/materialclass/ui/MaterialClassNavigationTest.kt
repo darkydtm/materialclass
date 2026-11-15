@@ -25,6 +25,10 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.down
+import androidx.compose.ui.test.up
+import androidx.compose.ui.test.advanceEventTime
 import org.materialclass.api.GatewayLoginResult
 import org.junit.Rule
 import org.junit.Test
@@ -32,6 +36,19 @@ import org.junit.Test
 class MaterialClassNavigationTest {
 	@get:Rule
 	val composeRule = createAndroidComposeRule<ComponentActivity>()
+
+	@Test
+	fun holdingSettingsOpensDebugScreen() {
+		composeRule.setContent { MaterialClassApp(startAuthenticated = true) }
+		val settings = composeRule.activity.getString(org.materialclass.R.string.nav_settings)
+		val debug = composeRule.activity.getString(org.materialclass.R.string.debug_title)
+		composeRule.onNodeWithText(settings).performTouchInput {
+			down(center)
+			advanceEventTime(3100)
+			up()
+		}
+		composeRule.onNodeWithText(debug).assertIsDisplayed()
+	}
 
 	@Test
 	fun completedEdgeSwipeReturnsToPreviousScreen() {
