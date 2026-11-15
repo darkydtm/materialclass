@@ -87,7 +87,7 @@ class PredictiveBackLayoutTest {
 	}
 	private fun captureCenterColor(view: PredictiveBackLayout): Color {
 		val bitmap = view.drawToBitmap()
-		return bitmap.getPixel(bitmap.width / 2, bitmap.height / 2).let(Color::valueOf)
+		return bitmap.getPixel(bitmap.width / 2, bitmap.height / 2).let { Color(it) }
 	}
 
 	private fun routeColor(route: AppRoute?): Color = when (route) {
