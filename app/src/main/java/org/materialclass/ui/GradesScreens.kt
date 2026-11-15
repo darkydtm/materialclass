@@ -88,9 +88,9 @@ internal fun DiaryScreen(padding: PaddingValues, text: (String) -> String, viewM
 			}
 		}
 		if (grades == null) {
-			item { StatePanel(text, viewModel.gradesState.toUiState(), { viewModel.retry(AppRoute.Diary) }) }
+			item { StatePanel(text, viewModel.gradesState.toUiState(), emptyText = "no_data") { viewModel.retry(AppRoute.Diary) } }
 		} else if (grades.subjects.isEmpty()) {
-			item { StatePanel(text, UiContent.Empty) }
+			item { StatePanel(text, UiContent.Empty, emptyText = "no_data") }
 		} else {
 			items(
 				count = grades.subjects.size,
@@ -122,8 +122,8 @@ private fun SubjectCard(subject: GradeSubject, text: (String) -> String, onClick
 					if (subject.schedules.any { it.score != null || it.sor != null || it.soch != null }) {
 						subject.schedules.forEach { schedule ->
 							if (schedule.score != null) GradeTile(schedule.score, subject.scoreType, schedule.date, null, text, schedule.markMax?.toDouble())
-							if (schedule.sor != null) GradeTile(schedule.sor, subject.scoreType, schedule.date, text("grade_category_sor"), text, schedule.sorMax?.toDoubleOrNull())
-							if (schedule.soch != null) GradeTile(schedule.soch, subject.scoreType, schedule.date, text("grade_category_soch"), text, schedule.sochMax?.toDoubleOrNull())
+							if (schedule.sor != null) GradeTile(schedule.sor, subject.scoreType, schedule.date, text("grade_category_sor"), text, schedule.sorMax?.toDoubleOrNull(), schedule.sorMax)
+							if (schedule.soch != null) GradeTile(schedule.soch, subject.scoreType, schedule.date, text("grade_category_soch"), text, schedule.sochMax?.toDoubleOrNull(), schedule.sochMax)
 						}
 					} else {
 						subject.scores.forEach { score -> GradeTile(score, subject.scoreType, null, null, text) }
@@ -170,7 +170,7 @@ internal fun gradeContentColor(value: String?, scoreType: String?, maximum: Doub
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-internal fun GradeTile(value: String?, scoreType: String?, date: String?, type: String?, text: (String) -> String, maximum: Double? = null) {
+internal fun GradeTile(value: String?, scoreType: String?, date: String?, type: String?, text: (String) -> String, maximum: Double? = null, maximumLabel: String? = null) {
 	var showComparison by remember { mutableStateOf(false) }
 	if (showComparison) {
 		ModalBottomSheet(onDismissRequest = { showComparison = false }) {
@@ -181,10 +181,10 @@ internal fun GradeTile(value: String?, scoreType: String?, date: String?, type: 
 		}
 	}
 	Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp)) {
-		if (!type.isNullOrBlank()) Text(type, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+		Text(type?.takeIf(String::isNotBlank) ?: " ", style = MaterialTheme.typography.labelSmall, maxLines = 1)
 		Surface(onClick = { showComparison = true }, shape = RoundedCornerShape(11.dp), color = gradeContainerColor(value, scoreType, maximum), contentColor = gradeContentColor(value, scoreType, maximum), modifier = Modifier.widthIn(min = 44.dp)) {
 			Box(modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp), contentAlignment = Alignment.Center) {
-				Text(assessmentText(value, scoreType, text("credit"), text("fail"), text("no_data")), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+				Text(assessmentWithMaximum(value, scoreType, maximumLabel, text("credit"), text("fail"), text("no_data")), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
 			}
 		}
 		if (!date.isNullOrBlank()) Text(date.substringBefore('T'), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -241,8 +241,8 @@ internal fun SubjectDetailScreen(padding: PaddingValues, text: (String) -> Strin
 			androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
 				scoredSchedules.forEach { schedule ->
 					if (schedule.score != null) GradeTile(schedule.score, subject.scoreType, schedule.date, text("grade_category_fo"), text, schedule.markMax?.toDouble())
-					if (schedule.sor != null) GradeTile(schedule.sor, subject.scoreType, schedule.date, text("grade_category_sor"), text, schedule.sorMax?.toDoubleOrNull())
-					if (schedule.soch != null) GradeTile(schedule.soch, subject.scoreType, schedule.date, text("grade_category_soch"), text, schedule.sochMax?.toDoubleOrNull())
+					if (schedule.sor != null) GradeTile(schedule.sor, subject.scoreType, schedule.date, text("grade_category_sor"), text, schedule.sorMax?.toDoubleOrNull(), schedule.sorMax)
+					if (schedule.soch != null) GradeTile(schedule.soch, subject.scoreType, schedule.date, text("grade_category_soch"), text, schedule.sochMax?.toDoubleOrNull(), schedule.sochMax)
 				}
 			}
 		}

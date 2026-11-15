@@ -196,6 +196,17 @@ class UiModelTest {
 	}
 
 	@Test
+	fun assessmentMaximumIsShownOnlyForNumericValuesWithKnownMaximum() {
+		fun display(value: String?, maximum: String?) = assessmentWithMaximum(value, null, maximum, "pass", "fail", "no data")
+		assertEquals("12/15", display("12", "15"))
+		assertEquals("0/30", display("0", "30"))
+		assertEquals("12", display("12", null))
+		assertEquals("12/15", display("12/15", "15"))
+		assertEquals("no data", display(null, "15"))
+		assertEquals("pass", display("pass", "15"))
+	}
+
+	@Test
 	fun creditSubjectIsDetectedFromFinalOrLessonAssessment() {
 		assertTrue(isCreditSubject(org.materialclass.data.GradeSubject("Safety", "Зачет", emptyList())))
 		assertTrue(isCreditSubject(org.materialclass.data.GradeSubject("Safety", null, listOf(org.materialclass.data.GradeSchedule("lesson", null, null, null, null, "Незачет")))))

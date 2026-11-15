@@ -474,6 +474,11 @@ internal fun assessmentText(value: String?, scoreType: String?, credit: String, 
 	AssessmentKind.Numeric -> value.orEmpty()
 }
 
+internal fun assessmentWithMaximum(value: String?, scoreType: String?, maximum: String?, credit: String, fail: String, noData: String): String {
+	val display = assessmentText(value, scoreType, credit, fail, noData)
+	return if (assessmentKind(value, scoreType) == AssessmentKind.Numeric && !maximum.isNullOrBlank() && '/' !in display) "$display/$maximum" else display
+}
+
 @Composable
 internal fun assessmentColor(value: String?, scoreType: String?): androidx.compose.ui.graphics.Color = when (assessmentKind(value, scoreType)) {
 	AssessmentKind.Credit -> androidx.compose.material3.MaterialTheme.colorScheme.primary
