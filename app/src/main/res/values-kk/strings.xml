@@ -28,6 +28,7 @@
 	<string name="attendance">Қатысу</string>
 	<string name="subject_detail">Пән</string>
 	<string name="login_prompt">Жалғастыру үшін кіріңіз</string>
+	<string name="login_welcome">Қайта оралуыңызбен</string>
 	<string name="home_description">Сабақ кестесі, тапсырмалар және бағалар - бір жерде.</string>
 	<string name="week_title">Сабақ кестесі</string>
 	<string name="diary_title">Күнделік</string>

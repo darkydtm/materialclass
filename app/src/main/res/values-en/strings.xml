@@ -28,6 +28,7 @@
 	<string name="attendance">Attendance</string>
 	<string name="subject_detail">Subject</string>
 	<string name="login_prompt">Sign in to continue</string>
+	<string name="login_welcome">Welcome back</string>
 	<string name="home_description">Schedule, homework, and grades in one place.</string>
 	<string name="week_title">Schedule</string>
 	<string name="diary_title">Diary</string>

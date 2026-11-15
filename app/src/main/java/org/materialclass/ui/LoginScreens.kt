@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -25,6 +27,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -77,22 +83,26 @@ private fun LoginScreen(text: (String) -> String, viewModel: SchoolViewModel) {
 		verticalArrangement = Arrangement.Center,
 		horizontalAlignment = Alignment.CenterHorizontally,
 	) {
-		Column(modifier = Modifier.width(340.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-			Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer), modifier = Modifier.fillMaxWidth()) {
-				Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-					OutlinedTextField(
+		Column(modifier = Modifier.fillMaxWidth().widthIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+			Text(text("login_welcome"), style = MaterialTheme.typography.displaySmall)
+			Text(text("login_prompt"), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+					TextField(
 						value = login,
 						onValueChange = { login = it },
 						label = { Text(text("username")) },
 						modifier = Modifier.fillMaxWidth(),
 						singleLine = true,
+						shape = RoundedCornerShape(30.dp),
+						colors = TextFieldDefaults.colors(focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent),
 					)
-					OutlinedTextField(
+					TextField(
 						value = password,
 						onValueChange = { password = it },
 						label = { Text(text("password")) },
 						modifier = Modifier.fillMaxWidth(),
 						singleLine = true,
+						shape = RoundedCornerShape(30.dp),
+						colors = TextFieldDefaults.colors(focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent),
 						visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
 						trailingIcon = {
 							IconButton(onClick = { passwordVisible = !passwordVisible }) {
@@ -112,13 +122,10 @@ private fun LoginScreen(text: (String) -> String, viewModel: SchoolViewModel) {
 					}
 					Button(
 						onClick = { viewModel.login(login, password) },
-						modifier = Modifier.fillMaxWidth().testTag("login-button"),
-						shape = RowShape,
+						modifier = Modifier.fillMaxWidth().height(64.dp).testTag("login-button"),
+						shape = RoundedCornerShape(32.dp),
 					) { Text(text("sign_in")) }
-				}
-			}
 		}
-		Text(text("login_connection_error_body").substringBefore('.'), modifier = Modifier.width(340.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 	}
 }
 @Composable
