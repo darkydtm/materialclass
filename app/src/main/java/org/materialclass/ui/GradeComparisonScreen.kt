@@ -28,12 +28,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.materialclass.api.GatewayReadResult
 import org.materialclass.data.GradeComparison
-import java.util.Locale
+
 
 @Composable
 internal fun GradeComparisonScreen(padding: PaddingValues, text: (String) -> String, viewModel: SchoolViewModel) {
@@ -54,6 +55,7 @@ internal fun GradeComparisonScreen(padding: PaddingValues, text: (String) -> Str
 
 @Composable
 private fun ComparisonContent(comparison: GradeComparison, text: (String) -> String) {
+	val locale = LocalConfiguration.current.locales[0]
 	val own = comparison.studentMark.score
 	val counts = comparison.otherMarks.filter { it.score != null }.groupBy { it.score!! }.mapValues { (_, marks) -> marks.sumOf { it.count } }
 	val scores = (counts.keys + listOfNotNull(own)).sorted()
@@ -90,7 +92,7 @@ private fun ComparisonContent(comparison: GradeComparison, text: (String) -> Str
 		scores.firstOrNull { score -> accumulated += (counts[score] ?: 0) + if (score == own) 1 else 0; accumulated > middle }
 	}
 	Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-		listOf(text("comparison_mean") to if (total == 0) "-" else String.format(Locale.getDefault(), "%.1f", sum.toDouble() / total), text("comparison_median") to (median?.toString() ?: "-"), text("comparison_best") to (scores.lastOrNull()?.toString() ?: "-")).forEach { (label, value) ->
+		listOf(text("comparison_mean") to if (total == 0) "-" else String.format(locale, "%.1f", sum.toDouble() / total), text("comparison_median") to (median?.toString() ?: "-"), text("comparison_best") to (scores.lastOrNull()?.toString() ?: "-")).forEach { (label, value) ->
 			Card(modifier = Modifier.weight(1f), shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
 				Column(modifier = Modifier.padding(12.dp)) { Text(value, style = MaterialTheme.typography.headlineSmall); Text(label, style = MaterialTheme.typography.labelSmall) }
 			}

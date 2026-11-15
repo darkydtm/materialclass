@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.Row
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.horizontalScroll
@@ -24,6 +27,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.Surface
 
 import androidx.compose.material3.Text
@@ -75,6 +79,8 @@ internal fun DiaryScreen(padding: PaddingValues, text: (String) -> String, viewM
 	val grades = viewModel.gradesState.readyValue()
 	LazyColumn(modifier = Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
 		item {
+			Card(shape = CardShape, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
+			Column(modifier = Modifier.padding(12.dp)) {
 			Text(text("quarter"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
 			Surface(shape = NotificationShape, color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
 				Row(modifier = Modifier.padding(5.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -93,6 +99,8 @@ internal fun DiaryScreen(padding: PaddingValues, text: (String) -> String, viewM
 				}
 			}
 		}
+			}
+			}
 		if (grades == null) {
 			item { StatePanel(text, viewModel.gradesState.toUiState(), { viewModel.retry(AppRoute.Diary) }) }
 		} else if (grades.subjects.isEmpty()) {
@@ -124,19 +132,19 @@ private fun SubjectCard(subject: GradeSubject, text: (String) -> String, viewMod
 					Text(displayedScore, modifier = Modifier.widthIn(min = 34.dp).padding(horizontal = 8.dp, vertical = 8.dp), textAlign = TextAlign.Center, style = MaterialTheme.typography.titleMedium)
 				}
 			}
-			Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
-				Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+				Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
 					if (subject.schedules.any { it.score != null || it.sor != null || it.soch != null }) {
+						var first = true
+						@Composable fun separator() { if (!first) VerticalDivider(modifier = Modifier.height(36.dp)); first = false }
 						subject.schedules.forEach { schedule ->
-							if (schedule.score != null) GradeTile(schedule.score, subject.scoreType, schedule.date, null, text, schedule.markMax?.toDouble(), uuid = schedule.uuid, comparisonType = "formattedScore", viewModel = viewModel, navigator = navigator)
-							if (schedule.sor != null) GradeTile(schedule.sor, subject.scoreType, schedule.date, text("grade_category_sor"), text, schedule.sorMax?.toDoubleOrNull(), schedule.sorMax, schedule.uuid, "sor", viewModel, navigator)
-							if (schedule.soch != null) GradeTile(schedule.soch, subject.scoreType, schedule.date, text("grade_category_soch"), text, schedule.sochMax?.toDoubleOrNull(), schedule.sochMax, schedule.uuid, "soch", viewModel, navigator)
+							if (schedule.score != null) { separator(); GradeTile(schedule.score, subject.scoreType, schedule.date, null, text, schedule.markMax?.toDouble(), uuid = schedule.uuid, comparisonType = "formattedScore", viewModel = viewModel, navigator = navigator) }
+							if (schedule.sor != null) { separator(); GradeTile(schedule.sor, subject.scoreType, schedule.date, text("grade_category_sor"), text, schedule.sorMax?.toDoubleOrNull(), schedule.sorMax, schedule.uuid, "sor", viewModel, navigator) }
+							if (schedule.soch != null) { separator(); GradeTile(schedule.soch, subject.scoreType, schedule.date, text("grade_category_soch"), text, schedule.sochMax?.toDoubleOrNull(), schedule.sochMax, schedule.uuid, "soch", viewModel, navigator) }
 						}
 					} else {
-						subject.scores.forEach { score -> GradeTile(score, subject.scoreType, null, null, text) }
+						subject.scores.forEachIndexed { index, score -> if (index > 0) VerticalDivider(modifier = Modifier.height(36.dp)); GradeTile(score, subject.scoreType, null, null, text) }
 					}
 				}
-			}
 		}
 	}
 }
@@ -213,7 +221,7 @@ internal fun SubjectDetailScreen(padding: PaddingValues, text: (String) -> Strin
 		}
 		if (!credit) {
 			Text(text("calculation"), style = MaterialTheme.typography.titleMedium)
-			Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+			Row(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
 				val components = gradeComponents(subject.schedules)
 				val weights = mapOf(GradeCategory.FO to 50, GradeCategory.SOR to 25, GradeCategory.SOCH to 25)
 				val availableWeight = components.map { it.category }.distinct().sumOf { weights.getValue(it) }
@@ -222,7 +230,7 @@ internal fun SubjectDetailScreen(padding: PaddingValues, text: (String) -> Strin
 					val contribution = if (values.isEmpty() || availableWeight == 0) null else (values.average() * weights.getValue(category) / availableWeight).toInt()
 					val average = values.takeIf { it.isNotEmpty() }?.average()
 					val color = gradeContainerColor(average?.toString(), null, 100.0)
-					Card(shape = RowShape, modifier = Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = color, contentColor = gradeContentColor(average?.toString(), null, 100.0))) {
+					Card(shape = RowShape, modifier = Modifier.weight(1f).fillMaxHeight(), colors = CardDefaults.cardColors(containerColor = color, contentColor = gradeContentColor(average?.toString(), null, 100.0))) {
 						Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 							Text(text(when (category) { GradeCategory.FO -> "grade_category_fo"; GradeCategory.SOR -> "grade_category_sor"; GradeCategory.SOCH -> "grade_category_soch" }), style = MaterialTheme.typography.labelMedium)
 							Text(if (contribution == null) text("no_data") else "$contribution/${weights.getValue(category)}%", style = MaterialTheme.typography.titleMedium)
