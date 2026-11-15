@@ -1,0 +1,77 @@
+package org.materialclass.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.activity.ComponentActivity
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+
+@RunWith(AndroidJUnit4::class)
+class PredictiveBackLayoutTest {
+	@get:Rule
+	val composeRule = createAndroidComposeRule<ComponentActivity>()
+
+	@Test
+	fun immediateNextBackAfterCompletedCloseWorksAndCancelledBackKeepsRoute() {
+		lateinit var layout: PredictiveBackLayout
+		val navigator = AppNavigator(AppRoute.Settings)
+		navigator.go(AppRoute.SettingsTheme)
+		navigator.go(AppRoute.BackgroundWork)
+		var route by mutableStateOf(navigator.current)
+		var closes = 0
+		composeRule.setContent {
+			AndroidView(
+				modifier = Modifier.fillMaxSize(),
+				factory = { PredictiveBackLayout(it).also { view -> layout = view } },
+				update = { view ->
+					view.updateLayers(
+						android.graphics.Color.BLACK,
+						gestureEnabled = navigator.canGoBack(),
+						previousRoute = navigator.previousOrNull(),
+						currentRoute = route,
+						previousContent = { Box(Modifier.fillMaxSize().background(Color.Blue)) },
+						currentContent = { Box(Modifier.fillMaxSize().background(Color.Yellow)) },
+					) {
+						closes++
+						navigator.back()
+						route = navigator.current
+					}
+				},
+			)
+		}
+		composeRule.waitForIdle()
+
+		composeRule.runOnUiThread {
+			layout.setPredictiveProgress(0.5f)
+			layout.cancelPredictiveBack()
+		}
+		composeRule.runOnIdle {
+			check(closes == 0) { "Cancelled back navigated away" }
+			check(navigator.current == AppRoute.BackgroundWork) { "Cancelled back changed the route" }
+			layout.commitPredictiveBack()
+		}
+		composeRule.waitUntil(5_000) { closes == 1 }
+		composeRule.waitForIdle()
+		composeRule.runOnUiThread {
+			layout.commitPredictiveBack()
+			check(closes == 2) { "The immediate next back waited for a second closing animation" }
+		}
+		composeRule.waitForIdle()
+		check(navigator.current == AppRoute.Settings) { "Two completed backs did not return to the root route" }
+		val pixels = composeRule.onRoot().captureToImage().toPixelMap()
+		check(pixels[pixels.width / 2, pixels.height / 2] == Color.Blue) { "The previous screen was not revealed after the second back" }
+		check(layout.getChildAt(3).left == 0) { "The second completed back left the outgoing screen displaced" }
+	}
+}
