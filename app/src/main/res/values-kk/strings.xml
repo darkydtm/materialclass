@@ -1,4 +1,5 @@
 <resources>
+	<string name="quarter_not_started">Тоқсан әлі басталған жоқ</string>
 	<string name="debug_title">Дебаг</string>
 	<string name="debug_new_grade">Жаңа баға алу</string>
 	<string name="debug_homework">Жаңа үй тапсырмасын жариялау</string>

@@ -1,3 +1,5 @@
+import java.time.Instant
+
 plugins {
 	alias(libs.plugins.android.application)
 	alias(libs.plugins.compose.compiler)
@@ -80,7 +82,7 @@ android {
 		val revision = providers.environmentVariable("GITHUB_SHA").orElse(providers.exec { commandLine("git", "rev-parse", "--short", "HEAD") }.standardOutput.asText).get().trim()
 		buildConfigField("String", "BUILD_BRANCH", "\"${branch.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
 		buildConfigField("String", "BUILD_REVISION", "\"${revision.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
-		buildConfigField("String", "BUILD_DATE", "\"${java.time.Instant.now()}\"")
+		buildConfigField("String", "BUILD_DATE", "\"${Instant.now()}\"")
 
 		testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 	}

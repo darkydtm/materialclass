@@ -1,4 +1,5 @@
 <resources>
+	<string name="quarter_not_started">Четверть ещё не началась</string>
 	<string name="debug_title">Дебаг</string>
 	<string name="debug_new_grade">Получение новой оценки</string>
 	<string name="debug_homework">Публикация нового домашнего задания</string>

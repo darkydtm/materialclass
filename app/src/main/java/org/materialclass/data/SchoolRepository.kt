@@ -17,6 +17,7 @@ interface SchoolRepository {
 	fun observeJournal(range: DateRange): RepositoryObservation<JournalGradesModel>
 	fun observeProfile(): RepositoryObservation<ProfileModel>
 	fun gradeComparison(uuid: String, type: String): GatewayReadResult<GradeComparison> = GatewayReadResult.Failure(AppError.UnsupportedContract)
+	fun quarterRange(period: String): DateRange? = null
 	fun refreshHome()
 	fun refreshDiary(range: DateRange)
 	fun refreshSchedule(range: DateRange)
@@ -35,6 +36,7 @@ interface RepositoryGateway {
 	fun homeworks(context: ReadContext): GatewayReadResult<HomeworksModel> = GatewayReadResult.Failure(AppError.UnsupportedContract)
 	fun journalGrades(context: ReadContext): GatewayReadResult<JournalGradesModel> = GatewayReadResult.Failure(AppError.UnsupportedContract)
 	fun gradeComparison(context: ReadContext, uuid: String, type: String): GatewayReadResult<GradeComparison> = GatewayReadResult.Failure(AppError.UnsupportedContract)
+	fun periods(context: ReadContext): GatewayReadResult<PeriodsModel> = GatewayReadResult.Failure(AppError.UnsupportedContract)
 	fun profile(): GatewayReadResult<ProfileModel>
 	fun logout(): GatewayReadResult<Unit> = GatewayReadResult.Success(Unit)
 }
@@ -105,6 +107,13 @@ class SchoolRepositoryImpl(
 		val token = sessions.tokenFor(session) ?: return GatewayReadResult.Failure(AppError.LoginRequired)
 		val result = gateway.gradeComparison(context(token, "comparison"), uuid, type)
 		return sessions.withSessionLock { if (sessions.currentSession() == session) result else GatewayReadResult.Failure(AppError.LoginRequired) }
+	}
+
+	override fun quarterRange(period: String): DateRange? {
+		val session = sessions.currentSession() ?: return null
+		val token = sessions.tokenFor(session) ?: return null
+		val result = org.materialclass.notifications.SelectedPeriodRange.resolve(period, gateway.periods(context(token, "periods")))
+		return sessions.withSessionLock { if (sessions.currentSession() == session) result else null }
 	}
 
 	override fun refreshHome() { refresh(HOME) { gateway.home(it) } }

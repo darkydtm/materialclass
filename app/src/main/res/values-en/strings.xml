@@ -1,4 +1,5 @@
 <resources>
+	<string name="quarter_not_started">This quarter has not started yet</string>
 	<string name="debug_title">Debug</string>
 	<string name="debug_new_grade">Receive a new grade</string>
 	<string name="debug_homework">Publish new homework</string>

@@ -242,6 +242,8 @@ class SchoolViewModel(
 		private set
 	var comparisonSelection: Pair<String, String>? by mutableStateOf(null)
 		private set
+	var quarterNotStarted by mutableStateOf(false)
+		private set
 
 	fun selectComparison(uuid: String, type: String) {
 		comparisonSelection = uuid to type
@@ -304,6 +306,13 @@ class SchoolViewModel(
 		if (period != gradesPeriod) return
 		val source = repository ?: run { gradesState = null; return }
 		val request = ++gradesRequest
+		quarterNotStarted = false
+		io.execute {
+			val range = source.quarterRange(period)
+			android.os.Handler(android.os.Looper.getMainLooper()).post {
+				if (gradesRequest == request && gradesPeriod == period) quarterNotStarted = range != null && LocalDate.now().isBefore(range.start)
+			}
+		}
 		val observation = source.observeGrades(period)
 		observation.observe { state ->
 			android.os.Handler(android.os.Looper.getMainLooper()).post {

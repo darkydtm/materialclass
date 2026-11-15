@@ -101,7 +101,9 @@ internal fun DiaryScreen(padding: PaddingValues, text: (String) -> String, viewM
 		}
 			}
 			}
-		if (grades == null) {
+		if (viewModel.quarterNotStarted && (grades == null || grades.subjects.isEmpty())) {
+			item { Card(shape = RowShape, modifier = Modifier.fillMaxWidth()) { Text(text("quarter_not_started"), modifier = Modifier.padding(20.dp)) } }
+		} else if (grades == null) {
 			item { StatePanel(text, viewModel.gradesState.toUiState(), { viewModel.retry(AppRoute.Diary) }) }
 		} else if (grades.subjects.isEmpty()) {
 			item { StatePanel(text, UiContent.Empty) }
