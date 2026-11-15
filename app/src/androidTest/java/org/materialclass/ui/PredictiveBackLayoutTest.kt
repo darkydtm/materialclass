@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -33,7 +34,7 @@ class PredictiveBackLayoutTest {
 		var closes = 0
 		composeRule.setContent {
 			AndroidView(
-				modifier = Modifier.fillMaxSize(),
+				modifier = Modifier.fillMaxSize().testTag("back-layout"),
 				factory = { PredictiveBackLayout(it).also { view -> layout = view } },
 				update = { view ->
 					view.updateLayers(
@@ -65,12 +66,14 @@ class PredictiveBackLayoutTest {
 		composeRule.waitUntil(5_000) { closes == 1 }
 		composeRule.waitForIdle()
 		composeRule.runOnUiThread {
+			layout.setPredictiveProgress(1f)
 			layout.commitPredictiveBack()
 			check(closes == 2) { "The immediate next back waited for a second closing animation" }
 		}
 		composeRule.waitForIdle()
 		check(navigator.current == AppRoute.Settings) { "Two completed backs did not return to the root route" }
-		val pixels = composeRule.onRoot().captureToImage().toPixelMap()
+		composeRule.onNodeWithTag("back-layout").assertIsDisplayed()
+		val pixels = composeRule.onNodeWithTag("back-layout").captureToImage().toPixelMap()
 		check(pixels[pixels.width / 2, pixels.height / 2] == Color.Blue) { "The previous screen was not revealed after the second back" }
 		check(layout.getChildAt(3).left == 0) { "The second completed back left the outgoing screen displaced" }
 	}
