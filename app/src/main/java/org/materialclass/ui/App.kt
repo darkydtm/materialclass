@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -62,6 +63,7 @@ fun MaterialClassApp(
 	val viewModel = remember(repository, loginHandler) { SchoolViewModel(repository, loginHandler, actualPreferences.gradesPeriod(), { period -> onNotificationSettingsChange { actualPreferences.setGradesPeriod(period) } }) }
 	var selectedSubject by rememberSaveable { mutableStateOf("") }
 	var selectedLesson by rememberSaveable { mutableStateOf("") }
+	var selectedScheduleDay by rememberSaveable { mutableIntStateOf(0) }
 	val text: (String) -> String = remember(context, configuration) {
 		val values = HashMap<String, String>()
 		return@remember { key: String ->
@@ -105,6 +107,8 @@ fun MaterialClassApp(
 						route = route,
 						text = text,
 						viewModel = viewModel,
+						selectedScheduleDay = selectedScheduleDay,
+						onScheduleDaySelected = { selectedScheduleDay = it },
 						snackbarHostState = snackbarHostState,
 						language = language,
 						theme = theme,

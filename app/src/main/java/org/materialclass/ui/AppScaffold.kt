@@ -42,6 +42,8 @@ internal fun AppScaffold(
 	route: AppRoute = navigator.current,
 	text: (String) -> String,
 	viewModel: SchoolViewModel,
+	selectedScheduleDay: Int,
+	onScheduleDaySelected: (Int) -> Unit,
 	snackbarHostState: SnackbarHostState,
 	language: AppLanguage,
 	theme: ThemeMode,
@@ -95,13 +97,15 @@ internal fun AppScaffold(
 				) {
 					rootRoutes.forEach { itemRoute ->
 						NavigationBarItem(
-							modifier = if (itemRoute == AppRoute.Settings) Modifier.pointerInput(route) {
-								awaitEachGesture {
-									awaitFirstDown(requireUnconsumed = false)
-									val released = withTimeoutOrNull(3000L) { waitForUpOrCancellation(); true } ?: false
-									if (!released) navigator.go(AppRoute.Debug)
-								}
-							} else Modifier,
+							modifier = Modifier.testTag("tab-${itemRoute.name.lowercase(Locale.ROOT)}").then(
+								if (itemRoute == AppRoute.Settings) Modifier.pointerInput(route) {
+									awaitEachGesture {
+										awaitFirstDown(requireUnconsumed = false)
+										val released = withTimeoutOrNull(3000L) { waitForUpOrCancellation(); true } ?: false
+										if (!released) navigator.go(AppRoute.Debug)
+									}
+								} else Modifier,
+							),
 							selected = route == itemRoute,
 							onClick = clickFeedback { navigator.goFrom(route, itemRoute) {} },
 							icon = { Icon(itemRoute.icon(), contentDescription = null) },
@@ -124,7 +128,7 @@ internal fun AppScaffold(
 				AppRoute.Home -> HomeScreen(padding, text, viewModel, navigator, onLessonSelected)
 				AppRoute.HomeError -> StateScreen(padding, text, "nav_home", "error_load", "error_load_body") { viewModel.retry(AppRoute.HomeError) }
 				AppRoute.HomeEmpty -> StateScreen(padding, text, "nav_home", "empty_day", "empty_day_body") { navigator.goFrom(route, AppRoute.Schedule) {} }
-				AppRoute.Schedule -> ScheduleScreen(padding, text, viewModel, navigator, onLessonSelected)
+				AppRoute.Schedule -> ScheduleScreen(padding, text, viewModel, navigator, selectedScheduleDay, onScheduleDaySelected, onLessonSelected)
 				AppRoute.ScheduleOffline -> StateScreen(padding, text, "week_title", "offline_title", "offline_body") { viewModel.retry(AppRoute.Schedule) }
 				AppRoute.LessonDetail -> LessonDetailScreen(padding, text, viewModel, selectedLesson)
 				AppRoute.Diary -> DiaryScreen(padding, text, viewModel, navigator, onSubjectSelected)

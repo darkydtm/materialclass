@@ -20,6 +20,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -36,6 +37,18 @@ import org.junit.Test
 class MaterialClassNavigationTest {
 	@get:Rule
 	val composeRule = createAndroidComposeRule<ComponentActivity>()
+
+	@Test
+	fun scheduleKeepsSelectedDayAfterSwitchingPrimaryTabs() {
+		composeRule.setContent { MaterialClassApp(startAuthenticated = true) }
+
+		composeRule.onNodeWithTag("tab-schedule").performClick()
+		composeRule.onNodeWithTag("schedule-day-2").performClick()
+		composeRule.onNodeWithTag("tab-home").performClick()
+		composeRule.onNodeWithTag("tab-schedule").performClick()
+
+		composeRule.onNodeWithTag("schedule-day-2").assertIsSelected()
+	}
 
 	@Test
 	fun holdingSettingsOpensDebugScreen() {

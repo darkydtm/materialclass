@@ -36,6 +36,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 
 import androidx.compose.ui.unit.dp
@@ -120,10 +122,11 @@ internal fun ScheduleScreen(
 	text: (String) -> String,
 	viewModel: SchoolViewModel,
 	navigator: AppNavigator,
+	selectedDay: Int,
+	onSelectedDayChange: (Int) -> Unit,
 	onLessonSelected: (String) -> Unit,
 ) {
 	var weekOffset by rememberSaveable { mutableIntStateOf(0) }
-	var selectedDay by rememberSaveable { mutableIntStateOf(0) }
 	LaunchedEffect(weekOffset) { viewModel.loadSchedule(weekOffset) }
 	val schedule = viewModel.scheduleState.readyValue()
 	val safeSelectedDay = selectedDay.coerceIn(0, (schedule?.days?.lastIndex ?: 0).coerceAtLeast(0))
@@ -156,7 +159,12 @@ internal fun ScheduleScreen(
 						(0..4).forEach { index ->
 							val selected = safeSelectedDay == index
 							Surface(
-								modifier = Modifier.size(width = 58.dp, height = 58.dp).clip(RoundedCornerShape(999.dp)).clickable(onClick = clickFeedback { selectedDay = index }),
+								modifier = Modifier
+									.testTag("schedule-day-$index")
+									.semantics { this.selected = selected }
+									.size(width = 58.dp, height = 58.dp)
+									.clip(RoundedCornerShape(999.dp))
+									.clickable(onClick = clickFeedback { onSelectedDayChange(index) }),
 								shape = RoundedCornerShape(999.dp),
 								color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainer,
 								contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
