@@ -91,14 +91,16 @@ internal fun PullRefreshLayout(
 		label = "pull-refresh-size",
 	)
 	val indicatorOffset = with(LocalDensity.current) { (state.progress - indicatorSize.toPx() / 2f).coerceAtLeast(0f).roundToInt() }
+	val backgroundOffset = indicatorOffset + with(LocalDensity.current) { ((indicatorSize - 56.dp) / 2f).roundToPx() }
 	Box(modifier) {
 		content(Modifier.nestedScroll(connection))
-		if (state.isRefreshing) {
+		if (state.progress > 0f || state.isRefreshing) {
 			Card(
 				modifier = Modifier.align(Alignment.TopCenter)
-					.offset { IntOffset(0, indicatorOffset) }
-					.size(56.dp)
-					.testTag("pull-refresh-background"),
+					.offset { IntOffset(0, backgroundOffset) }
+				.size(56.dp)
+				.graphicsLayer { alpha = indicatorAlpha }
+				.testTag("pull-refresh-background"),
 				shape = MaterialTheme.shapes.large,
 				colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
 			) {}
