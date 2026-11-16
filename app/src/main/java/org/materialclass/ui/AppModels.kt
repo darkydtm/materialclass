@@ -316,8 +316,8 @@ class SchoolViewModel(
 				if (scheduleRequest == request) scheduleState = state
 			}
 		}
-		io.execute { source.refreshSchedule(range) }
-		io.execute { source.refreshJournal(range) }
+		io.execute { source.loadSchedule(range) }
+		io.execute { source.loadJournal(range) }
 	}
 
 	suspend fun refreshSchedule(weekOffset: Int = 0) {
@@ -344,7 +344,7 @@ class SchoolViewModel(
 				if (diaryRequest == request) diaryState = state
 			}
 		}
-		io.execute { source.refreshDiary(range) }
+		io.execute { source.loadDiary(range) }
 	}
 
 	fun loadGrades(period: String = "1") {
@@ -365,7 +365,7 @@ class SchoolViewModel(
 				if (gradesRequest == request && gradesPeriod == period) gradesState = state
 			}
 		}
-		io.execute { source.refreshGrades(period) }
+		io.execute { source.loadGrades(period) }
 	}
 
 	suspend fun refreshGrades() {
@@ -390,18 +390,28 @@ class SchoolViewModel(
 		val source = repository ?: run { profileState = null; return }
 		val observation = source.observeProfile()
 		observation.observe { profileState = it }
-		io.execute { source.refreshProfile() }
+		io.execute { source.loadProfile() }
 	}
 
 	fun retry(route: AppRoute) {
 		when (route) {
-			AppRoute.HomeError, AppRoute.HomeEmpty -> loadSchedule()
-			AppRoute.Schedule, AppRoute.ScheduleOffline -> loadSchedule()
-			AppRoute.Diary -> loadGrades(gradesPeriod)
-			AppRoute.Profile -> loadProfile()
-			AppRoute.SubjectDetail, AppRoute.Calculator, AppRoute.CalculatorMissing -> loadGrades(gradesPeriod)
+			AppRoute.HomeError, AppRoute.HomeEmpty, AppRoute.Schedule, AppRoute.ScheduleOffline -> refreshSchedule()
+			AppRoute.Diary, AppRoute.SubjectDetail, AppRoute.Calculator, AppRoute.CalculatorMissing -> refreshGrades()
+			AppRoute.Profile -> repository?.let { source -> io.execute { source.refreshProfile() } }
 			else -> Unit
 		}
+	}
+
+	fun refreshSchedule(weekOffset: Int = 0) {
+		val source = repository ?: return
+		val range = week(weekOffset, nextWeekOnWeekend = true)
+		io.execute { source.refreshSchedule(range); source.refreshJournal(range) }
+	}
+
+	private fun refreshGrades() {
+		val source = repository ?: return
+		val period = gradesPeriod
+		io.execute { source.refreshGrades(period) }
 	}
 
 	fun logout() {

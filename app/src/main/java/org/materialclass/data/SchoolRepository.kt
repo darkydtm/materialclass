@@ -16,6 +16,13 @@ interface SchoolRepository {
 	fun observeHomeworks(): RepositoryObservation<HomeworksModel>
 	fun observeJournal(range: DateRange): RepositoryObservation<JournalGradesModel>
 	fun observeProfile(): RepositoryObservation<ProfileModel>
+	fun loadHome() { refreshHome() }
+	fun loadDiary(range: DateRange) { refreshDiary(range) }
+	fun loadSchedule(range: DateRange) { refreshSchedule(range) }
+	fun loadGrades(period: String) { refreshGrades(period) }
+	fun loadHomeworks() { refreshHomeworks() }
+	fun loadJournal(range: DateRange) { refreshJournal(range) }
+	fun loadProfile() { refreshProfile() }
 	fun gradeComparison(uuid: String, type: String): GatewayReadResult<GradeComparison> = GatewayReadResult.Failure(AppError.UnsupportedContract)
 	fun quarterRange(period: String): DateRange? = null
 	fun refreshHome()
@@ -94,6 +101,7 @@ class SchoolRepositoryImpl(
 	private val states = mutableMapOf<String, DataState<*>>()
 	private val observations = mutableMapOf<String, RepositoryObservation<*>>()
 	private val revisions = mutableMapOf<String, Long>()
+	private val requestedSlices = mutableSetOf<Pair<ActiveSession, String>>()
 	private val events = RepositoryEvents()
 	fun events(): RepositoryEvents = events
 	override fun observeHome() = observation<HomeModel>(HOME)
@@ -134,9 +142,42 @@ class SchoolRepositoryImpl(
 	override fun refreshHomeworks() { refresh(HOMEWORKS) { gateway.homeworks(it) } }
 	override fun refreshJournal(range: DateRange) { refresh(journalKey(range)) { gateway.journalGrades(it) } }
 	override fun refreshProfile() { refresh(PROFILE) { gateway.profile() } }
+	override fun loadHome() { load(HOME) { gateway.home(it) } }
+	override fun loadDiary(range: DateRange) { load(diaryKey(range)) { gateway.diary(it) } }
+	override fun loadSchedule(range: DateRange) { load(scheduleKey(range)) { gateway.schedule(it) } }
+	override fun loadGrades(period: String) { load(gradesKey(period)) { gateway.grades(it) } }
+	override fun loadHomeworks() { load(HOMEWORKS) { gateway.homeworks(it) } }
+	override fun loadJournal(range: DateRange) { load(journalKey(range)) { gateway.journalGrades(it) } }
+	override fun loadProfile() { load(PROFILE) { gateway.profile() } }
 	override fun logout() {
 		if (gateway.logout() !is GatewayReadResult.Success) return
-		sessions.withSessionLock { synchronized(lock) { states.clear(); observations.values.forEach { it.update(DataState.Loading) } } }
+		sessions.withSessionLock { synchronized(lock) { states.clear(); requestedSlices.clear(); observations.values.forEach { it.update(DataState.Loading) } } }
+	}
+
+	private fun <T> load(key: String, call: (ReadContext) -> GatewayReadResult<T>) {
+		val session = sessions.currentSession() ?: return refresh(key, call = call)
+		val shouldLoad = synchronized(lock) {
+			if ((session to key) in requestedSlices) return@synchronized false
+			if (states[key] == null) restoreSlice<T>(key, session)
+			val state = states[key]
+			val snapshot = when (state) {
+				is DataState.Ready<*> -> state.snapshot
+				is DataState.Stale<*> -> state.snapshot
+				is DataState.Error<*> -> state.snapshot
+				is DataState.Offline<*> -> state.snapshot
+				else -> null
+			}
+			val belongsToSession = snapshot?.let { it.accountId == session.accountId && it.generation == session.generation }
+			if (belongsToSession == true) false
+			else {
+				if (snapshot != null || state != null) {
+					states.remove(key)
+					update(key, DataState.Loading)
+				}
+				requestedSlices.add(session to key)
+			}
+		}
+		if (shouldLoad) refresh(key, session, call)
 	}
 
 	@Suppress("UNCHECKED_CAST")

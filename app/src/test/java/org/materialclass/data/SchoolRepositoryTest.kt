@@ -48,6 +48,78 @@ class SchoolRepositoryTest {
 	}
 
 	@Test
+	fun tabLoadsFetchEachSliceOnlyOnceButExplicitRefreshFetchesAgain() {
+		val fixture = Fixture()
+		fixture.gateway.scheduleResult = GatewayReadResult.Success(ScheduleModel(3, 1))
+
+		fixture.repository.loadSchedule(range)
+		fixture.repository.loadSchedule(range)
+		fixture.repository.refreshSchedule(range)
+
+		assertEquals(2, fixture.gateway.scheduleCalls)
+		assertTrue(fixture.repository.observeSchedule(range).current is DataState.Ready)
+	}
+
+	@Test
+	fun failedInitialTabLoadIsNotRepeatedUntilExplicitRefresh() {
+		val fixture = Fixture()
+		fixture.repository.loadSchedule(range)
+		fixture.repository.loadSchedule(range)
+
+		assertEquals(1, fixture.gateway.scheduleCalls)
+		assertTrue(fixture.repository.observeSchedule(range).current is DataState.Error)
+	}
+
+	@Test
+	fun tabLoadUsesStoredSnapshotWithoutNetworkRequest() {
+		val fixture = Fixture()
+		fixture.gateway.scheduleResult = GatewayReadResult.Success(ScheduleModel(3, 1))
+		fixture.repository.refreshSchedule(range)
+		val restarted = SchoolRepositoryImpl(fixture.gateway, fixture.sessions, fixture.store, { capturedAt })
+
+		restarted.loadSchedule(range)
+
+		assertEquals(1, fixture.gateway.scheduleCalls)
+		assertTrue(restarted.observeSchedule(range).current is DataState.Stale)
+	}
+
+	@Test
+	fun tabLoadsAreScopedToAccountGeneration() {
+		val fixture = Fixture()
+		fixture.gateway.scheduleResult = GatewayReadResult.Success(ScheduleModel(3, 1))
+		fixture.repository.loadSchedule(range)
+		fixture.sessions.active = ActiveSession(AccountId("replacement"), Generation(2))
+
+		fixture.repository.loadSchedule(range)
+
+		assertEquals(2, fixture.gateway.scheduleCalls)
+	}
+
+	@Test
+	fun concurrentTabLoadsShareOneNetworkRequest() {
+		val fixture = Fixture()
+		val started = CountDownLatch(1)
+		val release = CountDownLatch(1)
+		fixture.gateway.scheduleCall = {
+			started.countDown()
+			check(release.await(5, TimeUnit.SECONDS))
+			GatewayReadResult.Success(ScheduleModel(3, 1))
+		}
+		val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+		try {
+			val first = executor.submit { fixture.repository.loadSchedule(range) }
+			assertTrue(started.await(5, TimeUnit.SECONDS))
+			fixture.repository.loadSchedule(range)
+			release.countDown()
+			first.get(5, TimeUnit.SECONDS)
+			assertEquals(1, fixture.gateway.scheduleCalls)
+		} finally {
+			release.countDown()
+			executor.shutdownNow()
+		}
+	}
+
+	@Test
 	fun unauthorizedReadRefreshesAndRetriesOnce() {
 		val fixture = Fixture()
 		fixture.gateway.refreshResult = true
