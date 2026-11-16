@@ -41,6 +41,7 @@ fun MaterialClassTheme(themeMode: ThemeMode, content: @Composable () -> Unit) {
 			background = Color.Black,
 			surface = Color.Black,
 			surfaceContainerLowest = Color.Black,
+			surfaceContainerLow = Color(0xFF090C09),
 		) else dynamic
 	} else when (effectiveMode) {
 		ThemeMode.BLACK -> darkColorScheme(

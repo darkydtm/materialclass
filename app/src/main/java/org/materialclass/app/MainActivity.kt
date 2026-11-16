@@ -28,9 +28,9 @@ class MainActivity : ComponentActivity() {
 		if (!vibrator.hasVibrator()) return
 		if (Build.VERSION.SDK_INT >= 26) {
 			val amplitude = VibrationStrengthPolicy.amplitude(Build.VERSION.SDK_INT, vibrator.hasAmplitudeControl(), strength) ?: return
-			vibrator.vibrate(VibrationEffect.createOneShot(10, amplitude))
+			vibrator.vibrate(VibrationEffect.createOneShot(20, amplitude))
 		}
-		else @Suppress("DEPRECATION") vibrator.vibrate(10)
+		else @Suppress("DEPRECATION") vibrator.vibrate(20)
 	}
 
 

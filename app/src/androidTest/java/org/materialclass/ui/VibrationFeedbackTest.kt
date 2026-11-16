@@ -66,6 +66,20 @@ class VibrationFeedbackTest {
 	}
 
 	@Test
+	fun vibrationStrengthRemainsWithinAndroidAmplitudeLimits() {
+		val preferences = AppPreferences(rule.activity)
+		val original = preferences.vibrationStrength()
+		try {
+			preferences.setVibrationStrength(Int.MAX_VALUE)
+			assertEquals(255, preferences.vibrationStrength())
+			preferences.setVibrationStrength(Int.MIN_VALUE)
+			assertEquals(1, preferences.vibrationStrength())
+		} finally {
+			preferences.setVibrationStrength(original)
+		}
+	}
+
+	@Test
 	fun emptyAreaAndDisabledControlDoNotProvideFeedback() {
 		var feedback = 0
 		var clicks = 0

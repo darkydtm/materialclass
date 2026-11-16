@@ -22,7 +22,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -37,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 
@@ -88,11 +89,10 @@ internal fun HomeScreen(
 					} else {
 						Text(if (today == null) text("no_data") else "$completedLessons / ${today.lessons.size}", style = MaterialTheme.typography.displaySmall)
 					}
-					if (!weekend && today != null) LinearProgressIndicator(
-						progress = { if (today.lessons.isEmpty()) 0f else completedLessons.toFloat() / today.lessons.size },
-						modifier = Modifier.fillMaxWidth(),
-						color = MaterialTheme.colorScheme.primary,
-						trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+					if (!weekend && today != null) DayProgressIndicator(
+						completedLessons = completedLessons,
+						totalLessons = today.lessons.size,
+						label = text("day_progress"),
 					)
 				}
 			}
@@ -114,6 +114,17 @@ internal fun HomeScreen(
 		}
 	}
 	}
+}
+
+@Composable
+internal fun DayProgressIndicator(completedLessons: Int, totalLessons: Int, label: String) {
+	val progress = if (totalLessons <= 0) 0f else (completedLessons.toFloat() / totalLessons).coerceIn(0f, 1f)
+	LinearWavyProgressIndicator(
+		progress = { progress },
+		modifier = Modifier.fillMaxWidth().semantics { contentDescription = label },
+		color = MaterialTheme.colorScheme.primary,
+		trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+	)
 }
 
 @Composable

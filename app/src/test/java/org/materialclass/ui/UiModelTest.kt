@@ -57,6 +57,19 @@ class UiModelTest {
 	}
 
 	@Test
+	fun finalGradesUseGradeBandsInsteadOfFivePointPercentages() {
+		assertEquals(0f, finalGradeColorHue("1", "numeric")!!, 0.001f)
+		assertEquals(30f, finalGradeColorHue("2", "numeric")!!, 0.001f)
+		assertEquals(gradeColorHue("2", "numeric", 10.0), finalGradeColorHue("2", "numeric"))
+		assertEquals(60f, gradeColorHue("2", "numeric", 5.0)!!, 0.001f)
+		assertEquals(60f, finalGradeColorHue("3", "numeric")!!, 0.001f)
+		assertEquals(90f, finalGradeColorHue("4", "numeric")!!, 0.001f)
+		assertEquals(120f, finalGradeColorHue("5", "numeric")!!, 0.001f)
+		assertEquals(null, finalGradeColorHue("Зачет", "credit"))
+		assertEquals(null, finalGradeColorHue("", "numeric"))
+	}
+
+	@Test
 	fun profileNameNormalizesEveryPart() {
 		assertEquals("Иванов Иван Иванович", normalizedFullName("  ИВАНОВ   иВАН ИВАНОВИЧ "))
 		assertEquals(null, normalizedFullName("  "))
@@ -269,6 +282,17 @@ class UiModelTest {
 		assertEquals(3, components.count { it.category == org.materialclass.grades.GradeCategory.FO })
 		assertEquals(listOf(60.0, 60.0, 80.0), components.filter { it.category == org.materialclass.grades.GradeCategory.SOR }.mapNotNull { it.score }.sorted())
 		assertEquals(2, components.count { it.category == org.materialclass.grades.GradeCategory.SOCH })
+	}
+
+	@Test
+	fun formativeComponentsUseFullPercentageScaleForFinalGrade() {
+		val schedule = org.materialclass.data.GradeSchedule("lesson", null, null, 10, null, score = "10", sor = "8", sorMax = "10", soch = "6", sochMax = "10")
+		val subject = org.materialclass.data.GradeSubject("Math", null, listOf(schedule))
+		val components = gradeComponents(subject.schedules)
+
+		assertEquals(100.0, org.materialclass.grades.GradeCalculator.categoryPercentage(components, org.materialclass.grades.GradeCategory.FO)!!, 0.000001)
+		assertEquals(85.0, org.materialclass.grades.GradeCalculator.calculate(components).percentage!!, 0.000001)
+		assertEquals("5", effectiveFinalScore(subject))
 	}
 
 	@Test

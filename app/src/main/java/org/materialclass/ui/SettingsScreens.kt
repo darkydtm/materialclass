@@ -85,9 +85,13 @@ internal fun VibrationScreen(padding: PaddingValues, text: (String) -> String) {
 			enabled = it
 			preferences.setVibrationEnabled(it)
 		}
-		Text(text("vibration_strength"), style = MaterialTheme.typography.labelLarge)
-		if (!hasAmplitudeControl) Text(text("vibration_strength_unavailable"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-		Slider(value = strength, onValueChange = { strength = it; preferences.setVibrationStrength(it.toInt()) }, valueRange = 1f..255f, enabled = enabled && hasAmplitudeControl)
+		Card(shape = RowShape, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
+			Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+				Text(text("vibration_strength"), style = MaterialTheme.typography.labelLarge)
+				Slider(value = strength, onValueChange = { strength = it; preferences.setVibrationStrength(it.toInt()) }, valueRange = 1f..255f, steps = 9, enabled = enabled && hasAmplitudeControl)
+				if (!hasAmplitudeControl) Text(text("vibration_strength_unavailable"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+			}
+		}
 	}
 }
 

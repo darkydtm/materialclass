@@ -244,6 +244,8 @@ class SchoolViewModel(
 	private var scheduleRange: DateRange? = null
 	private var scheduleGradesRequest = 0L
 	private var gradesRequest = 0L
+	private var diaryPeriods: org.materialclass.api.GatewayReadResult<org.materialclass.data.PeriodsModel>? = null
+	private var initialQuarterPending = true
 	var loginState: LoginUiState by mutableStateOf(LoginUiState.Ready)
 		private set
 
@@ -355,25 +357,46 @@ class SchoolViewModel(
 		io.execute { source.loadDiary(range) }
 	}
 
-	fun loadGrades(period: String = "1") {
+	fun loadGrades(period: String = gradesPeriod) {
 		DiaryDiagnostics.record(DiaryStage.LOAD, DiaryOutcome.START)
 		if (period != gradesPeriod) return
 		val source = repository ?: run { gradesState = null; return }
 		val request = ++gradesRequest
 		quarterNotStarted = false
+		gradesState = DataState.Loading
+		val cachedPeriods = diaryPeriods
+		if (!initialQuarterPending && cachedPeriods != null &&
+			org.materialclass.notifications.SelectedPeriodRange.resolve(period, cachedPeriods)?.let { LocalDate.now().isBefore(it.start) } == true
+		) {
+			quarterNotStarted = true
+			return
+		}
 		io.execute {
-			val range = source.quarterRange(period)
+			val periods = cachedPeriods ?: source.diaryPeriods()
 			android.os.Handler(android.os.Looper.getMainLooper()).post {
-				if (gradesRequest == request && gradesPeriod == period) quarterNotStarted = range != null && LocalDate.now().isBefore(range.start)
+				if (gradesRequest != request || gradesPeriod != period) return@post
+				if (periods is org.materialclass.api.GatewayReadResult.Success) diaryPeriods = periods
+				val selected = if (initialQuarterPending) {
+					initialQuarterPending = false
+					org.materialclass.notifications.SelectedPeriodRange.current(periods, LocalDate.now()) ?: period
+				} else period
+				if (selected != gradesPeriod) {
+					gradesPeriod = selected
+					onGradesPeriod(selected)
+				}
+				val range = org.materialclass.notifications.SelectedPeriodRange.resolve(selected, periods)
+				if (range != null && LocalDate.now().isBefore(range.start)) {
+					quarterNotStarted = true
+					return@post
+				}
+				source.observeGrades(selected).observe { state ->
+					android.os.Handler(android.os.Looper.getMainLooper()).post {
+						if (gradesRequest == request && gradesPeriod == selected) gradesState = state
+					}
+				}
+				io.execute { source.loadGrades(selected) }
 			}
 		}
-		val observation = source.observeGrades(period)
-		observation.observe { state ->
-			android.os.Handler(android.os.Looper.getMainLooper()).post {
-				if (gradesRequest == request && gradesPeriod == period) gradesState = state
-			}
-		}
-		io.execute { source.loadGrades(period) }
 	}
 
 	suspend fun refreshGrades() {
@@ -387,6 +410,7 @@ class SchoolViewModel(
 
 	fun selectGradesPeriod(period: String) {
 		if (period !in listOf("1", "2", "3", "4") || period == gradesPeriod) return
+		initialQuarterPending = false
 		gradesPeriod = period
 		onGradesPeriod(period)
 		loadGrades(period)
@@ -419,6 +443,9 @@ class SchoolViewModel(
 		diaryRequest++
 		scheduleGradesRequest++
 		gradesRequest++
+		diaryPeriods = null
+		initialQuarterPending = true
+		quarterNotStarted = false
 		repository?.logout()
 		scheduleState = null
 		diaryState = null
@@ -583,6 +610,18 @@ internal fun gradeHueForMark(value: String?, maximum: Double? = null): Float? {
 
 internal fun gradeColorHue(value: String?, scoreType: String?, maximum: Double? = null): Float? =
 	if (assessmentKind(value, scoreType) == AssessmentKind.Numeric) gradeHueForMark(value, maximum) else null
+
+internal fun finalGradeColorHue(value: String?, scoreType: String?): Float? {
+	if (assessmentKind(value, scoreType) != AssessmentKind.Numeric) return null
+	return when (value?.trim()?.toDoubleOrNull()) {
+		1.0 -> 0f
+		2.0 -> 30f
+		3.0 -> 60f
+		4.0 -> 90f
+		5.0 -> 120f
+		else -> gradeColorHue(value, scoreType, 5.0)
+	}
+}
 
 internal fun assessmentText(value: String?, scoreType: String?, credit: String, fail: String, noData: String): String = when (assessmentKind(value, scoreType)) {
 	AssessmentKind.Credit -> credit

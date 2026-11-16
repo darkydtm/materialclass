@@ -12,6 +12,22 @@ import org.junit.Test
 
 class SelectedPeriodContractTest {
 	@Test
+	fun currentQuarterUsesServerDatesIncludingBoundariesAndBreaks() {
+		val result = GatewayReadResult.Success(PeriodsModel(4, listOf(
+			DiaryPeriod(1, "01.09.2026", "25.10.2026"),
+			DiaryPeriod(2, "04.11.2026", "30.12.2026"),
+			DiaryPeriod(3, "10.01.2027", "20.03.2027"),
+			DiaryPeriod(4, "01.04.2027", "25.05.2027"),
+		)))
+		assertEquals("1", SelectedPeriodRange.current(result, LocalDate.of(2026, 8, 31)))
+		assertEquals("1", SelectedPeriodRange.current(result, LocalDate.of(2026, 10, 25)))
+		assertEquals("1", SelectedPeriodRange.current(result, LocalDate.of(2026, 11, 1)))
+		assertEquals("2", SelectedPeriodRange.current(result, LocalDate.of(2026, 11, 4)))
+		assertEquals("4", SelectedPeriodRange.current(result, LocalDate.of(2027, 6, 1)))
+		assertNull(SelectedPeriodRange.current(GatewayReadResult.Empty, LocalDate.of(2026, 11, 4)))
+	}
+
+	@Test
 	fun selectsEachServerBoundaryAndRejectsMissingInvalidOrAmbiguousDates() {
 		val items = (1..4).map { DiaryPeriod(it, "0$it.01.2026", "${it + 10}.03.2026") }
 		val result = GatewayReadResult.Success(PeriodsModel(4, items))

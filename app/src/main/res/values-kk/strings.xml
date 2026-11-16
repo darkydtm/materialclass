@@ -31,6 +31,7 @@
 	<string name="login_welcome">Қайта оралуыңызбен</string>
 	<string name="vibration">Діріл</string>
 	<string name="vibration_description">Басқан кезде жеңіл діріл</string>
+	<string name="vibration_strength_unavailable">Бұл құрылғыда діріл күшін реттеу қолжетімсіз</string>
 	<string name="vibration_strength">Діріл күші</string>
 	<string name="vibration_strength_unavailable">Бұл құрылғыда діріл күшін реттеу қолжетімсіз.</string>
 	<string name="home_description">Сабақ кестесі, тапсырмалар және бағалар - бір жерде.</string>
