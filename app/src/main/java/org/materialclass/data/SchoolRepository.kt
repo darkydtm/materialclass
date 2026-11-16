@@ -156,10 +156,15 @@ class SchoolRepositoryImpl(
 
 	private fun <T> load(key: String, call: (ReadContext) -> GatewayReadResult<T>) {
 		val session = sessions.currentSession() ?: return refresh(key, call = call)
+		val existing = synchronized(lock) { states[key]?.takeIf { snapshotSession(it) == session } }
+		val needsCache = existing == null && synchronized(lock) { (session to key) !in requestedSlices }
+		val restored = if (needsCache) readSlice<T>(key, session) else null
 		val shouldLoad = synchronized(lock) {
 			if ((session to key) in requestedSlices) return@synchronized false
-			if (states[key] == null) restoreSlice<T>(key, session)
-			val state = states[key]
+			val state = states[key]?.takeIf { snapshotSession(it) == session } ?: restored?.also {
+				states[key] = it
+				update(key, it)
+			}
 			val snapshot = when (state) {
 				is DataState.Ready<*> -> state.snapshot
 				is DataState.Stale<*> -> state.snapshot
@@ -177,7 +182,7 @@ class SchoolRepositoryImpl(
 				requestedSlices.add(session to key)
 			}
 		}
-		if (shouldLoad) refresh(key, session, call)
+		if (shouldLoad && sessions.currentSession() == session) refresh(key, session, call)
 	}
 
 	@Suppress("UNCHECKED_CAST")
@@ -197,9 +202,11 @@ class SchoolRepositoryImpl(
 		}
 		if (expectedSession != null && session != expectedSession) return false
 		val revision = synchronized(lock) { (revisions[key] ?: 0L).plus(1).also { revisions[key] = it } }
-		sessions.withSessionLock {
-			synchronized(lock) {
-				if (sessions.currentSession() == session && states[key] == null) restoreSlice<T>(key, session)
+		val needsRestore = synchronized(lock) { states[key] == null || snapshotSession(states[key]) != session }
+		if (needsRestore && sessions.currentSession() == session) {
+			val cached = readSlice<T>(key, session)
+			if (sessions.currentSession() == session) synchronized(lock) {
+				if (states[key] == null || snapshotSession(states[key]) != session) cached?.let { states[key] = it; update(key, it) }
 			}
 		}
 		val token = sessions.tokenFor(session) ?: run {
@@ -254,10 +261,11 @@ class SchoolRepositoryImpl(
 				}
 			}
 		}
+		if (sessions.currentSession() != session || Thread.currentThread().isInterrupted) return false
 		return sessions.withSessionLock {
-			synchronized(lock) {
-				if (sessions.currentSession() != session || Thread.currentThread().isInterrupted || revisions[key] != revision) false
-				else handleResult(key, session, result)
+			if (sessions.currentSession() != session) false
+			else synchronized(lock) {
+				if (revisions[key] != revision) false else handleResult(key, session, result)
 			}
 		}
 	}
@@ -322,12 +330,13 @@ class SchoolRepositoryImpl(
 
 	@Suppress("UNCHECKED_CAST")
 	private fun <T> restoreSlice(key: String, session: ActiveSession) {
-		val slice = (store.read(session) as? SnapshotStoreRead.Hit)?.slices?.get(key) ?: return
-		if (slice.payload.contentEquals(EMPTY_PAYLOAD)) {
-			states[key] = DataState.Empty
-			update(key, DataState.Empty)
-			return
-		}
+		readSlice<T>(key, session)?.let { states[key] = it; update(key, it) }
+	}
+
+	@Suppress("UNCHECKED_CAST")
+	private fun <T> readSlice(key: String, session: ActiveSession): DataState<T>? {
+		val slice = (store.read(session) as? SnapshotStoreRead.Hit)?.slices?.get(key) ?: return null
+		if (slice.payload.contentEquals(EMPTY_PAYLOAD)) return DataState.Empty
 		val value = runCatching {
 			java.io.ObjectInputStream(slice.payload.inputStream()).use { input ->
 				val decoded = input.readObject()
@@ -343,10 +352,8 @@ class SchoolRepositoryImpl(
 				}
 				if (valid) decoded as T else null
 			}
-		}.getOrNull() ?: return
-		val state = DataState.Stale(Snapshot(session.accountId, session.generation, value, slice.capturedAt))
-		states[key] = state
-		update(key, state)
+		}.getOrNull() ?: return null
+		return DataState.Stale(Snapshot(session.accountId, session.generation, value, slice.capturedAt))
 	}
 
 	private fun writeSlices(session: ActiveSession, key: String, slice: CachedSlice): Boolean {

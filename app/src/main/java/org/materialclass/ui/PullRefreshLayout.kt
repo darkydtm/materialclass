@@ -12,6 +12,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,6 +35,7 @@ internal fun PullRefreshLayout(
 	onRefresh: suspend () -> Unit,
 	content: @Composable BoxScope.(Modifier) -> Unit,
 ) {
+	val currentRefresh by rememberUpdatedState(onRefresh)
 	val threshold = with(LocalDensity.current) { 96.dp.toPx() }
 	val state = remember(threshold) { PullRefreshState(threshold) }
 	val scope = rememberCoroutineScope()
@@ -59,7 +61,7 @@ internal fun PullRefreshLayout(
 				if (state.release()) {
 						scope.launch {
 						try {
-							onRefresh()
+							currentRefresh()
 						} finally {
 							state.finish()
 						}
@@ -89,7 +91,7 @@ internal fun PullRefreshLayout(
 	Box(modifier) {
 		content(Modifier.nestedScroll(connection))
 		val indicatorModifier = Modifier.align(Alignment.TopCenter)
-			.offset { IntOffset(0, (state.progress - threshold * 0.5f).coerceAtLeast(0f).roundToInt()) }
+			.offset { IntOffset(0, (animatedProgress * threshold - threshold * 0.5f).coerceAtLeast(0f).roundToInt()) }
 			.size(indicatorSize)
 			.graphicsLayer { alpha = indicatorAlpha }
 			.testTag("pull-refresh-indicator")

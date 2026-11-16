@@ -5,25 +5,18 @@ import androidx.activity.compose.setContent
 import android.os.SystemClock
 import android.view.MotionEvent
 import androidx.test.platform.app.InstrumentationRegistry
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
@@ -33,21 +26,81 @@ import androidx.compose.ui.test.advanceEventTime
 import org.materialclass.api.GatewayLoginResult
 import org.junit.Rule
 import org.junit.Test
+import kotlinx.coroutines.CompletableDeferred
+import java.util.concurrent.atomic.AtomicInteger
 
 class MaterialClassNavigationTest {
 	@get:Rule
 	val composeRule = createAndroidComposeRule<ComponentActivity>()
 
 	@Test
-	fun scheduleKeepsSelectedDayAfterSwitchingPrimaryTabs() {
-		composeRule.setContent { MaterialClassApp(startAuthenticated = true) }
-
+	fun scheduleKeepsSelectedDayAcrossTabsWithRealScheduleDays() {
+		val schedule = org.materialclass.data.ScheduleModel(5, 5, listOf(
+			org.materialclass.data.ScheduleDay("Monday", false, false, listOf(org.materialclass.data.ScheduleLesson("monday", "Math", "09:00", "101", null, null, null, null))),
+			org.materialclass.data.ScheduleDay("Tuesday", false, false, listOf(org.materialclass.data.ScheduleLesson("tuesday", "Physics", "10:00", "102", null, null, null, null))),
+			org.materialclass.data.ScheduleDay("Wednesday", false, false, listOf(org.materialclass.data.ScheduleLesson("wednesday", "Chemistry", "11:00", "103", null, null, null, null))),
+			org.materialclass.data.ScheduleDay("Thursday", false, false, listOf(org.materialclass.data.ScheduleLesson("thursday", "History", "12:00", "104", null, null, null, null))),
+			org.materialclass.data.ScheduleDay("Friday", false, false, listOf(org.materialclass.data.ScheduleLesson("friday", "Biology", "13:00", "105", null, null, null, null))),
+		))
+		val repository = object : org.materialclass.data.SchoolRepository {
+			override fun observeHome() = org.materialclass.data.RepositoryObservation<org.materialclass.data.HomeModel>(org.materialclass.data.DataState.Loading)
+			override fun observeDiary(range: org.materialclass.data.DateRange) = org.materialclass.data.RepositoryObservation<org.materialclass.data.DiaryModel>(org.materialclass.data.DataState.Loading)
+			override fun observeSchedule(range: org.materialclass.data.DateRange) = org.materialclass.data.RepositoryObservation<org.materialclass.data.ScheduleModel>(org.materialclass.data.DataState.Ready(org.materialclass.data.Snapshot("test", 1, schedule, java.time.Instant.EPOCH)))
+			override fun observeGrades(period: String) = org.materialclass.data.RepositoryObservation<org.materialclass.data.GradesModel>(org.materialclass.data.DataState.Loading)
+			override fun observeHomeworks() = org.materialclass.data.RepositoryObservation<org.materialclass.data.HomeworksModel>(org.materialclass.data.DataState.Loading)
+			override fun observeJournal(range: org.materialclass.data.DateRange) = org.materialclass.data.RepositoryObservation<org.materialclass.data.JournalGradesModel>(org.materialclass.data.DataState.Loading)
+			override fun observeProfile() = org.materialclass.data.RepositoryObservation<org.materialclass.data.ProfileModel>(org.materialclass.data.DataState.Loading)
+			override fun refreshHome() = Unit
+			override fun refreshDiary(range: org.materialclass.data.DateRange) = Unit
+			override fun refreshSchedule(range: org.materialclass.data.DateRange) = Unit
+			override fun refreshGrades(period: String) = Unit
+			override fun refreshHomeworks() = Unit
+			override fun refreshJournal(range: org.materialclass.data.DateRange) = Unit
+			override fun refreshProfile() = Unit
+			override fun logout() = Unit
+		}
+		composeRule.setContent { MaterialClassApp(startAuthenticated = true, repository = repository) }
 		composeRule.onNodeWithTag("tab-schedule").performClick()
 		composeRule.onNodeWithTag("schedule-day-2").performClick()
+		composeRule.onNodeWithText("Chemistry").assertIsDisplayed()
 		composeRule.onNodeWithTag("tab-home").performClick()
 		composeRule.onNodeWithTag("tab-schedule").performClick()
-
 		composeRule.onNodeWithTag("schedule-day-2").assertIsSelected()
+		composeRule.onNodeWithText("Chemistry").assertIsDisplayed()
+	}
+
+	@Test
+	fun pullRefreshCancelsBelowThresholdAndWaitsForRealRequest() {
+		val started = CompletableDeferred<Unit>()
+		val finish = CompletableDeferred<Unit>()
+		val calls = AtomicInteger()
+		composeRule.setContent {
+			org.materialclass.ui.theme.MaterialClassTheme(ThemeMode.BLACK) {
+				PullRefreshLayout(Modifier.fillMaxSize().testTag("pull-refresh-root"), onRefresh = {
+					calls.incrementAndGet()
+					started.complete(Unit)
+					finish.await()
+				}) { modifier -> Box(modifier.fillMaxSize().testTag("pull-refresh-content")) }
+			}
+		}
+		val root = composeRule.onNodeWithTag("pull-refresh-root")
+		root.performTouchInput { down(center); moveTo(center.copy(y = center.y + 30.dp.toPx())); up() }
+		composeRule.runOnIdle { check(calls.get() == 0) }
+		root.performTouchInput {
+			down(center)
+			for (step in 1..8) moveTo(center.copy(y = center.y + step * 30.dp.toPx()))
+		}
+		composeRule.waitUntil(5_000) { started.isCompleted }
+		root.performTouchInput { up() }
+		composeRule.runOnIdle { check(calls.get() == 1) }
+		root.performTouchInput {
+			down(center)
+			for (step in 1..8) moveTo(center.copy(y = center.y + step * 30.dp.toPx()))
+			up()
+		}
+		composeRule.runOnIdle { check(calls.get() == 1) }
+		finish.complete(Unit)
+		composeRule.waitForIdle()
 	}
 
 	@Test

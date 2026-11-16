@@ -17,13 +17,14 @@ class PullRefreshStateTest {
 	}
 
 	@Test
-	fun draggingBackBelowThresholdCancels() {
+	fun draggingBackBelowThresholdCancelsAndReleaseResetsProgress() {
 		val state = PullRefreshState(threshold = 100f)
 		state.dragBy(100f)
 		state.dragBy(-20f)
 
-		assertFalse(state.release())
 		assertEquals(80f, state.progress)
+		assertFalse(state.release())
+		assertEquals(0f, state.progress)
 	}
 
 	@Test

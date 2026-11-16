@@ -20,6 +20,20 @@ class SchoolRepositoryTest {
 	private val capturedAt = Instant.parse("2026-01-02T03:04:05Z")
 
 	@Test
+	fun loadAfterRepositoryRecreationRestoresCachedSchedule() {
+		val fixture = Fixture()
+		fixture.gateway.scheduleResult = GatewayReadResult.Success(ScheduleModel(5, 1))
+		fixture.repository.refreshSchedule(range)
+		val count = fixture.gateway.scheduleCalls
+		val recreated = SchoolRepositoryImpl(fixture.gateway, fixture.sessions, fixture.store, { capturedAt })
+
+		recreated.loadSchedule(range)
+
+		assertTrue(recreated.observeSchedule(range).current is DataState.Stale)
+		assertEquals(count, fixture.gateway.scheduleCalls)
+	}
+
+	@Test
 	fun expiredSessionRefreshesThenRetriesTheUserRead() {
 		val fixture = Fixture()
 		fixture.sessions.expired = true

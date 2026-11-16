@@ -298,7 +298,10 @@ class SchoolViewModel(
 		}
 	}
 
+	@Volatile private var lastWeekOffset = 0
+
 	fun loadSchedule(weekOffset: Int = 0) {
+		lastWeekOffset = weekOffset
 		val source = repository ?: run { scheduleState = null; return }
 		val range = week(weekOffset, nextWeekOnWeekend = true)
 		scheduleRange = range
@@ -321,6 +324,10 @@ class SchoolViewModel(
 	}
 
 	suspend fun refreshSchedule(weekOffset: Int = 0) {
+		refreshScheduleNetwork(weekOffset)
+	}
+
+	private suspend fun refreshScheduleNetwork(weekOffset: Int = 0) {
 		val source = repository ?: return
 		val range = week(weekOffset, nextWeekOnWeekend = true)
 		kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -330,7 +337,7 @@ class SchoolViewModel(
 	}
 
 	suspend fun refreshHome() {
-		refreshSchedule()
+		refreshSchedule(lastWeekOffset)
 		refreshProfile()
 	}
 
@@ -369,9 +376,7 @@ class SchoolViewModel(
 	}
 
 	suspend fun refreshGrades() {
-		val source = repository ?: return
-		val period = gradesPeriod
-		kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { source.refreshGrades(period) }
+		refreshGradesForPeriod(gradesPeriod)
 	}
 
 	suspend fun refreshProfile() {
@@ -395,23 +400,16 @@ class SchoolViewModel(
 
 	fun retry(route: AppRoute) {
 		when (route) {
-			AppRoute.HomeError, AppRoute.HomeEmpty, AppRoute.Schedule, AppRoute.ScheduleOffline -> refreshSchedule()
-			AppRoute.Diary, AppRoute.SubjectDetail, AppRoute.Calculator, AppRoute.CalculatorMissing -> refreshGrades()
-			AppRoute.Profile -> repository?.let { source -> io.execute { source.refreshProfile() } }
+			AppRoute.HomeError, AppRoute.HomeEmpty, AppRoute.Schedule, AppRoute.ScheduleOffline -> io.execute { kotlinx.coroutines.runBlocking { refreshSchedule(lastWeekOffset) } }
+			AppRoute.Diary, AppRoute.SubjectDetail, AppRoute.Calculator, AppRoute.CalculatorMissing -> io.execute { kotlinx.coroutines.runBlocking { refreshGradesForPeriod(gradesPeriod) } }
+			AppRoute.Profile -> io.execute { kotlinx.coroutines.runBlocking { refreshProfile() } }
 			else -> Unit
 		}
 	}
 
-	fun refreshSchedule(weekOffset: Int = 0) {
+	private suspend fun refreshGradesForPeriod(period: String = gradesPeriod) {
 		val source = repository ?: return
-		val range = week(weekOffset, nextWeekOnWeekend = true)
-		io.execute { source.refreshSchedule(range); source.refreshJournal(range) }
-	}
-
-	private fun refreshGrades() {
-		val source = repository ?: return
-		val period = gradesPeriod
-		io.execute { source.refreshGrades(period) }
+		kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { source.refreshGrades(period) }
 	}
 
 	fun logout() {
