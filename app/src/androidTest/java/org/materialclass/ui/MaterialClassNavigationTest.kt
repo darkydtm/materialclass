@@ -7,7 +7,12 @@ import android.view.MotionEvent
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.graphics.toPixelMap
@@ -87,7 +92,11 @@ class MaterialClassNavigationTest {
 					calls.incrementAndGet()
 					started.complete(Unit)
 					finish.await()
-				}) { modifier -> Box(modifier.fillMaxSize().testTag("pull-refresh-content")) }
+				}) { modifier ->
+					Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).testTag("pull-refresh-content")) {
+						Spacer(Modifier.height(1_000.dp))
+					}
+				}
 			}
 		}
 		val root = composeRule.onNodeWithTag("pull-refresh-root")
@@ -96,10 +105,10 @@ class MaterialClassNavigationTest {
 		root.performTouchInput {
 			down(center)
 			for (step in 1..8) moveTo(center.copy(y = center.y + step * 30.dp.toPx()))
+			up()
 		}
 		composeRule.waitUntil(5_000) { started.isCompleted }
-		root.performTouchInput { up() }
-		composeRule.runOnIdle { check(calls.get() == 1) }
+		composeRule.runOnIdle { check(calls.get() == 1) { "Threshold release must start exactly one refresh" } }
 		root.performTouchInput {
 			down(center)
 			for (step in 1..8) moveTo(center.copy(y = center.y + step * 30.dp.toPx()))
