@@ -133,6 +133,25 @@ class GradesSourcesTest {
 	}
 
 	@Test
+	fun gradesCollapseIdenticalJournalDuplicatesButPreserveDifferentAssessmentMarks() {
+		val gateway = ConfirmedSchoolGateway(
+			SchoolGateway(SyntheticGradesTransport { request ->
+				if (request.url.substringBefore('?').endsWith("/diary/subjects")) {
+					HttpResponseData(200, "application/json", """{"data":[{"subjectName":"Math","schedules":[{"uuid":"lesson-1","date":"14.11.2026"}]}]}""")
+				} else {
+					HttpResponseData(200, "application/json", """{"data":{"first":{"scheduleUuid":"lesson-1","sor":{"mark":6,"markMax":10},"soch":{"mark":12,"markMax":15}},"duplicate":{"scheduleUuid":"lesson-1","sor":{"mark":6,"markMax":10},"soch":{"mark":12,"markMax":15}},"different":{"scheduleUuid":"lesson-1","sor":{"mark":8,"markMax":10},"soch":{"mark":14,"markMax":15}}}}""")
+				}
+			}),
+			FakeGradesSessionController(),
+		)
+
+		val schedules = (gateway.grades(context) as GatewayReadResult.Success).value.subjects.single().schedules
+		assertEquals(listOf("6", "8"), schedules.mapNotNull { it.sor }.sorted())
+		assertEquals(listOf("12", "14"), schedules.mapNotNull { it.soch }.sorted())
+		assertEquals(2, schedules.size)
+	}
+
+	@Test
 	fun gradeRequestsSendOnlyParametersForTheirRespectiveServices() {
 		val calls = mutableListOf<HttpRequestData>()
 		val source = ReadContext(
