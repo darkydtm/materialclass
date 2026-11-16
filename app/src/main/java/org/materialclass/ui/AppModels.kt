@@ -533,6 +533,16 @@ internal fun gradeHue(percent: Double): Float = when {
 	else -> 0f
 }
 
+internal fun gradeHueForMark(value: String?, maximum: Double? = null): Float? {
+	val mark = value?.substringBefore('/')?.trim()?.toDoubleOrNull() ?: return null
+	val max = maximum ?: value.substringAfter('/', "").toDoubleOrNull() ?: 10.0
+	if (!mark.isFinite() || !max.isFinite() || max <= 0.0 || mark < 0.0) return null
+	return gradeHue(mark * 100.0 / max)
+}
+
+internal fun gradeColorHue(value: String?, scoreType: String?, maximum: Double? = null): Float? =
+	if (assessmentKind(value, scoreType) == AssessmentKind.Numeric) gradeHueForMark(value, maximum) else null
+
 internal fun assessmentText(value: String?, scoreType: String?, credit: String, fail: String, noData: String): String = when (assessmentKind(value, scoreType)) {
 	AssessmentKind.Credit -> credit
 	AssessmentKind.Fail -> fail
