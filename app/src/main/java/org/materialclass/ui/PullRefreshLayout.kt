@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -91,6 +93,16 @@ internal fun PullRefreshLayout(
 	val indicatorOffset = with(LocalDensity.current) { (state.progress - indicatorSize.toPx() / 2f).coerceAtLeast(0f).roundToInt() }
 	Box(modifier) {
 		content(Modifier.nestedScroll(connection))
+		if (state.isRefreshing) {
+			Card(
+				modifier = Modifier.align(Alignment.TopCenter)
+					.offset { IntOffset(0, indicatorOffset) }
+					.size(56.dp)
+					.testTag("pull-refresh-background"),
+				shape = MaterialTheme.shapes.large,
+				colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+			) {}
+		}
 		val indicatorModifier = Modifier.align(Alignment.TopCenter)
 			.offset { IntOffset(0, indicatorOffset) }
 			.size(indicatorSize)

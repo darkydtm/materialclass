@@ -108,6 +108,7 @@ class MaterialClassNavigationTest {
 			up()
 		}
 		composeRule.waitUntil(5_000) { started.isCompleted }
+		composeRule.onNodeWithTag("pull-refresh-background").assertIsDisplayed()
 		composeRule.runOnIdle { check(calls.get() == 1) { "Threshold release must start exactly one refresh" } }
 		root.performTouchInput {
 			down(center)
@@ -117,6 +118,7 @@ class MaterialClassNavigationTest {
 		composeRule.runOnIdle { check(calls.get() == 1) }
 		finish.complete(Unit)
 		composeRule.waitForIdle()
+		composeRule.onAllNodesWithTag("pull-refresh-background").assertCountEquals(0)
 	}
 
 	@Test
