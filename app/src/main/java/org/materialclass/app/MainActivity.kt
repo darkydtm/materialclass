@@ -11,11 +11,25 @@ import org.materialclass.ui.MaterialClassApp
 import org.materialclass.ui.AppPreferences
 import org.materialclass.api.GatewayLoginResult
 
+internal object VibrationStrengthPolicy {
+	fun isAdjustable(apiLevel: Int, hasVibrator: Boolean, hasAmplitudeControl: Boolean): Boolean =
+		apiLevel >= 26 && hasVibrator && hasAmplitudeControl
+
+	fun amplitude(apiLevel: Int, hasAmplitudeControl: Boolean, strength: Int): Int? = when {
+		apiLevel < 26 -> null
+		hasAmplitudeControl -> strength.coerceIn(1, 255)
+		else -> VibrationEffect.DEFAULT_AMPLITUDE
+	}
+}
+
 class MainActivity : ComponentActivity() {
 	private fun vibrateClick(strength: Int) {
 		val vibrator = if (Build.VERSION.SDK_INT >= 31) getSystemService(VibratorManager::class.java).defaultVibrator else @Suppress("DEPRECATION") (getSystemService(VIBRATOR_SERVICE) as Vibrator)
 		if (!vibrator.hasVibrator()) return
-		if (Build.VERSION.SDK_INT >= 26) vibrator.vibrate(VibrationEffect.createOneShot(10, strength))
+		if (Build.VERSION.SDK_INT >= 26) {
+			val amplitude = VibrationStrengthPolicy.amplitude(Build.VERSION.SDK_INT, vibrator.hasAmplitudeControl(), strength) ?: return
+			vibrator.vibrate(VibrationEffect.createOneShot(10, amplitude))
+		}
 		else @Suppress("DEPRECATION") vibrator.vibrate(10)
 	}
 

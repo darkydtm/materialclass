@@ -3,6 +3,8 @@ package org.materialclass.ui
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -39,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import org.materialclass.app.VibrationStrengthPolicy
 import java.util.Locale
 
 @Composable
@@ -70,6 +73,10 @@ internal fun SettingsScreen(
 @Composable
 internal fun VibrationScreen(padding: PaddingValues, text: (String) -> String) {
 	val context = LocalContext.current
+	val hasAmplitudeControl = remember(context) {
+		val vibrator = if (Build.VERSION.SDK_INT >= 31) context.getSystemService(VibratorManager::class.java)?.defaultVibrator else @Suppress("DEPRECATION") (context.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? Vibrator)
+		Build.VERSION.SDK_INT >= 26 && vibrator != null && VibrationStrengthPolicy.isAdjustable(Build.VERSION.SDK_INT, vibrator.hasVibrator(), vibrator.hasAmplitudeControl())
+	}
 	val preferences = remember(context) { AppPreferences(context) }
 	var enabled by remember { androidx.compose.runtime.mutableStateOf(preferences.vibrationEnabled()) }
 	var strength by remember { androidx.compose.runtime.mutableStateOf(preferences.vibrationStrength().toFloat()) }
@@ -79,7 +86,8 @@ internal fun VibrationScreen(padding: PaddingValues, text: (String) -> String) {
 			preferences.setVibrationEnabled(it)
 		}
 		Text(text("vibration_strength"), style = MaterialTheme.typography.labelLarge)
-		Slider(value = strength, onValueChange = { strength = it; preferences.setVibrationStrength(it.toInt()) }, valueRange = 1f..255f, enabled = enabled)
+		if (!hasAmplitudeControl) Text(text("vibration_strength_unavailable"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+		Slider(value = strength, onValueChange = { strength = it; preferences.setVibrationStrength(it.toInt()) }, valueRange = 1f..255f, enabled = enabled && hasAmplitudeControl)
 	}
 }
 
