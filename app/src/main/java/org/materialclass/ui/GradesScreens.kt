@@ -86,7 +86,7 @@ internal fun DiaryScreen(padding: PaddingValues, text: (String) -> String, viewM
 				Row(modifier = Modifier.padding(5.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
 					(0..3).forEach { index ->
 						Surface(
-							modifier = Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).clickable { viewModel.selectGradesPeriod((index + 1).toString()) },
+							modifier = Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).clickable(onClick = clickFeedback { viewModel.selectGradesPeriod((index + 1).toString()) }),
 							shape = RoundedCornerShape(14.dp),
 							color = if (quarter == index) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainer,
 							contentColor = if (quarter == index) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -126,7 +126,7 @@ internal fun DiaryScreen(padding: PaddingValues, text: (String) -> String, viewM
 private fun SubjectCard(subject: GradeSubject, text: (String) -> String, viewModel: SchoolViewModel, navigator: AppNavigator, onClick: () -> Unit) {
 	val finalScore = effectiveFinalScore(subject)
 	val displayedScore = assessmentText(finalScore, subject.scoreType, text("credit"), text("fail"), text("no_data"))
-	Card(onClick = onClick, shape = RowShape, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
+	Card(onClick = clickFeedback(onClick), shape = RowShape, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
 		Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 			Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
 				Text(subject.subjectName ?: text("unknown"), modifier = Modifier.weight(1f).padding(end = 8.dp), style = MaterialTheme.typography.titleLarge)
@@ -185,11 +185,12 @@ internal fun gradeContentColor(value: String?, scoreType: String?, maximum: Doub
 
 @Composable
 internal fun GradeTile(value: String?, scoreType: String?, date: String?, type: String?, text: (String) -> String, maximum: Double? = null, maximumLabel: String? = null, uuid: String? = null, comparisonType: String? = null, viewModel: SchoolViewModel? = null, navigator: AppNavigator? = null) {
+	val feedback = LocalClickFeedback.current
 	Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp)) {
 		Box(modifier = Modifier.height(18.dp), contentAlignment = Alignment.Center) {
 			if (!type.isNullOrBlank()) Text(type, style = MaterialTheme.typography.labelSmall, maxLines = 1)
 		}
-		Surface(onClick = { if (!uuid.isNullOrBlank() && comparisonType != null && viewModel != null && navigator != null) { viewModel.selectComparison(uuid, comparisonType); navigator.go(AppRoute.GradeComparison) } }, shape = RoundedCornerShape(11.dp), color = gradeContainerColor(value, scoreType, maximum), contentColor = gradeContentColor(value, scoreType, maximum), modifier = Modifier.widthIn(min = 44.dp)) {
+		Surface(onClick = { if (!uuid.isNullOrBlank() && comparisonType != null && viewModel != null && navigator != null) { feedback(); viewModel.selectComparison(uuid, comparisonType); navigator.go(AppRoute.GradeComparison) } }, shape = RoundedCornerShape(11.dp), color = gradeContainerColor(value, scoreType, maximum), contentColor = gradeContentColor(value, scoreType, maximum), modifier = Modifier.widthIn(min = 44.dp)) {
 			Box(modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp), contentAlignment = Alignment.Center) {
 				Text(assessmentWithMaximum(value, scoreType, maximumLabel, text("credit"), text("fail"), text("no_data")), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
 			}

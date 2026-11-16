@@ -85,7 +85,7 @@ internal fun VibrationScreen(padding: PaddingValues, text: (String) -> String) {
 
 @Composable
 private fun SettingRow(label: String, supporting: String, onClick: () -> Unit) {
-	Card(onClick = onClick, shape = RowShape, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
+	Card(onClick = clickFeedback(onClick), shape = RowShape, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
 		Row(modifier = Modifier.fillMaxWidth().heightIn(min = 58.dp).padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
 			Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
 				Text(label, style = MaterialTheme.typography.labelLarge)
@@ -101,7 +101,7 @@ internal fun <T> ChoiceScreen(padding: PaddingValues, text: (String) -> String, 
 	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
 		Text(text(kind), style = MaterialTheme.typography.headlineMedium)
 		values.forEach { value ->
-			Card(onClick = { onValue(value) }, shape = RowShape, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
+			Card(onClick = clickFeedback { onValue(value) }, shape = RowShape, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
 				Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
 					Text(label(value))
 					if (value == selected) Icon(Icons.Default.Check, contentDescription = null)
@@ -135,7 +135,7 @@ private fun NotificationRow(text: (String) -> String, label: String, description
 				Text(label, style = MaterialTheme.typography.bodyMedium)
 				Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 			}
-			Switch(checked = enabled, onCheckedChange = onChange)
+			Switch(checked = enabled, onCheckedChange = valueFeedback(onChange))
 		}
 	}
 }
@@ -157,7 +157,7 @@ internal fun BackgroundWorkScreen(
 			Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
 				Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
 					Text(text("background_work_enabled"), style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
-					Switch(checked = enabled, onCheckedChange = onEnabled)
+					Switch(checked = enabled, onCheckedChange = valueFeedback(onEnabled))
 				}
 				Text(text("update_check_frequency"), style = MaterialTheme.typography.labelLarge)
 				Slider(value = intervalIndex.toFloat(), onValueChange = { onInterval(intervals[it.toInt()].toFloat()) }, valueRange = 0f..4f, steps = 3, enabled = enabled)
@@ -194,7 +194,7 @@ internal fun ProfileScreen(padding: PaddingValues, text: (String) -> String, vie
 				profile?.schoolYear?.let { DetailRow(text("school_year"), it.toString()) }
 			}
 		}
-		Button(onClick = onLogout, shape = RowShape, modifier = Modifier.fillMaxWidth()) { Text(text("logout")) }
+		Button(onClick = clickFeedback(onLogout), shape = RowShape, modifier = Modifier.fillMaxWidth()) { Text(text("logout")) }
 	}
 }
 

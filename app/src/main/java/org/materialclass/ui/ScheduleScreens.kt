@@ -142,15 +142,15 @@ internal fun ScheduleScreen(
 			Card(shape = WeekPickerShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
 				Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
 					Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-						IconButton(onClick = { weekOffset-- }) { Icon(Icons.Default.ArrowBack, contentDescription = text("previous_week")) }
+						IconButton(onClick = clickFeedback { weekOffset-- }) { Icon(Icons.Default.ArrowBack, contentDescription = text("previous_week")) }
 						Text(rangeLabel, style = MaterialTheme.typography.titleMedium)
-						IconButton(onClick = { weekOffset++ }) { Icon(Icons.Default.ArrowForward, contentDescription = text("next_week")) }
+						IconButton(onClick = clickFeedback { weekOffset++ }) { Icon(Icons.Default.ArrowForward, contentDescription = text("next_week")) }
 					}
 					Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
 						(0..4).forEach { index ->
 							val selected = safeSelectedDay == index
 							Surface(
-								modifier = Modifier.size(width = 58.dp, height = 58.dp).clip(RoundedCornerShape(999.dp)).clickable { selectedDay = index },
+								modifier = Modifier.size(width = 58.dp, height = 58.dp).clip(RoundedCornerShape(999.dp)).clickable(onClick = clickFeedback { selectedDay = index }),
 								shape = RoundedCornerShape(999.dp),
 								color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainer,
 								contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -193,7 +193,7 @@ private fun dayNumber(value: String?): String? {
 
 @Composable
 private fun LessonCard(lesson: ScheduleLesson, grade: GradeSchedule?, onClick: () -> Unit) {
-	Card(onClick = onClick, shape = LessonShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh), modifier = Modifier.fillMaxWidth()) {
+	Card(onClick = clickFeedback(onClick), shape = LessonShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh), modifier = Modifier.fillMaxWidth()) {
 		Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
 			Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
 				Text(lesson.timeslot ?: "", style = MaterialTheme.typography.titleMedium)

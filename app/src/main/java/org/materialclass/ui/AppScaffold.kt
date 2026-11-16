@@ -72,14 +72,14 @@ internal fun AppScaffold(
 				title = { Text(text(titleKey)) },
 				navigationIcon = {
 					if (route !in rootRoutes) {
-						IconButton(onClick = onBack, modifier = Modifier.testTag("back")) {
+						IconButton(onClick = clickFeedback(onBack), modifier = Modifier.testTag("back")) {
 							Icon(Icons.Default.ArrowBack, contentDescription = text("back"))
 						}
 					}
 				},
 				actions = {
 					if (route in rootRoutes) {
-						IconButton(onClick = { navigator.goFrom(route, AppRoute.Profile) {} }) {
+						IconButton(onClick = clickFeedback { navigator.goFrom(route, AppRoute.Profile) {} }) {
 							Icon(Icons.Default.AccountCircle, contentDescription = text("profile"))
 						}
 					}
@@ -103,7 +103,7 @@ internal fun AppScaffold(
 								}
 							} else Modifier,
 							selected = route == itemRoute,
-							onClick = { navigator.goFrom(route, itemRoute) {} },
+							onClick = clickFeedback { navigator.goFrom(route, itemRoute) {} },
 							icon = { Icon(itemRoute.icon(), contentDescription = null) },
 							label = { Text(text(itemRoute.labelKey())) },
 							colors = NavigationBarItemDefaults.colors(

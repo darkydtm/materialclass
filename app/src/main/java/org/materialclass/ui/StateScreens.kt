@@ -40,7 +40,7 @@ internal fun StateScreen(padding: PaddingValues, text: (String) -> String, bar: 
 						if (!isEmptyDay) Text(text("offline_hint"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 					}
 				}
-				if (isError) Button(onClick = retry, shape = RowShape, modifier = Modifier.fillMaxWidth()) { Text(text("retry")) }
+				if (isError) Button(onClick = clickFeedback(retry), shape = RowShape, modifier = Modifier.fillMaxWidth()) { Text(text("retry")) }
 			}
 	}
 }
@@ -58,7 +58,7 @@ internal fun StatePanel(text: (String) -> String, state: UiContent, emptyText: S
 				UiContent.Error -> Text(text("error_load"), color = MaterialTheme.colorScheme.error)
 				UiContent.Unsupported -> Text(text("unsupported"), color = MaterialTheme.colorScheme.error)
 			}
-			if (retry != null && state != UiContent.Ready && state != UiContent.Unsupported) TextButton(onClick = retry) { Text(text("retry")) }
+			if (retry != null && state != UiContent.Ready && state != UiContent.Unsupported) TextButton(onClick = clickFeedback(retry)) { Text(text("retry")) }
 		}
 	}
 }
