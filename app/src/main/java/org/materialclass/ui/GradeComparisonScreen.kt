@@ -32,11 +32,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.materialclass.api.GatewayReadResult
+import org.materialclass.R
 import org.materialclass.data.GradeComparison
 
 
@@ -62,6 +64,7 @@ internal fun GradeComparisonScreen(padding: PaddingValues, text: (String) -> Str
 @Composable
 internal fun ComparisonContent(comparison: GradeComparison, text: (String) -> String) {
 	val locale = LocalConfiguration.current.locales[0]
+	val context = LocalContext.current
 	val own = comparison.studentMark.score
 	val counts = comparison.otherMarks.filter { it.score != null }.groupBy { it.score!! }.mapValues { (_, marks) -> marks.sumOf { it.count } }
 	val scores = (counts.keys + listOfNotNull(own)).sorted()
@@ -90,7 +93,8 @@ internal fun ComparisonContent(comparison: GradeComparison, text: (String) -> St
 					}
 				}
 			}
-			Text("${selected ?: "-"}: ${(counts[selected] ?: 0) + if (selected != null && selected == own) 1 else 0}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+			val count = (counts[selected] ?: 0) + if (selected != null && selected == own) 1 else 0
+			Text(context.resources.getQuantityString(R.plurals.grade_comparison_count, count, count, selected ?: "-"), color = MaterialTheme.colorScheme.onSurfaceVariant)
 		}
 	}
 	val total = others + if (own != null) 1 else 0

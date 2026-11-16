@@ -63,7 +63,12 @@
 	<string name="grade_category_soch">СОЧ</string>
 	<string name="grade_comparison_unavailable">Данные об оценках одноклассников недоступны.</string>
 	<string name="grade_comparison_yours">Ваша оценка</string>
-	<string name="grade_comparison_distribution">Баллы - количество учеников</string>
+	<plurals name="grade_comparison_count">
+		<item quantity="one">%1$d человек получил оценку %2$s</item>
+		<item quantity="few">%1$d человека получили оценку %2$s</item>
+		<item quantity="many">%1$d человек получили оценку %2$s</item>
+		<item quantity="other">%1$d человека получили оценку %2$s</item>
+	</plurals>
 	<string name="open_schedule">Открыть расписание</string>
 	<string name="open_lesson">Открыть урок</string>
 	<string name="open_subject">Открыть предмет</string>

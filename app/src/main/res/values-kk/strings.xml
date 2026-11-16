@@ -63,7 +63,10 @@
 	<string name="grade_category_soch">ТЖБ</string>
 	<string name="grade_comparison_unavailable">Сыныптастардың бағалары қолжетімсіз.</string>
 	<string name="grade_comparison_yours">Сіздің бағаңыз</string>
-	<string name="grade_comparison_distribution">Ұпай - оқушылар саны</string>
+	<plurals name="grade_comparison_count">
+		<item quantity="one">%1$d оқушы %2$s бағасын алды</item>
+		<item quantity="other">%1$d оқушы %2$s бағасын алды</item>
+	</plurals>
 	<string name="open_schedule">Кестені ашу</string>
 	<string name="open_lesson">Сабақты ашу</string>
 	<string name="open_subject">Пәнді ашу</string>
