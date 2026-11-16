@@ -33,6 +33,20 @@ class SecureSessionTest {
 	}
 
 	@Test
+	fun expiredAccessTokenCanBeRefreshedAfterRestore() {
+		val fixture = Fixture()
+		fixture.coordinator.activate(AccountId("account-a"), "expired-access", Instant.parse("2020-01-01T00:00:00Z"))
+		val session = fixture.coordinator.currentSession()!!
+		assertTrue(fixture.coordinator.setRefreshToken(session, "refresh-a"))
+
+		assertTrue(fixture.coordinator.restore(Instant.parse("2030-01-01T00:00:00Z")))
+		assertEquals(null, fixture.coordinator.tokenFor(session))
+		assertEquals("refresh-a", fixture.coordinator.refreshTokenFor(session))
+		assertTrue(fixture.coordinator.replaceTokensIfCurrent(session, "refresh-a", "access-b", "refresh-b", Instant.parse("2031-01-01T00:00:00Z")))
+		assertEquals("access-b", fixture.coordinator.tokenFor(session))
+		assertEquals("refresh-b", fixture.coordinator.refreshTokenFor(session))
+	}
+	@Test
 	fun refreshTokenSurvivesEncryptedSessionRestoreAndRotation() {
 		val fixture = Fixture()
 		val session = fixture.coordinator.activate(AccountId("synthetic-a"), "access-a", Instant.MAX)

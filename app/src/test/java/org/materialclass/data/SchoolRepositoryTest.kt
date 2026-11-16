@@ -20,6 +20,34 @@ class SchoolRepositoryTest {
 	private val capturedAt = Instant.parse("2026-01-02T03:04:05Z")
 
 	@Test
+	fun expiredSessionRefreshesThenRetriesTheUserRead() {
+		val fixture = Fixture()
+		fixture.sessions.expired = true
+		fixture.gateway.refreshResult = true
+		fixture.gateway.scheduleResult = GatewayReadResult.Success(ScheduleModel(3, 1))
+
+		fixture.repository.refreshSchedule(range)
+
+		assertEquals(1, fixture.gateway.refreshCalls)
+		assertEquals(1, fixture.gateway.scheduleCalls)
+		assertEquals("refreshed-token", fixture.sessions.lastToken)
+		assertTrue(fixture.repository.observeSchedule(range).current is DataState.Ready)
+	}
+
+	@Test
+	fun expiredSessionWithoutRefreshTokenFailsReadWithoutRetryingIt() {
+		val fixture = Fixture()
+		fixture.sessions.expired = true
+		fixture.gateway.refreshResult = false
+
+		fixture.repository.refreshSchedule(range)
+
+		assertEquals(1, fixture.gateway.refreshCalls)
+		assertEquals(0, fixture.gateway.scheduleCalls)
+		assertTrue(fixture.repository.observeSchedule(range).current is DataState.Error)
+	}
+
+	@Test
 	fun olderGradesResponseCannotOverwriteNewerPeriodRequest() {
 		val fixture = Fixture()
 		val started = CountDownLatch(1)
@@ -307,8 +335,13 @@ class SchoolRepositoryTest {
 }
 
 private class FakeSessionAccess(@Volatile var active: ActiveSession?) : SessionAccess {
+	@Volatile var expired = false
+	@Volatile var lastToken: String? = null
 	override fun currentSession() = active
-	override fun tokenFor(session: ActiveSession): String? = if (active == session) "synthetic-token" else null
+	override fun tokenFor(session: ActiveSession): String? {
+		if (active != session || expired) return null
+		return "refreshed-token".also { lastToken = it }
+	}
 	override fun <T> withSessionLock(block: () -> T): T = synchronized(this) { block() }
 }
 
@@ -319,9 +352,13 @@ private class FakeGateway : RepositoryGateway {
 	var diaryCall: (() -> GatewayReadResult<DiaryModel>)? = null
 	var scheduleCall: (() -> GatewayReadResult<ScheduleModel>)? = null
 	var gradesCall: (() -> GatewayReadResult<GradesModel>)? = null
+	var refreshResult = false
+	var refreshCalls = 0
+	var scheduleCalls = 0
+	override fun refreshSession(): Boolean { refreshCalls++; return refreshResult }
 	override fun home(context: ReadContext) = GatewayReadResult.Failure<HomeModel>(AppError.UnsupportedContract)
 	override fun diary(context: ReadContext) = diaryCall?.invoke() ?: diaryResult
-	override fun schedule(context: ReadContext) = scheduleCall?.invoke() ?: scheduleResult
+	override fun schedule(context: ReadContext): GatewayReadResult<ScheduleModel> { scheduleCalls++; return scheduleCall?.invoke() ?: scheduleResult }
 	override fun grades(context: ReadContext) = gradesCall?.invoke() ?: gradesResult
 	override fun homeworks(context: ReadContext) = GatewayReadResult.Failure<HomeworksModel>(AppError.UnsupportedContract)
 	override fun journalGrades(context: ReadContext) = GatewayReadResult.Failure<JournalGradesModel>(AppError.UnsupportedContract)

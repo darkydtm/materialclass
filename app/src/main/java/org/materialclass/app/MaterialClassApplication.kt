@@ -80,6 +80,7 @@ class ApplicationRuntime(application: Application) {
 				override fun periods(context: ReadContext) = confirmedGateway.diaryPeriods(context)
 				override fun profile() = confirmedGateway.profile()
 				override fun logout() = confirmedGateway.logout()
+				override fun refreshSession(): Boolean = confirmedGateway.refreshSession()
 			},
 			sessions = sessionCoordinator,
 			store = EncryptedSnapshotStore(sessionCoordinator.cache(), sessionCoordinator),
