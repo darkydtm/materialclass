@@ -131,7 +131,7 @@ class SchoolRepositoryImpl(
 	override fun refreshSession(): Boolean {
 		val session = sessions.currentSession() ?: return false
 		if (sessions.tokenFor(session) != null) return true
-		return gateway.refreshSession()
+		return gateway.refreshSession(session)
 	}
 	override fun logout() {
 		if (gateway.logout() !is GatewayReadResult.Success) return
@@ -162,13 +162,14 @@ class SchoolRepositoryImpl(
 		}
 		val token = sessions.tokenFor(session) ?: run {
 			if (expectedSession == null) {
-				val refreshed = if (sessions.currentSession() == session) gateway.refreshSession() else false
+				val refreshed = if (sessions.currentSession() == session) gateway.refreshSession(session) else false
 				if (sessions.currentSession() != session) return false
 				if (refreshed) {
 					val refreshedToken = sessions.tokenFor(session) ?: run {
 						publishFailureIfCurrent(key, session, AppError.LoginRequired)
 						return false
 					}
+					if (sessions.currentSession() != session) return false
 					return refreshWithToken(key, session, revision, call, refreshedToken)
 				}
 				publishFailureIfCurrent(key, session, AppError.LoginRequired)
@@ -195,9 +196,7 @@ class SchoolRepositoryImpl(
 			GatewayReadResult.Failure(AppError.Network)
 		}
 		if (result == GatewayReadResult.Failure(AppError.Unauthorized) && sessions.currentSession() == session) {
-			val refreshed = sessions.withSessionLock {
-				if (sessions.currentSession() == session) gateway.refreshSession() else false
-			}
+			val refreshed = gateway.refreshSession(session)
 			if (refreshed && sessions.currentSession() == session) {
 				val refreshedToken = sessions.tokenFor(session)
 				if (refreshedToken != null) {

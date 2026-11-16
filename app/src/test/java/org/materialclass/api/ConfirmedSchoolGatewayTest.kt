@@ -203,12 +203,12 @@ class ConfirmedSchoolGatewayTest {
 		responses += HttpResponseData(200, "application/json", validBody)
 		responses += HttpResponseData(200, "application/json", "{\"access_token\":\"stale-access\",\"refresh_token\":\"stale-refresh\",\"exp_time\":\"2030-01-01T00:00:00Z\"}")
 		val sessions = FakeSessionController()
-		val transportStarted = java.util.concurrent.CountDownLatch(1)
+		val enteredTransport = java.util.concurrent.CountDownLatch(1)
 		val allowResponse = java.util.concurrent.CountDownLatch(1)
 		val transport = SyntheticHttpsTransport { request ->
 			if (request.url.endsWith("/login")) responses.removeFirst()
 			else {
-				transportStarted.countDown()
+				enteredTransport.countDown()
 				check(allowResponse.await(5, java.util.concurrent.TimeUnit.SECONDS))
 				responses.removeFirst()
 			}
@@ -218,8 +218,8 @@ class ConfirmedSchoolGatewayTest {
 		val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
 		try {
 			val call = executor.submit<RefreshResult> { gateway.refresh() }
-			assertTrue(transportStarted.await(5, java.util.concurrent.TimeUnit.SECONDS))
-			sessions.onRefreshResponse = { sessions.refreshToken = "already-rotated" }
+			assertTrue(enteredTransport.await(5, java.util.concurrent.TimeUnit.SECONDS))
+			sessions.refreshToken = "already-rotated"
 			allowResponse.countDown()
 
 			assertEquals(RefreshResult.LoginRequired, call.get(5, java.util.concurrent.TimeUnit.SECONDS))
@@ -306,13 +306,13 @@ class ConfirmedSchoolGatewayTest {
 		responses += HttpResponseData(200, "application/json", "{\"access_token\":\"next-access\",\"refresh_token\":\"next-refresh\",\"exp_time\":\"2030-01-01T00:00:00Z\"}")
 		val requests = java.util.Collections.synchronizedList(mutableListOf<HttpRequestData>())
 		val enteredTransport = java.util.concurrent.CountDownLatch(1)
-		val releaseTransport = java.util.concurrent.CountDownLatch(1)
+		val allowResponse = java.util.concurrent.CountDownLatch(1)
 		val transport = SyntheticHttpsTransport { request ->
 			requests += request
 			if (request.url.endsWith("/login")) responses.removeFirst()
 			else {
 				enteredTransport.countDown()
-				check(releaseTransport.await(5, java.util.concurrent.TimeUnit.SECONDS))
+				check(allowResponse.await(5, java.util.concurrent.TimeUnit.SECONDS))
 				responses.removeFirst()
 			}
 		}
@@ -323,19 +323,32 @@ class ConfirmedSchoolGatewayTest {
 			SyntheticConfirmedStudentVerifier(AccountId("student-1")),
 		)
 		assertTrue(gateway.login(credentials) is LoginResult.Confirmed)
+		val callersReady = java.util.concurrent.CountDownLatch(2)
 		val start = java.util.concurrent.CountDownLatch(1)
+		val callerThreads = java.util.Collections.synchronizedList(mutableListOf<Thread>())
 		val results = java.util.Collections.synchronizedList(mutableListOf<RefreshResult>())
 		val executor = java.util.concurrent.Executors.newFixedThreadPool(2)
 		try {
 			val callers = List(2) {
 				executor.submit {
+					callerThreads += Thread.currentThread()
+					callersReady.countDown()
 					start.await()
 					results += gateway.refresh()
 				}
 			}
+			assertTrue(callersReady.await(5, java.util.concurrent.TimeUnit.SECONDS))
 			start.countDown()
 			assertTrue(enteredTransport.await(5, java.util.concurrent.TimeUnit.SECONDS))
-			releaseTransport.countDown()
+			var secondCaller: Thread? = null
+			val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5)
+			while (secondCaller == null && System.nanoTime() < deadline) {
+				secondCaller = callerThreads.firstOrNull { it.state == Thread.State.BLOCKED }
+				Thread.yield()
+			}
+			assertTrue(secondCaller != null)
+			assertEquals(Thread.State.BLOCKED, secondCaller!!.state)
+			allowResponse.countDown()
 			callers.forEach { it.get(5, java.util.concurrent.TimeUnit.SECONDS) }
 
 			val refreshRequests = requests.filter { it.url.endsWith("/refresh_token") }
@@ -344,7 +357,7 @@ class ConfirmedSchoolGatewayTest {
 			assertEquals("next-access", sessions.token)
 			assertEquals("next-refresh", sessions.refreshToken)
 		} finally {
-			releaseTransport.countDown()
+			allowResponse.countDown()
 			executor.shutdownNow()
 		}
 	}
@@ -356,13 +369,14 @@ class ConfirmedSchoolGatewayTest {
 		responses += HttpResponseData(200, "application/json", "{\"access_token\":\"renewed-access\",\"refresh_token\":\"renewed-refresh\",\"exp_time\":\"2030-01-01T00:00:00Z\"}")
 		responses += HttpResponseData(200, "application/json", "{}")
 		val transport = SyntheticHttpsTransport { responses.removeFirst() }
-		val sessions = FakeSessionController().also { it.expires = true }
+		val sessions = FakeSessionController()
 		val gateway = ConfirmedSchoolGateway(
 			SchoolGateway(transport),
 			sessions,
 			SyntheticConfirmedStudentVerifier(AccountId("student-1")),
 		)
 		assertTrue(gateway.login(credentials) is LoginResult.Confirmed)
+		sessions.expires = true
 		val repository = org.materialclass.data.SchoolRepositoryImpl(
 			object : org.materialclass.data.RepositoryGateway {
 				override fun home(context: ReadContext) = GatewayReadResult.Failure<org.materialclass.data.HomeModel>(AppError.UnsupportedContract)
@@ -483,6 +497,12 @@ private class FakeSessionController : SessionController {
 		onRefreshResponse?.invoke()
 		onRefreshResponse = null
 		if (active != session || refreshToken != expectedRefreshToken) return false
+		invalidateAndClear()
+		return true
+	}
+
+	override fun clearIfCurrent(session: ActiveSession?): Boolean {
+		if (active != session) return false
 		invalidateAndClear()
 		return true
 	}
