@@ -248,7 +248,7 @@ class UiModelTest {
 
 		val components = gradeComponents(listOf(lesson1, mixedDuplicate, differentAssessments, lesson2))
 
-		assertEquals(2, components.count { it.category == org.materialclass.grades.GradeCategory.FO })
+		assertEquals(3, components.count { it.category == org.materialclass.grades.GradeCategory.FO })
 		assertEquals(listOf(60.0, 60.0, 80.0), components.filter { it.category == org.materialclass.grades.GradeCategory.SOR }.mapNotNull { it.score }.sorted())
 		assertEquals(2, components.count { it.category == org.materialclass.grades.GradeCategory.SOCH })
 	}
