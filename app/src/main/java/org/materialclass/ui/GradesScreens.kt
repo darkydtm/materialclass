@@ -185,7 +185,12 @@ internal fun gradeContentColor(value: String?, scoreType: String?, maximum: Doub
 
 @Composable
 internal fun GradeTile(value: String?, scoreType: String?, date: String?, type: String?, text: (String) -> String, maximum: Double? = null, maximumLabel: String? = null, uuid: String? = null, comparisonType: String? = null, viewModel: SchoolViewModel? = null, navigator: AppNavigator? = null) {
-	Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp)) {
+	val openComparison = { if (!uuid.isNullOrBlank() && comparisonType != null && viewModel != null && navigator != null) { viewModel.selectComparison(uuid, comparisonType); navigator.go(AppRoute.GradeComparison) } }
+	Column(
+		modifier = if (!uuid.isNullOrBlank() && comparisonType != null && viewModel != null && navigator != null) Modifier.clickable(onClick = openComparison) else Modifier,
+		horizontalAlignment = Alignment.CenterHorizontally,
+		verticalArrangement = Arrangement.spacedBy(5.dp),
+	) {
 		Box(modifier = Modifier.height(18.dp), contentAlignment = Alignment.Center) {
 			if (!type.isNullOrBlank()) Text(type, style = MaterialTheme.typography.labelSmall, maxLines = 1)
 		}
