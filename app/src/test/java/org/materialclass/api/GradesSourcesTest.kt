@@ -152,6 +152,28 @@ class GradesSourcesTest {
 	}
 
 	@Test
+	fun gradesDeduplicateEachAssessmentIndependentlyAcrossMixedAndPartialRows() {
+		val gateway = ConfirmedSchoolGateway(
+			SchoolGateway(SyntheticGradesTransport { request ->
+				if (request.url.substringBefore('?').endsWith("/diary/subjects")) {
+					HttpResponseData(200, "application/json", """{"data":[{"subjectName":"Math","schedules":[{"uuid":"lesson-1","date":"14.11.2026"},{"uuid":"lesson-2","date":"15.11.2026"}]}]}""")
+				} else {
+					HttpResponseData(200, "application/json", """{"data":{"one":{"scheduleUuid":"lesson-1","formattedScore":{"mark":8,"markMax":10},"sor":{"mark":6,"markMax":10},"soch":{"mark":12,"markMax":15}},"partial":{"scheduleUuid":"lesson-1","formattedScore":{"mark":9,"markMax":10},"sor":{"mark":6,"markMax":10}},"different":{"scheduleUuid":"lesson-1","sor":{"mark":8,"markMax":10},"soch":{"mark":12,"markMax":15}},"other-lesson":{"scheduleUuid":"lesson-2","sor":{"mark":6,"markMax":10}}}}""")
+				}
+			}),
+			FakeGradesSessionController(),
+		)
+
+		val schedules = (gateway.grades(context) as GatewayReadResult.Success).value.subjects.single().schedules
+		val lesson1 = schedules.filter { it.uuid == "lesson-1" }
+		assertEquals(listOf("6", "8"), lesson1.mapNotNull { it.sor }.sorted())
+		assertEquals(listOf("12"), lesson1.mapNotNull { it.soch }.distinct())
+		assertEquals(listOf("8", "9"), lesson1.mapNotNull { it.score }.sorted())
+		assertEquals(listOf("6"), schedules.filter { it.uuid == "lesson-2" }.mapNotNull { it.sor })
+		assertEquals(4, schedules.size)
+	}
+
+	@Test
 	fun gradeRequestsSendOnlyParametersForTheirRespectiveServices() {
 		val calls = mutableListOf<HttpRequestData>()
 		val source = ReadContext(

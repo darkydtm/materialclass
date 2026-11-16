@@ -58,18 +58,23 @@ import org.materialclass.grades.GradeCalculator
 import org.materialclass.grades.GradeCategory
 import org.materialclass.grades.GradeComponent
 
-internal fun gradeComponents(schedules: List<GradeSchedule>): List<GradeComponent> = schedules.flatMap { schedule ->
-	fun component(category: GradeCategory, value: String?, maximum: String?): GradeComponent? {
-		val score = value?.toDoubleOrNull() ?: return null
-		val max = maximum?.toDoubleOrNull() ?: return null
-		if (max <= 0 || score !in 0.0..max) return null
-		return GradeComponent(category, score * 100 / max)
+internal fun gradeComponents(schedules: List<GradeSchedule>): List<GradeComponent> {
+	val seen = mutableSetOf<List<String?>>()
+	return schedules.flatMap { schedule ->
+		fun component(category: GradeCategory, value: String?, maximum: String?): GradeComponent? {
+			val score = value?.toDoubleOrNull() ?: return null
+			val max = maximum?.toDoubleOrNull() ?: return null
+			if (max <= 0 || score !in 0.0..max) return null
+			val identity = listOf(schedule.uuid, category.name, value, maximum)
+			if (schedule.uuid != null && !seen.add(identity)) return null
+			return GradeComponent(category, score * 100 / max)
+		}
+		listOfNotNull(
+			component(GradeCategory.FO, schedule.score, schedule.markMax?.toString()),
+			component(GradeCategory.SOR, schedule.sor, schedule.sorMax),
+			component(GradeCategory.SOCH, schedule.soch, schedule.sochMax),
+		)
 	}
-	listOfNotNull(
-		component(GradeCategory.FO, schedule.score, schedule.markMax?.toString()),
-		component(GradeCategory.SOR, schedule.sor, schedule.sorMax),
-		component(GradeCategory.SOCH, schedule.soch, schedule.sochMax),
-	)
 }
 
 @Composable
