@@ -217,7 +217,18 @@ class ConfirmedSchoolGateway(
 		val bySchedule = journal?.grades.orEmpty()
 			.filter { !it.scheduleUuid.isNullOrBlank() }
 			.groupBy { it.scheduleUuid }
-			.mapValues { (_, grades) -> grades.distinctBy { listOf(it.attendance, it.mark, it.markMax, it.sor, it.sorMax, it.soch, it.sochMax) } }
+			.mapValues { (_, grades) ->
+				val seenMarks = mutableSetOf<Pair<String, String?>>()
+				val seenSors = mutableSetOf<Pair<String, String?>>()
+				val seenSochs = mutableSetOf<Pair<String, String?>>()
+				grades.map { grade ->
+					grade.copy(
+						mark = grade.mark?.takeIf { seenMarks.add(it to grade.markMax) },
+						sor = grade.sor?.takeIf { seenSors.add(it to grade.sorMax) },
+						soch = grade.soch?.takeIf { seenSochs.add(it to grade.sochMax) },
+					)
+				}.filter { it.mark != null || it.sor != null || it.soch != null || it.attendance != null }
+			}
 		return GatewayReadResult.Success(
 			GradesModel(
 				subjects.subjectCount,

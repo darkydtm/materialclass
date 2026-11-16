@@ -240,6 +240,20 @@ class UiModelTest {
 	}
 
 	@Test
+	fun gradeComponentsCollapseRepeatedLessonCategoryValuesButKeepDistinctScoresAndLessons() {
+		val lesson1 = org.materialclass.data.GradeSchedule("lesson-1", null, null, 10, null, score = "8", sor = "6", sorMax = "10", soch = "12", sochMax = "15")
+		val mixedDuplicate = lesson1.copy(score = "9", soch = null)
+		val differentAssessments = lesson1.copy(sor = "8")
+		val lesson2 = lesson1.copy(uuid = "lesson-2")
+
+		val components = gradeComponents(listOf(lesson1, mixedDuplicate, differentAssessments, lesson2))
+
+		assertEquals(2, components.count { it.category == org.materialclass.grades.GradeCategory.FO })
+		assertEquals(listOf(60.0, 60.0, 80.0), components.filter { it.category == org.materialclass.grades.GradeCategory.SOR }.mapNotNull { it.score }.sorted())
+		assertEquals(2, components.count { it.category == org.materialclass.grades.GradeCategory.SOCH })
+	}
+
+	@Test
 	fun journalGradesMatchLessonUuidAndPreserveAllAssessments() {
 		val grade = org.materialclass.data.JournalGrade("lesson-1", null, null, "12", "24", null, "8", "10", null, "15", "30")
 		val journal = org.materialclass.data.JournalGradesModel(listOf(grade), 1, 0)
