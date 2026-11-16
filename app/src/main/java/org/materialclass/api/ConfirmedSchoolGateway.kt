@@ -158,8 +158,19 @@ class ConfirmedSchoolGateway(
 		return true
 	}
 
+	fun refreshSession(session: ActiveSession): Boolean = when (refresh(session)) {
+		is RefreshResult.Refreshed -> true
+		else -> false
+	}
+
 	fun refresh(): RefreshResult {
 		val session = sessions.currentSession() ?: return RefreshResult.LoginRequired
+		return refresh(session)
+	}
+
+	fun refresh(session: ActiveSession): RefreshResult {
+		val currentSession = sessions.currentSession() ?: return RefreshResult.LoginRequired
+		if (currentSession != session) return RefreshResult.LoginRequired
 		val requestedToken = sessions.refreshTokenFor(session) ?: return RefreshResult.LoginRequired
 		return synchronized(refreshLock) {
 			if (sessions.currentSession() != session) return@synchronized RefreshResult.LoginRequired

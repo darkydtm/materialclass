@@ -76,6 +76,9 @@ private class SyntheticProfileTransport(
 private class ProfileSessionController : SessionController {
 	override fun activate(accountId: AccountId, token: String, expiresAt: Instant): ActiveSession =
 		ActiveSession(accountId, Generation(1))
+	override fun replaceTokensIfCurrent(session: ActiveSession, expectedRefreshToken: String, accessToken: String, refreshToken: String, expiresAt: Instant): Boolean = false
+	override fun invalidateIfCurrent(session: ActiveSession, expectedRefreshToken: String): Boolean = false
+	override fun clearIfCurrent(session: ActiveSession?): Boolean = false
 
 	override fun invalidateAndClear() = Unit
 }
