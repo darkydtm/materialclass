@@ -145,14 +145,13 @@ class ConfirmedSchoolGateway(
 
 	fun restoreSession(): Boolean {
 		val session = sessions.currentSession() ?: return false
-		if (sessions.refreshTokenFor(session).isNullOrBlank()) {
-			sessions.invalidateAndClear()
+		val user = sessions.userInfoFor(session)
+		if (sessions.refreshTokenFor(session).isNullOrBlank() || user == null ||
+			user.userId != session.accountId.value || identityVerifier.verify(user) != IdentityDecision.ConfirmedStudent) {
+			sessions.clearIfCurrent(session)
 			return false
 		}
-		val user = sessions.userInfoFor(session) ?: run {
-			sessions.invalidateAndClear()
-			return false
-		}
+		if (sessions.currentSession() != session) return false
 		signedInUser = user
 		lastLoginResponse = null
 		return true

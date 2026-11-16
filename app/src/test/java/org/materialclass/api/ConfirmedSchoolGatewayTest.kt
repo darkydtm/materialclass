@@ -384,7 +384,7 @@ class ConfirmedSchoolGatewayTest {
 				override fun schedule(context: ReadContext) = gateway.schedule(context)
 				override fun grades(context: ReadContext) = gateway.grades(context)
 				override fun profile() = gateway.profile()
-				override fun refreshSession() = gateway.refreshSession()
+				override fun refreshSession(session: ActiveSession) = gateway.refreshSession(session)
 			},
 			sessions,
 			object : org.materialclass.data.SnapshotStore {
@@ -399,6 +399,17 @@ class ConfirmedSchoolGatewayTest {
 		assertEquals("renewed-access", sessions.token)
 		assertEquals("renewed-refresh", sessions.refreshToken)
 		assertTrue(repository.observeDiary(org.materialclass.data.DateRange(java.time.LocalDate.parse("2026-01-01"), java.time.LocalDate.parse("2026-01-02"))).current is org.materialclass.data.DataState.Ready)
+	}
+
+	@Test
+	fun restoreRejectsMismatchedUserContext() {
+		val sessions = FakeSessionController()
+		val session = sessions.activate(AccountId("student-1"), "access", Instant.MAX)
+		sessions.setRefreshToken(session, "refresh")
+		sessions.userInfo = UserInfo(userId = "other", hasStudentContext = true)
+		val gateway = ConfirmedSchoolGateway(SchoolGateway(SyntheticHttpsTransport { error("unexpected request") }), sessions, StudentRoleVerifier)
+		assertFalse(gateway.restoreSession())
+		assertEquals(null, sessions.currentSession())
 	}
 
 	@Test
@@ -444,12 +455,13 @@ private class SyntheticHttpsTransport(
 	}
 }
 
-private class FakeSessionController : SessionController {
+private class FakeSessionController : SessionController, org.materialclass.data.SessionAccess {
 	@Volatile var active: ActiveSession? = null
 	@Volatile var token: String? = null
 	@Volatile var refreshToken: String? = null
 	@Volatile var expires = false
 	@Volatile var clearCount = 0
+	var userInfo: UserInfo? = null
 	var onRefreshResponse: (() -> Unit)? = null
 
 	override fun activate(accountId: AccountId, token: String, expiresAt: Instant): ActiveSession {
@@ -467,8 +479,11 @@ private class FakeSessionController : SessionController {
 	override fun currentSession(): ActiveSession? = active
 
 	override fun accessTokenFor(session: ActiveSession): String? = token.takeIf { active == session && !expires }
+	override fun tokenFor(session: ActiveSession): String? = accessTokenFor(session)
+	override fun <T> withSessionLock(block: () -> T): T = synchronized(this) { block() }
 
 	override fun refreshTokenFor(session: ActiveSession): String? = refreshToken.takeIf { active == session }
+	override fun userInfoFor(session: ActiveSession): UserInfo? = userInfo.takeIf { active == session }
 
 	override fun replaceTokens(session: ActiveSession, accessToken: String, refreshToken: String, expiresAt: Instant): Boolean {
 		onRefreshResponse?.invoke()

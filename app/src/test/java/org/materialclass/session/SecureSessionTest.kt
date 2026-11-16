@@ -39,12 +39,13 @@ class SecureSessionTest {
 		val session = fixture.coordinator.currentSession()!!
 		assertTrue(fixture.coordinator.setRefreshToken(session, "refresh-a"))
 
-		assertTrue(fixture.coordinator.restore(Instant.parse("2030-01-01T00:00:00Z")))
-		assertEquals(null, fixture.coordinator.tokenFor(session))
-		assertEquals("refresh-a", fixture.coordinator.refreshTokenFor(session))
-		assertTrue(fixture.coordinator.replaceTokensIfCurrent(session, "refresh-a", "access-b", "refresh-b", Instant.parse("2031-01-01T00:00:00Z")))
-		assertEquals("access-b", fixture.coordinator.tokenFor(session))
-		assertEquals("refresh-b", fixture.coordinator.refreshTokenFor(session))
+		val restored = SessionCoordinator(fixture.store, fixture.files, fixture.keys, fixture.cipher, fixture.tasks)
+		assertTrue(restored.restore(Instant.parse("2030-01-01T00:00:00Z")))
+		assertEquals(null, restored.tokenFor(session))
+		assertEquals("refresh-a", restored.refreshTokenFor(session))
+		assertTrue(restored.replaceTokensIfCurrent(session, "refresh-a", "access-b", "refresh-b", Instant.MAX))
+		assertEquals("access-b", restored.tokenFor(session))
+		assertEquals("refresh-b", restored.refreshTokenFor(session))
 	}
 	@Test
 	fun refreshTokenSurvivesEncryptedSessionRestoreAndRotation() {
