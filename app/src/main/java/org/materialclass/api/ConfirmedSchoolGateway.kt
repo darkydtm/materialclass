@@ -214,14 +214,19 @@ class ConfirmedSchoolGateway(
 			GatewayReadResult.Empty -> null
 			is GatewayReadResult.Failure -> return GatewayReadResult.Failure(result.error)
 		}
-		val bySchedule = journal?.grades.orEmpty().associateBy { it.scheduleUuid }
+		val bySchedule = journal?.grades.orEmpty()
+			.filter { !it.scheduleUuid.isNullOrBlank() }
+			.groupBy { it.scheduleUuid }
+			.mapValues { (_, grades) -> grades.distinctBy { listOf(it.attendance, it.mark, it.markMax, it.sor, it.sorMax, it.soch, it.sochMax) } }
 		return GatewayReadResult.Success(
 			GradesModel(
 				subjects.subjectCount,
 				subjects.subjects.map { subject ->
-					subject.copy(schedules = subject.schedules.map { schedule ->
-						val grade = bySchedule[schedule.uuid]
-						schedule.copy(score = grade?.mark, markMax = grade?.markMax?.toIntOrNull() ?: schedule.markMax, attendance = grade?.attendance, sor = grade?.sor, sorMax = grade?.sorMax, soch = grade?.soch, sochMax = grade?.sochMax)
+					subject.copy(schedules = subject.schedules.flatMap { schedule ->
+						val matchingGrades = schedule.uuid?.let { bySchedule[it] }.orEmpty().ifEmpty { listOf(null) }
+						matchingGrades.map { grade ->
+							schedule.copy(score = grade?.mark, markMax = grade?.markMax?.toIntOrNull() ?: schedule.markMax, attendance = grade?.attendance, sor = grade?.sor, sorMax = grade?.sorMax, soch = grade?.soch, sochMax = grade?.sochMax)
+						}
 					})
 				},
 			),
