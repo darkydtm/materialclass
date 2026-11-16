@@ -257,7 +257,10 @@ class ConfirmedSchoolGateway(
 			GradesModel(
 				subjects.subjectCount,
 				subjects.subjects.map { subject ->
-					subject.copy(schedules = subject.schedules.flatMap { schedule ->
+					val seenSchedules = mutableSetOf<String>()
+					subject.copy(schedules = subject.schedules.filter { schedule ->
+						schedule.uuid.isNullOrBlank() || seenSchedules.add(schedule.uuid)
+					}.flatMap { schedule ->
 						val matchingGrades = schedule.uuid?.let { bySchedule[it] }.orEmpty().ifEmpty { listOf(null) }
 						matchingGrades.map { grade ->
 							schedule.copy(score = grade?.mark, markMax = grade?.markMax?.toIntOrNull() ?: schedule.markMax, attendance = grade?.attendance, sor = grade?.sor, sorMax = grade?.sorMax, soch = grade?.soch, sochMax = grade?.sochMax)

@@ -71,6 +71,34 @@ class GradeCalculatorTest {
 	}
 
 	@Test
+	fun categoryPercentagesUseFullScaleWithoutApplyingWeights() {
+		val components = listOf(
+			GradeComponent(GradeCategory.FO, 100.0),
+			GradeComponent(GradeCategory.SOR, 80.0),
+			GradeComponent(GradeCategory.SOCH, 60.0),
+		)
+
+		assertEquals(100.0, GradeCalculator.categoryPercentage(components, GradeCategory.FO)!!, 0.000001)
+		assertEquals(80.0, GradeCalculator.categoryPercentage(components, GradeCategory.SOR)!!, 0.000001)
+		assertEquals(60.0, GradeCalculator.categoryPercentage(components, GradeCategory.SOCH)!!, 0.000001)
+		assertEquals(85.0, GradeCalculator.calculate(components).percentage!!, 0.000001)
+	}
+
+	@Test
+	fun formativePercentageAveragesScoresAndIgnoresMissingCategories() {
+		val components = listOf(
+			GradeComponent(GradeCategory.FO, 100.0),
+			GradeComponent(GradeCategory.FO, 60.0),
+			GradeComponent(GradeCategory.FO, null),
+		)
+
+		assertEquals(80.0, GradeCalculator.categoryPercentage(components, GradeCategory.FO)!!, 0.000001)
+		assertEquals(80.0, GradeCalculator.calculate(components).percentage!!, 0.000001)
+		assertEquals(null, GradeCalculator.categoryPercentage(components, GradeCategory.SOR))
+		assertEquals(null, GradeCalculator.categoryPercentage(emptyList(), GradeCategory.FO))
+	}
+
+	@Test
 	fun exactThresholdsMapToExpectedGrades() {
 		assertGrade(85.0, 5)
 		assertGrade(65.0, 4)

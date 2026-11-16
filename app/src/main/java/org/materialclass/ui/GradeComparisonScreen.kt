@@ -31,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -56,7 +57,7 @@ internal fun GradeComparisonScreen(padding: PaddingValues, text: (String) -> Str
 }
 
 @Composable
-private fun ComparisonContent(comparison: GradeComparison, text: (String) -> String) {
+internal fun ComparisonContent(comparison: GradeComparison, text: (String) -> String) {
 	val locale = LocalConfiguration.current.locales[0]
 	val own = comparison.studentMark.score
 	val counts = comparison.otherMarks.filter { it.score != null }.groupBy { it.score!! }.mapValues { (_, marks) -> marks.sumOf { it.count } }
@@ -66,13 +67,13 @@ private fun ComparisonContent(comparison: GradeComparison, text: (String) -> Str
 	var selected by remember(comparison) { mutableStateOf(own) }
 	var chartVisible by remember(comparison) { mutableStateOf(false) }
 	LaunchedEffect(comparison) { chartVisible = true }
-	Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer), modifier = Modifier.fillMaxWidth()) {
+	Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer), modifier = Modifier.fillMaxWidth().testTag("comparison-summary")) {
 		Column(modifier = Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
 			Text("${text("grade_comparison_yours")}: ${own ?: text("no_data")}${comparison.maxScore?.let { "/$it" }.orEmpty()}", style = MaterialTheme.typography.labelLarge)
 			if (lower != null) Text("${text("comparison_above")} $lower / $others", style = MaterialTheme.typography.headlineMedium)
 		}
 	}
-	Card(shape = CardShape, modifier = Modifier.fillMaxWidth()) {
+	Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow, contentColor = MaterialTheme.colorScheme.onSurface), modifier = Modifier.fillMaxWidth().testTag("comparison-chart")) {
 		Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 			val maxCount = (scores.maxOfOrNull { score -> (counts[score] ?: 0) + if (score == own) 1 else 0 } ?: 0).coerceAtLeast(1)
 			Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).height(170.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Bottom) {

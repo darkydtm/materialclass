@@ -167,10 +167,29 @@ class GradesSourcesTest {
 		val schedules = (gateway.grades(context) as GatewayReadResult.Success).value.subjects.single().schedules
 		val lesson1 = schedules.filter { it.uuid == "lesson-1" }
 		assertEquals(listOf("6", "8"), lesson1.mapNotNull { it.sor }.sorted())
-		assertEquals(listOf("12"), lesson1.mapNotNull { it.soch }.distinct())
+		assertEquals(listOf("12"), lesson1.mapNotNull { it.soch })
 		assertEquals(listOf("8", "9"), lesson1.mapNotNull { it.score }.sorted())
 		assertEquals(listOf("6"), schedules.filter { it.uuid == "lesson-2" }.mapNotNull { it.sor })
 		assertEquals(4, schedules.size)
+	}
+
+	@Test
+	fun repeatedSubjectSchedulesDoNotDuplicateJournalAssessments() {
+		val gateway = ConfirmedSchoolGateway(
+			SchoolGateway(SyntheticGradesTransport { request ->
+				if (request.url.substringBefore('?').endsWith("/diary/subjects")) {
+					HttpResponseData(200, "application/json", """{"data":[{"subjectName":"Math","schedules":[{"uuid":"lesson-1","date":"14.11.2026"},{"uuid":"lesson-1","date":"14.11.2026"},{"uuid":"lesson-2","date":"15.11.2026"}]}]}""")
+				} else {
+					HttpResponseData(200, "application/json", """{"data":{"lesson-1":{"sor":{"mark":6,"markMax":10},"soch":{"mark":12,"markMax":15}},"lesson-2":{"sor":{"mark":6,"markMax":10},"soch":{"mark":12,"markMax":15}}}}""")
+				}
+			}),
+			FakeGradesSessionController(),
+		)
+
+		val schedules = (gateway.grades(context) as GatewayReadResult.Success).value.subjects.single().schedules
+		assertEquals(listOf("lesson-1", "lesson-2"), schedules.map { it.uuid })
+		assertEquals(listOf("6", "6"), schedules.mapNotNull { it.sor })
+		assertEquals(listOf("12", "12"), schedules.mapNotNull { it.soch })
 	}
 
 	@Test

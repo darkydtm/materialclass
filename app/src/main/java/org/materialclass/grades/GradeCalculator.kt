@@ -33,6 +33,10 @@ object GradeCalculator {
 		GradeCategory.SOCH to 0.25,
 	)
 
+	fun categoryPercentage(components: List<GradeComponent>, category: GradeCategory): Double? =
+		components.filter { it.category == category }.mapNotNull(GradeComponent::score)
+			.takeIf { it.isNotEmpty() }?.average()
+
 	fun calculate(components: List<GradeComponent>): GradeEstimate {
 		val averages = components
 			.filter { it.score != null }

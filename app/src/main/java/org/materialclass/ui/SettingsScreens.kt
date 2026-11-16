@@ -3,6 +3,8 @@ package org.materialclass.ui
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -73,13 +75,23 @@ internal fun VibrationScreen(padding: PaddingValues, text: (String) -> String) {
 	val preferences = remember(context) { AppPreferences(context) }
 	var enabled by remember { androidx.compose.runtime.mutableStateOf(preferences.vibrationEnabled()) }
 	var strength by remember { androidx.compose.runtime.mutableStateOf(preferences.vibrationStrength().toFloat()) }
+	val vibrator = remember(context) {
+		if (Build.VERSION.SDK_INT >= 31) context.getSystemService(VibratorManager::class.java).defaultVibrator
+		else @Suppress("DEPRECATION") (context.getSystemService(android.content.Context.VIBRATOR_SERVICE) as Vibrator)
+	}
+	val amplitudeSupported = Build.VERSION.SDK_INT >= 26 && vibrator.hasVibrator() && vibrator.hasAmplitudeControl()
 	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
 		NotificationRow(text, text("vibration"), text("vibration_description"), enabled) {
 			enabled = it
 			preferences.setVibrationEnabled(it)
 		}
-		Text(text("vibration_strength"), style = MaterialTheme.typography.labelLarge)
-		Slider(value = strength, onValueChange = { strength = it; preferences.setVibrationStrength(it.toInt()) }, valueRange = 1f..255f, enabled = enabled)
+		Card(shape = RowShape, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
+			Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+				Text(text("vibration_strength"), style = MaterialTheme.typography.labelLarge)
+				Slider(value = strength, onValueChange = { strength = it; preferences.setVibrationStrength(it.toInt()) }, valueRange = 1f..255f, steps = 9, enabled = enabled && amplitudeSupported)
+				if (!amplitudeSupported) Text(text("vibration_strength_unavailable"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+			}
+		}
 	}
 }
 

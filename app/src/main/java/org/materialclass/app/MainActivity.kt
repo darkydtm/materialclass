@@ -15,8 +15,8 @@ class MainActivity : ComponentActivity() {
 	private fun vibrateClick(strength: Int) {
 		val vibrator = if (Build.VERSION.SDK_INT >= 31) getSystemService(VibratorManager::class.java).defaultVibrator else @Suppress("DEPRECATION") (getSystemService(VIBRATOR_SERVICE) as Vibrator)
 		if (!vibrator.hasVibrator()) return
-		if (Build.VERSION.SDK_INT >= 26) vibrator.vibrate(VibrationEffect.createOneShot(10, strength))
-		else @Suppress("DEPRECATION") vibrator.vibrate(10)
+		if (Build.VERSION.SDK_INT >= 26) vibrator.vibrate(VibrationEffect.createOneShot(20, strength.coerceIn(1, 255)))
+		else @Suppress("DEPRECATION") vibrator.vibrate(20)
 	}
 
 

@@ -17,7 +17,7 @@ interface SchoolRepository {
 	fun observeJournal(range: DateRange): RepositoryObservation<JournalGradesModel>
 	fun observeProfile(): RepositoryObservation<ProfileModel>
 	fun gradeComparison(uuid: String, type: String): GatewayReadResult<GradeComparison> = GatewayReadResult.Failure(AppError.UnsupportedContract)
-	fun quarterRange(period: String): DateRange? = null
+	fun diaryPeriods(): GatewayReadResult<PeriodsModel> = GatewayReadResult.Failure(AppError.UnsupportedContract)
 	fun refreshHome()
 	fun refreshDiary(range: DateRange)
 	fun refreshSchedule(range: DateRange)
@@ -106,9 +106,7 @@ class SchoolRepositoryImpl(
 	override fun gradeComparison(uuid: String, type: String): GatewayReadResult<GradeComparison> =
 		authenticatedRead("comparison") { gateway.gradeComparison(it, uuid, type) }
 
-	override fun quarterRange(period: String): DateRange? = org.materialclass.notifications.SelectedPeriodRange.resolve(
-		period, authenticatedRead("periods") { gateway.periods(it) },
-	)
+	override fun diaryPeriods(): GatewayReadResult<PeriodsModel> = authenticatedRead("periods") { gateway.periods(it) }
 
 	private fun <T> authenticatedRead(key: String, call: (ReadContext) -> GatewayReadResult<T>): GatewayReadResult<T> {
 		val session = sessions.currentSession() ?: return GatewayReadResult.Failure(AppError.LoginRequired)
