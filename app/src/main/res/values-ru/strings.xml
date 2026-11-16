@@ -33,7 +33,7 @@
 	<string name="vibration_description">Лёгкий отклик при нажатии</string>
 	<string name="vibration_strength_unavailable">Регулировка силы вибрации недоступна на этом устройстве</string>
 	<string name="vibration_strength">Сила вибрации</string>
-	<string name="vibration_strength_unavailable">Регулировка силы не поддерживается этим устройством.</string>
+
 	<string name="home_description">Расписание, задания и оценки - в одном месте.</string>
 	<string name="week_title">Расписание</string>
 	<string name="diary_title">Дневник</string>

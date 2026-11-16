@@ -33,7 +33,7 @@
 	<string name="vibration_description">Light feedback on press</string>
 	<string name="vibration_strength_unavailable">Vibration strength control is unavailable on this device</string>
 	<string name="vibration_strength">Vibration strength</string>
-	<string name="vibration_strength_unavailable">Strength adjustment is not supported by this device.</string>
+
 	<string name="home_description">Schedule, homework, and grades in one place.</string>
 	<string name="week_title">Schedule</string>
 	<string name="diary_title">Diary</string>
