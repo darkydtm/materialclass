@@ -1,5 +1,6 @@
 package org.materialclass.ui
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -26,6 +27,7 @@ import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.WavyProgressIndicatorDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -119,8 +121,13 @@ internal fun HomeScreen(
 @Composable
 internal fun DayProgressIndicator(completedLessons: Int, totalLessons: Int, label: String) {
 	val progress = if (totalLessons <= 0) 0f else (completedLessons.toFloat() / totalLessons).coerceIn(0f, 1f)
+	val animatedProgress by animateFloatAsState(
+		targetValue = progress,
+		animationSpec = WavyProgressIndicatorDefaults.ProgressAnimationSpec,
+		label = "day-progress",
+	)
 	LinearWavyProgressIndicator(
-		progress = { progress },
+		progress = { animatedProgress },
 		modifier = Modifier.fillMaxWidth().semantics { contentDescription = label },
 		color = MaterialTheme.colorScheme.primary,
 		trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,

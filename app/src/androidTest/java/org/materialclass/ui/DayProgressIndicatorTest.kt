@@ -43,4 +43,24 @@ class DayProgressIndicatorTest {
 		composeRule.onNode(hasContentDescription("Today's progress"))
 			.assert(SemanticsMatcher.expectValue(SemanticsProperties.ProgressBarRangeInfo, ProgressBarRangeInfo(1f, 0f..1f)))
 	}
+
+	@Test
+	fun progressIsClampedToIndicatorRange() {
+		composeRule.setContent {
+			DayProgressIndicator(completedLessons = 5, totalLessons = 4, label = "Today's progress")
+		}
+
+		composeRule.onNode(hasContentDescription("Today's progress"))
+			.assert(SemanticsMatcher.expectValue(SemanticsProperties.ProgressBarRangeInfo, ProgressBarRangeInfo(1f, 0f..1f)))
+	}
+
+	@Test
+	fun negativeProgressIsClampedToZero() {
+		composeRule.setContent {
+			DayProgressIndicator(completedLessons = -1, totalLessons = 4, label = "Today's progress")
+		}
+
+		composeRule.onNode(hasContentDescription("Today's progress"))
+			.assert(SemanticsMatcher.expectValue(SemanticsProperties.ProgressBarRangeInfo, ProgressBarRangeInfo(0f, 0f..1f)))
+	}
 }
