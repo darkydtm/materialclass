@@ -17,6 +17,7 @@ import java.util.Locale
 import java.util.concurrent.Executors
 import org.materialclass.api.AppError
 import org.materialclass.api.GatewayLoginResult
+import org.materialclass.api.GatewayReadResult
 import org.materialclass.api.LoginCredentials
 import org.materialclass.data.DataState
 import org.materialclass.data.DateRange

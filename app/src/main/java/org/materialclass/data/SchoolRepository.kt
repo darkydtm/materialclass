@@ -155,7 +155,7 @@ class SchoolRepositoryImpl(
 	}
 
 	private fun <T> load(key: String, call: (ReadContext) -> GatewayReadResult<T>) {
-		val session = sessions.currentSession() ?: return refresh(key, call = call)
+		val session = sessions.currentSession() ?: run { refresh(key, call = call); return }
 		val existing = synchronized(lock) { states[key]?.takeIf { snapshotFor(it, session) != null } }
 		val needsCache = existing == null && synchronized(lock) { (session to key) !in requestedSlices }
 		val restored = if (needsCache) readSlice<T>(key, session) else null

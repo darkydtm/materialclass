@@ -88,10 +88,11 @@ internal fun PullRefreshLayout(
 		animationSpec = tween(durationMillis = 160),
 		label = "pull-refresh-size",
 	)
+	val indicatorOffset = with(LocalDensity.current) { (state.progress - indicatorSize.toPx() / 2f).coerceAtLeast(0f).roundToInt() }
 	Box(modifier) {
 		content(Modifier.nestedScroll(connection))
 		val indicatorModifier = Modifier.align(Alignment.TopCenter)
-			.offset { IntOffset(0, (state.progress - with(LocalDensity.current) { indicatorSize.toPx() / 2f }).coerceAtLeast(0f).roundToInt()) }
+			.offset { IntOffset(0, indicatorOffset) }
 			.size(indicatorSize)
 			.graphicsLayer { alpha = indicatorAlpha }
 			.testTag("pull-refresh-indicator")
