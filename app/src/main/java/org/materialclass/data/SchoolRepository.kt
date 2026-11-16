@@ -39,7 +39,7 @@ interface RepositoryGateway {
 	fun periods(context: ReadContext): GatewayReadResult<PeriodsModel> = GatewayReadResult.Failure(AppError.UnsupportedContract)
 	fun profile(): GatewayReadResult<ProfileModel>
 	fun logout(): GatewayReadResult<Unit> = GatewayReadResult.Success(Unit)
-	fun refreshSession(): Boolean = false
+	fun refreshSession(session: ActiveSession): Boolean = false
 }
 
 interface SessionAccess {
@@ -103,18 +103,24 @@ class SchoolRepositoryImpl(
 	override fun observeHomeworks() = observation<HomeworksModel>(HOMEWORKS)
 	override fun observeJournal(range: DateRange) = observation<JournalGradesModel>(journalKey(range))
 	override fun observeProfile() = observation<ProfileModel>(PROFILE)
-	override fun gradeComparison(uuid: String, type: String): GatewayReadResult<GradeComparison> {
-		val session = sessions.currentSession() ?: return GatewayReadResult.Failure(AppError.LoginRequired)
-		val token = sessions.tokenFor(session) ?: return GatewayReadResult.Failure(AppError.LoginRequired)
-		val result = gateway.gradeComparison(context(token, "comparison"), uuid, type)
-		return sessions.withSessionLock { if (sessions.currentSession() == session) result else GatewayReadResult.Failure(AppError.LoginRequired) }
-	}
+	override fun gradeComparison(uuid: String, type: String): GatewayReadResult<GradeComparison> =
+		authenticatedRead("comparison") { gateway.gradeComparison(it, uuid, type) }
 
-	override fun quarterRange(period: String): DateRange? {
-		val session = sessions.currentSession() ?: return null
-		val token = sessions.tokenFor(session) ?: return null
-		val result = org.materialclass.notifications.SelectedPeriodRange.resolve(period, gateway.periods(context(token, "periods")))
-		return sessions.withSessionLock { if (sessions.currentSession() == session) result else null }
+	override fun quarterRange(period: String): DateRange? = org.materialclass.notifications.SelectedPeriodRange.resolve(
+		period, authenticatedRead("periods") { gateway.periods(it) },
+	)
+
+	private fun <T> authenticatedRead(key: String, call: (ReadContext) -> GatewayReadResult<T>): GatewayReadResult<T> {
+		val session = sessions.currentSession() ?: return GatewayReadResult.Failure(AppError.LoginRequired)
+		var token = sessions.tokenFor(session)
+		if (token == null && gateway.refreshSession(session)) token = sessions.tokenFor(session)
+		if (token == null || sessions.currentSession() != session) return GatewayReadResult.Failure(AppError.LoginRequired)
+		var result = call(context(token, key))
+		if (result == GatewayReadResult.Failure(AppError.Unauthorized) && sessions.currentSession() == session && gateway.refreshSession(session)) {
+			val renewed = sessions.tokenFor(session)
+			if (renewed != null && sessions.currentSession() == session) result = call(context(renewed, key))
+		}
+		return sessions.withSessionLock { if (sessions.currentSession() == session) result else GatewayReadResult.Failure(AppError.LoginRequired) }
 	}
 
 	override fun refreshHome() { refresh(HOME) { gateway.home(it) } }
@@ -128,11 +134,6 @@ class SchoolRepositoryImpl(
 	override fun refreshHomeworks() { refresh(HOMEWORKS) { gateway.homeworks(it) } }
 	override fun refreshJournal(range: DateRange) { refresh(journalKey(range)) { gateway.journalGrades(it) } }
 	override fun refreshProfile() { refresh(PROFILE) { gateway.profile() } }
-	override fun refreshSession(): Boolean {
-		val session = sessions.currentSession() ?: return false
-		if (sessions.tokenFor(session) != null) return true
-		return gateway.refreshSession(session)
-	}
 	override fun logout() {
 		if (gateway.logout() !is GatewayReadResult.Success) return
 		sessions.withSessionLock { synchronized(lock) { states.clear(); observations.values.forEach { it.update(DataState.Loading) } } }
@@ -161,8 +162,8 @@ class SchoolRepositoryImpl(
 			}
 		}
 		val token = sessions.tokenFor(session) ?: run {
-			if (expectedSession == null) {
-				val refreshed = if (sessions.currentSession() == session) gateway.refreshSession(session) else false
+			if (sessions.currentSession() == session) {
+				val refreshed = gateway.refreshSession(session)
 				if (sessions.currentSession() != session) return false
 				if (refreshed) {
 					val refreshedToken = sessions.tokenFor(session) ?: run {

@@ -48,6 +48,52 @@ class SchoolRepositoryTest {
 	}
 
 	@Test
+	fun unauthorizedReadRefreshesAndRetriesOnce() {
+		val fixture = Fixture()
+		fixture.gateway.refreshResult = true
+		var calls = 0
+		fixture.gateway.scheduleCall = {
+			if (++calls == 1) GatewayReadResult.Failure(AppError.Unauthorized)
+			else GatewayReadResult.Success(ScheduleModel(3, 1))
+		}
+		fixture.repository.refreshSchedule(range)
+		assertEquals(1, fixture.gateway.refreshCalls)
+		assertEquals(2, calls)
+		assertTrue(fixture.repository.observeSchedule(range).current is DataState.Ready)
+	}
+
+	@Test
+	fun expiredComparisonRefreshesBeforeRequest() {
+		val fixture = Fixture()
+		fixture.sessions.expired = true
+		fixture.gateway.refreshResult = true
+		fixture.repository.gradeComparison("synthetic", "synthetic")
+		assertEquals(1, fixture.gateway.refreshCalls)
+		assertEquals(1, fixture.gateway.comparisonCalls)
+	}
+
+	@Test
+	fun replacementDuringExpiredRefreshCannotRetryOrPublish() {
+		val fixture = Fixture()
+		fixture.sessions.expired = true
+		fixture.gateway.refreshResult = true
+		fixture.gateway.onRefresh = { fixture.sessions.active = ActiveSession(AccountId("replacement"), Generation(2)) }
+		fixture.repository.refreshSchedule(range)
+		assertEquals(0, fixture.gateway.scheduleCalls)
+		assertEquals(DataState.Loading, fixture.repository.observeSchedule(range).current)
+	}
+
+	@Test
+	fun unauthorizedComparisonRefreshesAndRetriesOnce() {
+		val fixture = Fixture()
+		fixture.gateway.refreshResult = true
+		fixture.gateway.comparisonCall = { if (fixture.gateway.comparisonCalls == 1) GatewayReadResult.Failure(AppError.Unauthorized) else GatewayReadResult.Empty }
+		assertEquals(GatewayReadResult.Empty, fixture.repository.gradeComparison("synthetic", "synthetic"))
+		assertEquals(1, fixture.gateway.refreshCalls)
+		assertEquals(2, fixture.gateway.comparisonCalls)
+	}
+
+	@Test
 	fun olderGradesResponseCannotOverwriteNewerPeriodRequest() {
 		val fixture = Fixture()
 		val started = CountDownLatch(1)
@@ -328,7 +374,7 @@ class SchoolRepositoryTest {
 	private inner class Fixture {
 		val sessions = FakeSessionAccess(session)
 		val store = MemorySnapshotStore()
-		val gateway = FakeGateway()
+		val gateway = FakeGateway().also { gateway -> gateway.onRefresh = { sessions.expired = false } }
 		val events = mutableListOf<RepositoryEvent>()
 		val repository = SchoolRepositoryImpl(gateway, sessions, store, { capturedAt }).also { it.events().observe { events += it } }
 	}
@@ -352,10 +398,14 @@ private class FakeGateway : RepositoryGateway {
 	var diaryCall: (() -> GatewayReadResult<DiaryModel>)? = null
 	var scheduleCall: (() -> GatewayReadResult<ScheduleModel>)? = null
 	var gradesCall: (() -> GatewayReadResult<GradesModel>)? = null
+	var onRefresh: (() -> Unit)? = null
 	var refreshResult = false
 	var refreshCalls = 0
 	var scheduleCalls = 0
-	override fun refreshSession(): Boolean { refreshCalls++; return refreshResult }
+	var comparisonCalls = 0
+	var comparisonCall: (() -> GatewayReadResult<GradeComparison>)? = null
+	override fun refreshSession(session: ActiveSession): Boolean { refreshCalls++; if (refreshResult) onRefresh?.invoke(); return refreshResult }
+	override fun gradeComparison(context: ReadContext, uuid: String, type: String): GatewayReadResult<GradeComparison> { comparisonCalls++; return comparisonCall?.invoke() ?: GatewayReadResult.Failure(AppError.UnsupportedContract) }
 	override fun home(context: ReadContext) = GatewayReadResult.Failure<HomeModel>(AppError.UnsupportedContract)
 	override fun diary(context: ReadContext) = diaryCall?.invoke() ?: diaryResult
 	override fun schedule(context: ReadContext): GatewayReadResult<ScheduleModel> { scheduleCalls++; return scheduleCall?.invoke() ?: scheduleResult }
