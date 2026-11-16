@@ -7,6 +7,13 @@ import android.view.MotionEvent
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -45,7 +52,7 @@ class MaterialClassNavigationTest {
 		val repository = object : org.materialclass.data.SchoolRepository {
 			override fun observeHome() = org.materialclass.data.RepositoryObservation<org.materialclass.data.HomeModel>(org.materialclass.data.DataState.Loading)
 			override fun observeDiary(range: org.materialclass.data.DateRange) = org.materialclass.data.RepositoryObservation<org.materialclass.data.DiaryModel>(org.materialclass.data.DataState.Loading)
-			override fun observeSchedule(range: org.materialclass.data.DateRange) = org.materialclass.data.RepositoryObservation<org.materialclass.data.ScheduleModel>(org.materialclass.data.DataState.Ready(org.materialclass.data.Snapshot("test", 1, schedule, java.time.Instant.EPOCH)))
+			override fun observeSchedule(range: org.materialclass.data.DateRange) = org.materialclass.data.RepositoryObservation<org.materialclass.data.ScheduleModel>(org.materialclass.data.DataState.Ready(org.materialclass.data.Snapshot(org.materialclass.data.AccountId("test"), org.materialclass.data.Generation(1), schedule, java.time.Instant.EPOCH)))
 			override fun observeGrades(period: String) = org.materialclass.data.RepositoryObservation<org.materialclass.data.GradesModel>(org.materialclass.data.DataState.Loading)
 			override fun observeHomeworks() = org.materialclass.data.RepositoryObservation<org.materialclass.data.HomeworksModel>(org.materialclass.data.DataState.Loading)
 			override fun observeJournal(range: org.materialclass.data.DateRange) = org.materialclass.data.RepositoryObservation<org.materialclass.data.JournalGradesModel>(org.materialclass.data.DataState.Loading)
