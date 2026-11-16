@@ -107,6 +107,27 @@ class SessionCoordinator(
 		true
 	}
 
+	override fun replaceTokensIfCurrent(
+		session: ActiveSession,
+		expectedRefreshToken: String,
+		accessToken: String,
+		refreshToken: String,
+		expiresAt: Instant,
+	): Boolean = synchronized(lock) {
+		if (active != session || this.refreshToken != expectedRefreshToken || accessToken.isBlank() || refreshToken.isBlank()) {
+			return@synchronized false
+		}
+		store.save(session, accessToken, expiresAt, refreshToken, userInfo)
+		this.refreshToken = refreshToken
+		true
+	}
+
+	override fun invalidateIfCurrent(session: ActiveSession, expectedRefreshToken: String): Boolean = synchronized(lock) {
+		if (active != session || refreshToken != expectedRefreshToken) return@synchronized false
+		clearLocked()
+		true
+	}
+
 	fun cache(): EncryptedCache = encryptedCache
 
 	override fun invalidateAndClear() = synchronized(lock) { clearLocked() }

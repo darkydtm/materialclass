@@ -162,6 +162,136 @@ class ConfirmedSchoolGatewayTest {
 	}
 
 	@Test
+	fun staleRefreshFailureDoesNotClearAReplacementSession() {
+		val sessions = FakeSessionController()
+		val transport = SyntheticHttpsTransport {
+			HttpResponseData(401, "application/json", "{}")
+		}
+		val gateway = ConfirmedSchoolGateway(
+			SchoolGateway(transport),
+			sessions,
+			SyntheticConfirmedStudentVerifier(AccountId("student-1")),
+		)
+		assertTrue(gateway.login(credentials) is LoginResult.Confirmed)
+		val replacement = ActiveSession(AccountId("replacement"), Generation(2))
+		sessions.active = replacement
+		sessions.token = "replacement-access"
+		sessions.refreshToken = "replacement-refresh"
+
+		assertEquals(RefreshResult.LoginRequired, gateway.refresh())
+		assertEquals(replacement, sessions.active)
+		assertEquals("replacement-access", sessions.token)
+		assertEquals("replacement-refresh", sessions.refreshToken)
+		assertEquals(0, sessions.clearCount)
+	}
+
+	@Test
+	fun staleRefreshSuccessCannotOverwriteRotatedTokens() {
+		val responses = ArrayDeque<HttpResponseData>()
+		responses += HttpResponseData(200, "application/json", validBody)
+		responses += HttpResponseData(200, "application/json", "{\"access_token\":\"stale-access\",\"refresh_token\":\"stale-refresh\",\"exp_time\":\"2030-01-01T00:00:00Z\"}")
+		val sessions = FakeSessionController()
+		val gateway = ConfirmedSchoolGateway(
+			SchoolGateway(SyntheticHttpsTransport { responses.removeFirst() }),
+			sessions,
+			SyntheticConfirmedStudentVerifier(AccountId("student-1")),
+		)
+		assertTrue(gateway.login(credentials) is LoginResult.Confirmed)
+		sessions.refreshToken = "already-rotated"
+
+		assertEquals(RefreshResult.LoginRequired, gateway.refresh())
+		assertEquals("synthetic-access", sessions.token)
+		assertEquals("already-rotated", sessions.refreshToken)
+		assertEquals(0, sessions.clearCount)
+	}
+
+	@Test
+	fun loginRequiredRefreshInvalidatesOnlyTheMatchingSessionAndToken() {
+		val responses = ArrayDeque<HttpResponseData>()
+		responses += HttpResponseData(200, "application/json", validBody)
+		responses += HttpResponseData(401, "application/json", "{}")
+		val sessions = FakeSessionController()
+		val gateway = ConfirmedSchoolGateway(
+			SchoolGateway(SyntheticHttpsTransport { responses.removeFirst() }),
+			sessions,
+			SyntheticConfirmedStudentVerifier(AccountId("student-1")),
+		)
+		assertTrue(gateway.login(credentials) is LoginResult.Confirmed)
+		val originalSession = sessions.active!!
+		sessions.onRefreshResponse = {
+			sessions.active = ActiveSession(AccountId("replacement"), Generation(2))
+			sessions.token = "replacement-access"
+			sessions.refreshToken = "replacement-refresh"
+		}
+
+		assertEquals(RefreshResult.LoginRequired, gateway.refresh())
+		assertEquals("replacement", sessions.active?.accountId?.value)
+		assertEquals("replacement-access", sessions.token)
+		assertEquals("replacement-refresh", sessions.refreshToken)
+		assertEquals(0, sessions.clearCount)
+		assertTrue(originalSession != sessions.active)
+	}
+
+	@Test
+	fun transientRefreshFailureKeepsActiveSession() {
+		val responses = ArrayDeque<HttpResponseData>()
+		responses += HttpResponseData(200, "application/json", validBody)
+		responses += HttpResponseData(500, "application/json", "{}")
+		val sessions = FakeSessionController()
+		val gateway = ConfirmedSchoolGateway(
+			SchoolGateway(SyntheticHttpsTransport { responses.removeFirst() }),
+			sessions,
+			SyntheticConfirmedStudentVerifier(AccountId("student-1")),
+		)
+		assertTrue(gateway.login(credentials) is LoginResult.Confirmed)
+		val session = sessions.active
+
+		assertEquals(RefreshResult.Failed(AppError.HttpStatus(500)), gateway.refresh())
+		assertEquals(session, sessions.active)
+		assertEquals("synthetic-refresh", sessions.refreshToken)
+		assertEquals(0, sessions.clearCount)
+	}
+
+	@Test
+	fun concurrentRefreshCallsReuseTheRotatedTokenInsteadOfSendingItTwice() {
+		val responses = ArrayDeque<HttpResponseData>()
+		responses += HttpResponseData(200, "application/json", validBody)
+		responses += HttpResponseData(200, "application/json", "{\"access_token\":\"next-access\",\"refresh_token\":\"next-refresh\",\"exp_time\":\"2030-01-01T00:00:00Z\"}")
+		val requests = java.util.Collections.synchronizedList(mutableListOf<HttpRequestData>())
+		val transport = SyntheticHttpsTransport { request ->
+			requests += request
+			if (request.url.endsWith("/login")) responses.removeFirst()
+			else {
+				Thread.sleep(25)
+				responses.removeFirst()
+			}
+		}
+		val sessions = FakeSessionController()
+		val gateway = ConfirmedSchoolGateway(
+			SchoolGateway(transport),
+			sessions,
+			SyntheticConfirmedStudentVerifier(AccountId("student-1")),
+		)
+		assertTrue(gateway.login(credentials) is LoginResult.Confirmed)
+		val start = java.util.concurrent.CountDownLatch(1)
+		val results = java.util.Collections.synchronizedList(mutableListOf<RefreshResult>())
+		val callers = List(2) {
+			Thread {
+				start.await()
+				results += gateway.refresh()
+			}.also(Thread::start)
+		}
+		start.countDown()
+		callers.forEach(Thread::join)
+
+		val refreshRequests = requests.filter { it.url.endsWith("/refresh_token") }
+		assertEquals(1, refreshRequests.size)
+		assertEquals(2, results.count { it is RefreshResult.Refreshed })
+		assertEquals("next-access", sessions.token)
+		assertEquals("next-refresh", sessions.refreshToken)
+	}
+
+	@Test
 	fun confirmedSessionRotatesRefreshTokens() {
 		val responses = ArrayDeque<HttpResponseData>()
 		responses += HttpResponseData(200, "application/json", validBody)
@@ -209,6 +339,7 @@ private class FakeSessionController : SessionController {
 	var token: String? = null
 	var refreshToken: String? = null
 	var clearCount = 0
+	var onRefreshResponse: (() -> Unit)? = null
 
 	override fun activate(accountId: AccountId, token: String, expiresAt: Instant): ActiveSession {
 		active = ActiveSession(accountId, Generation(1))
@@ -229,9 +360,30 @@ private class FakeSessionController : SessionController {
 	override fun refreshTokenFor(session: ActiveSession): String? = refreshToken.takeIf { active == session }
 
 	override fun replaceTokens(session: ActiveSession, accessToken: String, refreshToken: String, expiresAt: Instant): Boolean {
+		onRefreshResponse?.invoke()
+		onRefreshResponse = null
 		if (active != session) return false
 		token = accessToken
 		this.refreshToken = refreshToken
+		return true
+	}
+
+	override fun replaceTokensIfCurrent(
+		session: ActiveSession,
+		expectedRefreshToken: String,
+		accessToken: String,
+		refreshToken: String,
+		expiresAt: Instant,
+	): Boolean {
+		if (active != session || this.refreshToken != expectedRefreshToken) return false
+		return replaceTokens(session, accessToken, refreshToken, expiresAt)
+	}
+
+	override fun invalidateIfCurrent(session: ActiveSession, expectedRefreshToken: String): Boolean {
+		onRefreshResponse?.invoke()
+		onRefreshResponse = null
+		if (active != session || refreshToken != expectedRefreshToken) return false
+		invalidateAndClear()
 		return true
 	}
 
