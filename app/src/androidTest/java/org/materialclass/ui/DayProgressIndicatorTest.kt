@@ -3,7 +3,8 @@ package org.materialclass.ui
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.test.SemanticsMatcher.expectValue
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import org.junit.Rule
@@ -20,7 +21,7 @@ class DayProgressIndicatorTest {
 		}
 
 		composeRule.onNode(hasContentDescription("Today's progress"))
-			.assert(expectValue(SemanticsProperties.ProgressBarRangeInfo, ProgressBarRangeInfo(0.5f, 0f..1f)))
+			.assert(SemanticsMatcher.expectValue(SemanticsProperties.ProgressBarRangeInfo, ProgressBarRangeInfo(0.5f, 0f..1f)))
 	}
 
 	@Test
@@ -30,7 +31,7 @@ class DayProgressIndicatorTest {
 		}
 
 		composeRule.onNode(hasContentDescription("Today's progress"))
-			.assert(expectValue(SemanticsProperties.ProgressBarRangeInfo, ProgressBarRangeInfo(0f, 0f..1f)))
+			.assert(SemanticsMatcher.expectValue(SemanticsProperties.ProgressBarRangeInfo, ProgressBarRangeInfo(0f, 0f..1f)))
 	}
 
 	@Test
@@ -40,6 +41,6 @@ class DayProgressIndicatorTest {
 		}
 
 		composeRule.onNode(hasContentDescription("Today's progress"))
-			.assert(expectValue(SemanticsProperties.ProgressBarRangeInfo, ProgressBarRangeInfo(1f, 0f..1f)))
+			.assert(SemanticsMatcher.expectValue(SemanticsProperties.ProgressBarRangeInfo, ProgressBarRangeInfo(1f, 0f..1f)))
 	}
 }
