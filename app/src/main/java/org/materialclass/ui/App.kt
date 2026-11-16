@@ -12,6 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +38,7 @@ fun MaterialClassApp(
 	preferences: AppPreferences? = null,
 	loginHandler: (LoginCredentials) -> GatewayLoginResult = { GatewayLoginResult.Failure(AppError.Network) },
 	startAuthenticated: Boolean = false,
+	onClickFeedback: () -> Unit = {},
 	onBackgroundSettingsChanged: () -> Unit = {},
 	onNotificationSettingsChange: (() -> Unit) -> Unit = { it() },
 	onSimulateNotification: (org.materialclass.notifications.NotificationCategory) -> org.materialclass.notifications.NotificationRunResult = { org.materialclass.notifications.NotificationRunResult(org.materialclass.notifications.NotificationRunStatus.NO_SESSION) },
@@ -94,35 +96,37 @@ fun MaterialClassApp(
 		val backgroundColor = MaterialTheme.colorScheme.background.toArgb()
 		val previousRoute = navigator.previousOrNull()
 		val renderRoute: @Composable (AppRoute) -> Unit = { route ->
-			if (route in loginRoutes) {
-				LoginFlow(text, viewModel, loginRoute(viewModel.loginState)) { viewModel.resetLogin(); navigator.reset(AppRoute.Login) }
-			} else {
-				AppScaffold(
-					navigator = navigator,
-					route = route,
-					text = text,
-					viewModel = viewModel,
-					snackbarHostState = snackbarHostState,
-					language = language,
-					theme = theme,
-					selectedSubject = selectedSubject,
-					onSubjectSelected = { selectedSubject = it },
-					selectedLesson = selectedLesson,
-					onLessonSelected = { selectedLesson = it },
-					onLanguage = { actualPreferences.setLanguage(it) },
-					onTheme = { theme = it; actualPreferences.setTheme(it) },
-					newGradeNotifications = newGradeNotifications,
-					onNewGradeNotifications = { newGradeNotifications = it; onNotificationSettingsChange { actualPreferences.setNewGradeNotifications(it) }; if (it) requestNotificationPermission() },
-					homeworkNotifications = homeworkNotifications,
-					onHomeworkNotifications = { homeworkNotifications = it; onNotificationSettingsChange { actualPreferences.setHomeworkNotifications(it) }; if (it) requestNotificationPermission() },
-					backgroundWork = backgroundWork,
-					onBackgroundWork = { backgroundWork = it; onNotificationSettingsChange { actualPreferences.setBackgroundWork(it) }; onBackgroundSettingsChanged() },
-					backgroundInterval = backgroundInterval,
-					onBackgroundInterval = { backgroundInterval = it; actualPreferences.setBackgroundInterval(it); onBackgroundSettingsChanged() },
-					onLogout = { viewModel.logout(); navigator.reset(AppRoute.Login) },
-					onBack = { if (backLayout != null) backLayout?.commitPredictiveBack() else navigator.back() },
-					onSimulateNotification = onSimulateNotification,
-				)
+			CompositionLocalProvider(LocalClickFeedback provides onClickFeedback) {
+				if (route in loginRoutes) {
+					LoginFlow(text, viewModel, loginRoute(viewModel.loginState)) { viewModel.resetLogin(); navigator.reset(AppRoute.Login) }
+				} else {
+					AppScaffold(
+						navigator = navigator,
+						route = route,
+						text = text,
+						viewModel = viewModel,
+						snackbarHostState = snackbarHostState,
+						language = language,
+						theme = theme,
+						selectedSubject = selectedSubject,
+						onSubjectSelected = { selectedSubject = it },
+						selectedLesson = selectedLesson,
+						onLessonSelected = { selectedLesson = it },
+						onLanguage = { actualPreferences.setLanguage(it) },
+						onTheme = { theme = it; actualPreferences.setTheme(it) },
+						newGradeNotifications = newGradeNotifications,
+						onNewGradeNotifications = { newGradeNotifications = it; onNotificationSettingsChange { actualPreferences.setNewGradeNotifications(it) }; if (it) requestNotificationPermission() },
+						homeworkNotifications = homeworkNotifications,
+						onHomeworkNotifications = { homeworkNotifications = it; onNotificationSettingsChange { actualPreferences.setHomeworkNotifications(it) }; if (it) requestNotificationPermission() },
+						backgroundWork = backgroundWork,
+						onBackgroundWork = { backgroundWork = it; onNotificationSettingsChange { actualPreferences.setBackgroundWork(it) }; onBackgroundSettingsChanged() },
+						backgroundInterval = backgroundInterval,
+						onBackgroundInterval = { backgroundInterval = it; actualPreferences.setBackgroundInterval(it); onBackgroundSettingsChanged() },
+						onLogout = { viewModel.logout(); navigator.reset(AppRoute.Login) },
+						onBack = { if (backLayout != null) backLayout?.commitPredictiveBack() else navigator.back() },
+						onSimulateNotification = onSimulateNotification,
+					)
+				}
 			}
 		}
 		AndroidView(

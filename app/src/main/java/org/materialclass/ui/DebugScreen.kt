@@ -36,9 +36,9 @@ internal fun DebugScreen(padding: PaddingValues, text: (String) -> String, simul
 	var status by remember { mutableStateOf("") }
 	Column(modifier = Modifier.fillMaxSize().padding(padding).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
 		Text("${BuildConfig.BUILD_DATE}\n${BuildConfig.BUILD_BRANCH}\n${BuildConfig.BUILD_REVISION}", style = MaterialTheme.typography.bodyMedium)
-		Button(onClick = { scope.launch { status = withContext(Dispatchers.IO) { simulate(NotificationCategory.NEW_GRADE).status.name } } }, modifier = Modifier.fillMaxWidth()) { Text(text("debug_new_grade")) }
-		Button(onClick = { scope.launch { status = withContext(Dispatchers.IO) { simulate(NotificationCategory.HOMEWORK).status.name } } }, modifier = Modifier.fillMaxWidth()) { Text(text("debug_homework")) }
-		Button(onClick = {
+		Button(onClick = clickFeedback { scope.launch { status = withContext(Dispatchers.IO) { simulate(NotificationCategory.NEW_GRADE).status.name } } }, modifier = Modifier.fillMaxWidth()) { Text(text("debug_new_grade")) }
+		Button(onClick = clickFeedback { scope.launch { status = withContext(Dispatchers.IO) { simulate(NotificationCategory.HOMEWORK).status.name } } }, modifier = Modifier.fillMaxWidth()) { Text(text("debug_homework")) }
+		Button(onClick = clickFeedback {
 			scope.launch {
 				val logs = withContext(Dispatchers.IO) { runCatching { val process = Runtime.getRuntime().exec(arrayOf("logcat", "-d", "--pid=${Process.myPid()}")); val output = process.inputStream.bufferedReader().use { it.readText() }; check(process.waitFor() == 0); output }.getOrNull() }
 				if (logs == null) status = text("debug_logs_failed") else {

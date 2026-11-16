@@ -79,7 +79,7 @@ private fun ComparisonContent(comparison: GradeComparison, text: (String) -> Str
 				scores.forEach { score ->
 					val count = (counts[score] ?: 0) + if (score == own) 1 else 0
 					val height by animateDpAsState(targetValue = (if (chartVisible) 6 + 110 * count / maxCount else 6).dp, animationSpec = spring(), label = "comparisonBar")
-					Column(modifier = Modifier.width(42.dp).clickable { selected = score }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom) {
+					Column(modifier = Modifier.width(42.dp).clickable(onClick = clickFeedback { selected = score }), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom) {
 						if (score == own) Text(text("comparison_you"), style = MaterialTheme.typography.labelSmall)
 						Box(modifier = Modifier.fillMaxWidth().height(height).background(if (score == selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(8.dp)))
 						Text(score.toString(), style = MaterialTheme.typography.labelLarge)

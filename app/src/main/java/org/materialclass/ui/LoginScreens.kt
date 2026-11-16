@@ -105,7 +105,7 @@ private fun LoginScreen(text: (String) -> String, viewModel: SchoolViewModel) {
 						colors = TextFieldDefaults.colors(focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent),
 						visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
 						trailingIcon = {
-							IconButton(onClick = { passwordVisible = !passwordVisible }) {
+							IconButton(onClick = clickFeedback { passwordVisible = !passwordVisible }) {
 								Icon(
 									if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
 									contentDescription = text(if (passwordVisible) "login_hide_password" else "login_show_password"),
@@ -121,7 +121,7 @@ private fun LoginScreen(text: (String) -> String, viewModel: SchoolViewModel) {
 						else -> Unit
 					}
 					Button(
-						onClick = { viewModel.login(login, password) },
+						onClick = clickFeedback { viewModel.login(login, password) },
 						modifier = Modifier.fillMaxWidth().height(64.dp).testTag("login-button"),
 						shape = RoundedCornerShape(32.dp),
 					) { Text(text("sign_in")) }
@@ -154,7 +154,7 @@ private fun LoginStateScreen(title: String, body: String, text: (String) -> Stri
 				Text(title, style = MaterialTheme.typography.headlineMedium)
 				Text(body, color = MaterialTheme.colorScheme.onSurfaceVariant)
 				if (isLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-				else Button(onClick = reset, shape = RowShape, modifier = Modifier.fillMaxWidth()) { Text(text(if (isError && title == text("login_connection_error")) "login_try_again" else "login_again")) }
+				else Button(onClick = clickFeedback(reset), shape = RowShape, modifier = Modifier.fillMaxWidth()) { Text(text(if (isError && title == text("login_connection_error")) "login_try_again" else "login_again")) }
 			}
 		}
 	}

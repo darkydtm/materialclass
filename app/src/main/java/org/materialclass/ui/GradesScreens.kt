@@ -91,7 +91,7 @@ internal fun DiaryScreen(padding: PaddingValues, text: (String) -> String, viewM
 				Row(modifier = Modifier.padding(5.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
 					(0..3).forEach { index ->
 						Surface(
-							modifier = Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).clickable { viewModel.selectGradesPeriod((index + 1).toString()) },
+							modifier = Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).clickable(onClick = clickFeedback { viewModel.selectGradesPeriod((index + 1).toString()) }),
 							shape = RoundedCornerShape(14.dp),
 							color = if (quarter == index) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainer,
 							contentColor = if (quarter == index) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -131,7 +131,7 @@ internal fun DiaryScreen(padding: PaddingValues, text: (String) -> String, viewM
 private fun SubjectCard(subject: GradeSubject, text: (String) -> String, viewModel: SchoolViewModel, navigator: AppNavigator, onClick: () -> Unit) {
 	val finalScore = effectiveFinalScore(subject)
 	val displayedScore = assessmentText(finalScore, subject.scoreType, text("credit"), text("fail"), text("no_data"))
-	Card(onClick = onClick, shape = RowShape, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
+	Card(onClick = clickFeedback(onClick), shape = RowShape, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
 		Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 			Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
 				Text(subject.subjectName ?: text("unknown"), modifier = Modifier.weight(1f).padding(end = 8.dp), style = MaterialTheme.typography.titleLarge)
@@ -188,7 +188,8 @@ internal fun gradeContentColor(value: String?, scoreType: String?, maximum: Doub
 
 @Composable
 internal fun GradeTile(value: String?, scoreType: String?, date: String?, type: String?, text: (String) -> String, maximum: Double? = null, maximumLabel: String? = null, uuid: String? = null, comparisonType: String? = null, viewModel: SchoolViewModel? = null, navigator: AppNavigator? = null) {
-	val openComparison = { if (!uuid.isNullOrBlank() && comparisonType != null && viewModel != null && navigator != null) { viewModel.selectComparison(uuid, comparisonType); navigator.go(AppRoute.GradeComparison) } }
+	val feedback = LocalClickFeedback.current
+	val openComparison = { if (!uuid.isNullOrBlank() && comparisonType != null && viewModel != null && navigator != null) { feedback(); viewModel.selectComparison(uuid, comparisonType); navigator.go(AppRoute.GradeComparison) } }
 	Column(
 		modifier = if (!uuid.isNullOrBlank() && comparisonType != null && viewModel != null && navigator != null) Modifier.clickable(onClick = openComparison) else Modifier,
 		horizontalAlignment = Alignment.CenterHorizontally,
