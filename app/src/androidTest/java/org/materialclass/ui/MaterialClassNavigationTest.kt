@@ -109,7 +109,7 @@ class MaterialClassNavigationTest {
 		composeRule.onNodeWithTag("pull-refresh-background").assertIsDisplayed()
 		val dragIndicatorBounds = composeRule.onNodeWithTag("pull-refresh-indicator").getUnclippedBoundsInRoot()
 		val dragBackgroundBounds = composeRule.onNodeWithTag("pull-refresh-background").getUnclippedBoundsInRoot()
-		check(kotlin.math.abs(dragIndicatorBounds.center.y - dragBackgroundBounds.center.y) < 1.dp) {
+		check(kotlin.math.abs((dragIndicatorBounds.center.y - dragBackgroundBounds.center.y).value) < 1f) {
 			"Background and indicator must share their center while dragging"
 		}
 		root.performTouchInput { up() }
@@ -123,7 +123,7 @@ class MaterialClassNavigationTest {
 		composeRule.onNodeWithTag("pull-refresh-background").assertIsDisplayed()
 		val loadingIndicatorBounds = composeRule.onNodeWithTag("pull-refresh-indicator").getUnclippedBoundsInRoot()
 		val loadingBackgroundBounds = composeRule.onNodeWithTag("pull-refresh-background").getUnclippedBoundsInRoot()
-		check(kotlin.math.abs(loadingIndicatorBounds.center.y - loadingBackgroundBounds.center.y) < 1.dp) {
+		check(kotlin.math.abs((loadingIndicatorBounds.center.y - loadingBackgroundBounds.center.y).value) < 1f) {
 			"Background and indicator must share their center while refreshing"
 		}
 		composeRule.runOnIdle { check(calls.get() == 1) { "Threshold release must start exactly one refresh" } }
