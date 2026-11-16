@@ -30,13 +30,9 @@ interface SessionController {
 	fun refreshTokenFor(session: ActiveSession): String? = null
 	fun userInfoFor(session: ActiveSession): UserInfo? = null
 	fun replaceTokens(session: ActiveSession, accessToken: String, refreshToken: String, expiresAt: Instant): Boolean = false
-	fun replaceTokensIfCurrent(session: ActiveSession, expectedRefreshToken: String, accessToken: String, refreshToken: String, expiresAt: Instant): Boolean =
-		if (refreshTokenFor(session) != expectedRefreshToken) false else replaceTokens(session, accessToken, refreshToken, expiresAt)
-	fun invalidateIfCurrent(session: ActiveSession, expectedRefreshToken: String): Boolean {
-		if (refreshTokenFor(session) != expectedRefreshToken) return false
-		invalidateAndClear()
-		return true
-	}
+	fun replaceTokensIfCurrent(session: ActiveSession, expectedRefreshToken: String, accessToken: String, refreshToken: String, expiresAt: Instant): Boolean
+	fun invalidateIfCurrent(session: ActiveSession, expectedRefreshToken: String): Boolean
+	fun clearIfCurrent(session: ActiveSession?): Boolean
 	fun invalidateAndClear()
 }
 
@@ -97,11 +93,12 @@ class ConfirmedSchoolGateway(
 		ContractBlockedIdentityVerifier,
 	)
 	fun login(credentials: LoginCredentials): LoginResult {
+		val requestSession = sessions.currentSession()
 		return when (val result = gateway.login(credentials)) {
 			is GatewayLoginResult.Failure -> {
+				sessions.clearIfCurrent(requestSession)
 				signedInUser = null
 				lastLoginResponse = null
-				sessions.invalidateAndClear()
 				LoginResult.Failure(result.error)
 			}
 			is GatewayLoginResult.Success -> when (identityVerifier.verify(result.response.userInfo)) {
@@ -161,28 +158,38 @@ class ConfirmedSchoolGateway(
 		return true
 	}
 
-	fun refresh() = synchronized(refreshLock) {
-		val session = sessions.currentSession() ?: return@synchronized RefreshResult.LoginRequired
-		val refreshToken = sessions.refreshTokenFor(session) ?: return@synchronized RefreshResult.LoginRequired
-		when (val result = gateway.refresh(refreshToken)) {
-			is GatewayRefreshResult.Success -> {
-				if (!sessions.replaceTokensIfCurrent(
+	fun refresh(): RefreshResult {
+		val session = sessions.currentSession() ?: return RefreshResult.LoginRequired
+		val requestedToken = sessions.refreshTokenFor(session) ?: return RefreshResult.LoginRequired
+		return synchronized(refreshLock) {
+			if (sessions.currentSession() != session) return@synchronized RefreshResult.LoginRequired
+			val currentToken = sessions.refreshTokenFor(session) ?: return@synchronized RefreshResult.LoginRequired
+			if (currentToken != requestedToken) return@synchronized RefreshResult.Refreshed(session)
+			when (val result = gateway.refresh(requestedToken)) {
+				is GatewayRefreshResult.Success -> {
+					if (!sessions.replaceTokensIfCurrent(
 						session,
-						refreshToken,
+						requestedToken,
 						result.response.accessToken,
 						result.response.refreshToken,
 						result.response.expiresAt,
 					)) {
-					return@synchronized RefreshResult.LoginRequired
+						return@synchronized RefreshResult.LoginRequired
+					}
+					lastLoginResponse = null
+					RefreshResult.Refreshed(session)
 				}
-				lastLoginResponse = null
-				RefreshResult.Refreshed(session)
+				is GatewayRefreshResult.Failure -> if (result.error == AppError.LoginRequired) {
+					sessions.invalidateIfCurrent(session, requestedToken)
+					RefreshResult.LoginRequired
+				} else RefreshResult.Failed(result.error)
 			}
-			is GatewayRefreshResult.Failure -> if (result.error == AppError.LoginRequired) {
-				sessions.invalidateIfCurrent(session, refreshToken)
-				RefreshResult.LoginRequired
-			} else RefreshResult.Failed(result.error)
 		}
+	}
+
+	fun refreshSession(): Boolean = when (refresh()) {
+		is RefreshResult.Refreshed -> true
+		else -> false
 	}
 
 	fun startTwoFactor(): TwoFactorResult = TwoFactorResult.Unsupported

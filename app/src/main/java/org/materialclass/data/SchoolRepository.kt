@@ -39,6 +39,7 @@ interface RepositoryGateway {
 	fun periods(context: ReadContext): GatewayReadResult<PeriodsModel> = GatewayReadResult.Failure(AppError.UnsupportedContract)
 	fun profile(): GatewayReadResult<ProfileModel>
 	fun logout(): GatewayReadResult<Unit> = GatewayReadResult.Success(Unit)
+	fun refreshSession(): Boolean = false
 }
 
 interface SessionAccess {
@@ -127,6 +128,11 @@ class SchoolRepositoryImpl(
 	override fun refreshHomeworks() { refresh(HOMEWORKS) { gateway.homeworks(it) } }
 	override fun refreshJournal(range: DateRange) { refresh(journalKey(range)) { gateway.journalGrades(it) } }
 	override fun refreshProfile() { refresh(PROFILE) { gateway.profile() } }
+	override fun refreshSession(): Boolean {
+		val session = sessions.currentSession() ?: return false
+		if (sessions.tokenFor(session) != null) return true
+		return gateway.refreshSession()
+	}
 	override fun logout() {
 		if (gateway.logout() !is GatewayReadResult.Success) return
 		sessions.withSessionLock { synchronized(lock) { states.clear(); observations.values.forEach { it.update(DataState.Loading) } } }
@@ -155,10 +161,31 @@ class SchoolRepositoryImpl(
 			}
 		}
 		val token = sessions.tokenFor(session) ?: run {
-			if (expectedSession == null) publishFailureIfCurrent(key, session, AppError.LoginRequired)
+			if (expectedSession == null) {
+				val refreshed = if (sessions.currentSession() == session) gateway.refreshSession() else false
+				if (sessions.currentSession() != session) return false
+				if (refreshed) {
+					val refreshedToken = sessions.tokenFor(session) ?: run {
+						publishFailureIfCurrent(key, session, AppError.LoginRequired)
+						return false
+					}
+					return refreshWithToken(key, session, revision, call, refreshedToken)
+				}
+				publishFailureIfCurrent(key, session, AppError.LoginRequired)
+			}
 			return false
 		}
-		val result = try { call(context(token, key)) } catch (exception: InterruptedException) {
+		return refreshWithToken(key, session, revision, call, token)
+	}
+
+	private fun <T> refreshWithToken(
+		key: String,
+		session: ActiveSession,
+		revision: Long,
+		call: (ReadContext) -> GatewayReadResult<T>,
+		token: String,
+	): Boolean {
+		var result = try { call(context(token, key)) } catch (exception: InterruptedException) {
 			Thread.currentThread().interrupt()
 			throw exception
 		} catch (exception: java.util.concurrent.CancellationException) {
@@ -166,6 +193,25 @@ class SchoolRepositoryImpl(
 		} catch (exception: Exception) {
 			if (key.startsWith("grades:")) DiaryDiagnostics.record(DiaryStage.REPOSITORY, DiaryOutcome.FAILURE, error = AppError.Network, exception = exception)
 			GatewayReadResult.Failure(AppError.Network)
+		}
+		if (result == GatewayReadResult.Failure(AppError.Unauthorized) && sessions.currentSession() == session) {
+			val refreshed = sessions.withSessionLock {
+				if (sessions.currentSession() == session) gateway.refreshSession() else false
+			}
+			if (refreshed && sessions.currentSession() == session) {
+				val refreshedToken = sessions.tokenFor(session)
+				if (refreshedToken != null) {
+					val retriedResult = try { call(context(refreshedToken, key)) } catch (exception: InterruptedException) {
+						Thread.currentThread().interrupt()
+						throw exception
+					} catch (exception: java.util.concurrent.CancellationException) {
+						throw exception
+					} catch (exception: Exception) {
+						GatewayReadResult.Failure(AppError.Network)
+					}
+					result = if (sessions.currentSession() == session) retriedResult else GatewayReadResult.Failure(AppError.LoginRequired)
+				}
+			}
 		}
 		return sessions.withSessionLock {
 			synchronized(lock) {

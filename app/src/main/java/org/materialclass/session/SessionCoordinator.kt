@@ -59,7 +59,7 @@ class SessionCoordinator(
 	fun restore(now: Instant): Boolean = synchronized(lock) {
 		if (active != null) return@synchronized true
 		val restored = store.load()
-		if (restored == null || !now.isBefore(restored.expiresAt)) {
+		if (restored == null || (!now.isBefore(restored.expiresAt) && restored.refreshToken.isNullOrBlank())) {
 			clearLocked()
 			return@synchronized false
 		}
@@ -84,7 +84,7 @@ class SessionCoordinator(
 		}
 		if (restored.session != session) return@synchronized null
 		if (!Instant.now().isBefore(restored.expiresAt)) {
-			clearLocked()
+			if (restored.refreshToken.isNullOrBlank()) clearLocked()
 			return@synchronized null
 		}
 		restored.token
@@ -107,23 +107,30 @@ class SessionCoordinator(
 		true
 	}
 
+	private fun replaceTokensIfCurrentLocked(session: ActiveSession, expectedRefreshToken: String, accessToken: String, refreshToken: String, expiresAt: Instant): Boolean = synchronized(lock) {
+		if (active != session || this.refreshToken != expectedRefreshToken || accessToken.isBlank() || refreshToken.isBlank()) return@synchronized false
+		store.save(session, accessToken, expiresAt, refreshToken, userInfo)
+		this.refreshToken = refreshToken
+		true
+	}
+
 	override fun replaceTokensIfCurrent(
 		session: ActiveSession,
 		expectedRefreshToken: String,
 		accessToken: String,
 		refreshToken: String,
 		expiresAt: Instant,
-	): Boolean = synchronized(lock) {
-		if (active != session || this.refreshToken != expectedRefreshToken || accessToken.isBlank() || refreshToken.isBlank()) {
-			return@synchronized false
-		}
-		store.save(session, accessToken, expiresAt, refreshToken, userInfo)
-		this.refreshToken = refreshToken
+	): Boolean = replaceTokensIfCurrentLocked(session, expectedRefreshToken, accessToken, refreshToken, expiresAt)
+
+	private fun invalidateIfCurrentLocked(session: ActiveSession, expectedRefreshToken: String): Boolean = synchronized(lock) {
+		if (active != session || refreshToken != expectedRefreshToken) return@synchronized false
+		clearLocked()
 		true
 	}
+	override fun invalidateIfCurrent(session: ActiveSession, expectedRefreshToken: String): Boolean = invalidateIfCurrentLocked(session, expectedRefreshToken)
 
-	override fun invalidateIfCurrent(session: ActiveSession, expectedRefreshToken: String): Boolean = synchronized(lock) {
-		if (active != session || refreshToken != expectedRefreshToken) return@synchronized false
+	override fun clearIfCurrent(session: ActiveSession?): Boolean = synchronized(lock) {
+		if (active != session) return@synchronized false
 		clearLocked()
 		true
 	}
