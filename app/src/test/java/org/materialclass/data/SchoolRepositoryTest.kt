@@ -145,7 +145,13 @@ class SchoolRepositoryTest {
 		fixture.repository.loadSchedule(range)
 
 		assertEquals(1, fixture.gateway.scheduleCalls)
-		assertTrue(fixture.repository.observeSchedule(range).current is DataState.Error)
+		assertTrue(fixture.repository.observeSchedule(range).current is DataState.Offline)
+
+		fixture.gateway.scheduleResult = GatewayReadResult.Success(ScheduleModel(3, 1))
+		fixture.repository.refreshSchedule(range)
+
+		assertEquals(2, fixture.gateway.scheduleCalls)
+		assertTrue(fixture.repository.observeSchedule(range).current is DataState.Ready)
 	}
 
 	@Test
