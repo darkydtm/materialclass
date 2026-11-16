@@ -179,7 +179,8 @@ private fun Int.suffix(): String = when (this) {
 internal fun ProfileScreen(padding: PaddingValues, text: (String) -> String, viewModel: SchoolViewModel, onLogout: () -> Unit) {
 	LaunchedEffect(Unit) { viewModel.loadProfile() }
 	val profile = viewModel.profileState.readyValue()
-	Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+	PullRefreshLayout(modifier = Modifier.fillMaxSize().padding(padding), onRefresh = { viewModel.refreshProfile() }) { scrollModifier ->
+	Column(modifier = scrollModifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
 		Surface(modifier = Modifier.size(80.dp), shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.secondaryContainer) {
 			BoxCenter { Text(displayNameFromFullName(profile?.fullName)?.firstOrNull()?.toString() ?: text("no_data"), style = MaterialTheme.typography.headlineLarge) }
 		}
@@ -195,6 +196,7 @@ internal fun ProfileScreen(padding: PaddingValues, text: (String) -> String, vie
 			}
 		}
 		Button(onClick = clickFeedback(onLogout), shape = RowShape, modifier = Modifier.fillMaxWidth()) { Text(text("logout")) }
+	}
 	}
 }
 

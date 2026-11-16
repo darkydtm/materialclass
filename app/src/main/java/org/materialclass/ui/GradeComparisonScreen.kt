@@ -43,15 +43,17 @@ internal fun GradeComparisonScreen(padding: PaddingValues, text: (String) -> Str
 	val selection = viewModel.comparisonSelection
 	var result by remember(selection) { mutableStateOf<GatewayReadResult<GradeComparison>?>(null) }
 	LaunchedEffect(selection) {
-		result = if (selection == null) GatewayReadResult.Empty else withContext(Dispatchers.IO) { viewModel.gradeComparison(selection.first, selection.second) }
+		result = viewModel.refreshGradeComparison(selection)
 	}
-	Column(modifier = Modifier.padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+	PullRefreshLayout(modifier = Modifier.fillMaxSize().padding(padding), onRefresh = { result = viewModel.refreshGradeComparison(selection) }) { scrollModifier ->
+	Column(modifier = scrollModifier.verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 		when (val current = result) {
 			null -> CircularProgressIndicator()
 			GatewayReadResult.Empty -> Text(text("no_data"))
 			is GatewayReadResult.Failure -> Text(text("grade_comparison_unavailable"))
 			is GatewayReadResult.Success -> ComparisonContent(current.value, text)
 		}
+	}
 	}
 }
 

@@ -229,6 +229,13 @@ class SchoolViewModel(
 ) {
 	fun gradeComparison(uuid: String, type: String): org.materialclass.api.GatewayReadResult<org.materialclass.data.GradeComparison> =
 		repository?.gradeComparison(uuid, type) ?: org.materialclass.api.GatewayReadResult.Failure(AppError.LoginRequired)
+	suspend fun refreshGradeComparison(selection: Pair<String, String>?): GatewayReadResult<org.materialclass.data.GradeComparison>? {
+		if (selection == null) return GatewayReadResult.Empty
+		return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+			gradeComparison(selection.first, selection.second)
+		}
+	}
+
 	private val io = Executors.newCachedThreadPool()
 	private var loginRequest = 0L
 	private var scheduleRequest = 0L
@@ -313,6 +320,20 @@ class SchoolViewModel(
 		io.execute { source.refreshJournal(range) }
 	}
 
+	suspend fun refreshSchedule(weekOffset: Int = 0) {
+		val source = repository ?: return
+		val range = week(weekOffset, nextWeekOnWeekend = true)
+		kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+			source.refreshSchedule(range)
+			source.refreshJournal(range)
+		}
+	}
+
+	suspend fun refreshHome() {
+		refreshSchedule()
+		refreshProfile()
+	}
+
 	fun loadDiary() {
 		val source = repository ?: run { diaryState = null; return }
 		val range = scheduleRange ?: week()
@@ -345,6 +366,17 @@ class SchoolViewModel(
 			}
 		}
 		io.execute { source.refreshGrades(period) }
+	}
+
+	suspend fun refreshGrades() {
+		val source = repository ?: return
+		val period = gradesPeriod
+		kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { source.refreshGrades(period) }
+	}
+
+	suspend fun refreshProfile() {
+		val source = repository ?: return
+		kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { source.refreshProfile() }
 	}
 
 	fun selectGradesPeriod(period: String) {

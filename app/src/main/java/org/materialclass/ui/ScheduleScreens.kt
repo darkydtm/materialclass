@@ -61,8 +61,9 @@ internal fun HomeScreen(
 	val weekend = isWeekend()
 	val completedLessons = if (weekend) 0 else completedLessonCount(today?.lessons.orEmpty())
 	val lessonsTitle = if (weekend) "lessons_monday" else "lessons_today"
+	PullRefreshLayout(modifier = Modifier.fillMaxSize().padding(padding).testTag("home-screen"), onRefresh = { viewModel.refreshHome() }) { scrollModifier ->
 	LazyColumn(
-		modifier = Modifier.fillMaxSize().padding(padding).testTag("home-screen"),
+		modifier = scrollModifier.fillMaxSize(),
 		contentPadding = PaddingValues(20.dp),
 		verticalArrangement = Arrangement.spacedBy(20.dp),
 	) {
@@ -110,6 +111,7 @@ internal fun HomeScreen(
 			}
 		}
 	}
+	}
 }
 
 @Composable
@@ -133,8 +135,12 @@ internal fun ScheduleScreen(
 			else -> "${labels.first()} - ${labels.last()}"
 		}
 	} ?: text("no_data")
-	LazyColumn(
+	PullRefreshLayout(
 		modifier = Modifier.fillMaxSize().padding(padding).testTag("schedule-screen"),
+		onRefresh = { viewModel.refreshSchedule(weekOffset) },
+	) { scrollModifier ->
+	LazyColumn(
+		modifier = scrollModifier.fillMaxSize(),
 		contentPadding = PaddingValues(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 24.dp),
 		verticalArrangement = Arrangement.spacedBy(16.dp),
 	) {
@@ -182,6 +188,7 @@ internal fun ScheduleScreen(
 				}
 			}
 		}
+	}
 	}
 }
 

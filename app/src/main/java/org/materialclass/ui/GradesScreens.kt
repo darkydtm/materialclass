@@ -82,7 +82,8 @@ internal fun DiaryScreen(padding: PaddingValues, text: (String) -> String, viewM
 	val quarter = (viewModel.gradesPeriod.toIntOrNull() ?: 1) - 1
 	LaunchedEffect(Unit) { viewModel.loadGrades(viewModel.gradesPeriod) }
 	val grades = viewModel.gradesState.readyValue()
-	LazyColumn(modifier = Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+	PullRefreshLayout(modifier = Modifier.fillMaxSize().padding(padding), onRefresh = { viewModel.refreshGrades() }) { scrollModifier ->
+	LazyColumn(modifier = scrollModifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
 		item {
 			Card(shape = CardShape, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
 			Column(modifier = Modifier.padding(12.dp)) {
@@ -124,6 +125,7 @@ internal fun DiaryScreen(padding: PaddingValues, text: (String) -> String, viewM
 				}
 			}
 		}
+	}
 	}
 }
 
