@@ -367,8 +367,9 @@ class ConfirmedSchoolGatewayTest {
 		val responses = ArrayDeque<HttpResponseData>()
 		responses += HttpResponseData(200, "application/json", validBody)
 		responses += HttpResponseData(200, "application/json", "{\"access_token\":\"renewed-access\",\"refresh_token\":\"renewed-refresh\",\"exp_time\":\"2030-01-01T00:00:00Z\"}")
-		responses += HttpResponseData(200, "application/json", "{}")
-		val transport = SyntheticHttpsTransport { responses.removeFirst() }
+		responses += HttpResponseData(200, "application/json", "{\"data\":{\"days\":[{}]}}")
+		val requests = mutableListOf<HttpRequestData>()
+		val transport = SyntheticHttpsTransport { request -> requests += request; responses.removeFirst() }
 		val sessions = FakeSessionController()
 		val gateway = ConfirmedSchoolGateway(
 			SchoolGateway(transport),
@@ -398,6 +399,11 @@ class ConfirmedSchoolGatewayTest {
 
 		assertEquals("renewed-access", sessions.token)
 		assertEquals("renewed-refresh", sessions.refreshToken)
+		assertEquals(3, requests.size)
+		assertTrue(requests[1].url.endsWith("/refresh_token"))
+		assertTrue(requests[2].url.substringBefore('?').endsWith("/diary"))
+		assertEquals("Bearer renewed-access", requests[2].headers["Authorization"])
+		assertTrue(responses.isEmpty())
 		assertTrue(repository.observeDiary(org.materialclass.data.DateRange(java.time.LocalDate.parse("2026-01-01"), java.time.LocalDate.parse("2026-01-02"))).current is org.materialclass.data.DataState.Ready)
 	}
 
