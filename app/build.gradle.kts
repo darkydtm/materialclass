@@ -111,6 +111,7 @@ android {
 			}
 		}
 		getByName("debug") {
+			applicationIdSuffix = ".debug"
 			if (debugSigningConfigured) {
 				signingConfig = signingConfigs.getByName("debugCustom")
 			}
