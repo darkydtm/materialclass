@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -109,7 +110,9 @@ class MaterialClassNavigationTest {
 		composeRule.onNodeWithTag("pull-refresh-background").assertIsDisplayed()
 		val dragIndicatorBounds = composeRule.onNodeWithTag("pull-refresh-indicator").getUnclippedBoundsInRoot()
 		val dragBackgroundBounds = composeRule.onNodeWithTag("pull-refresh-background").getUnclippedBoundsInRoot()
-		check(kotlin.math.abs((dragIndicatorBounds.center.y - dragBackgroundBounds.center.y).value) < 1f) {
+		check(kotlin.math.abs(
+			(dragIndicatorBounds.top.value + dragIndicatorBounds.bottom.value - dragBackgroundBounds.top.value - dragBackgroundBounds.bottom.value) / 2f,
+		) < 1f) {
 			"Background and indicator must share their center while dragging"
 		}
 		root.performTouchInput { up() }
@@ -123,7 +126,9 @@ class MaterialClassNavigationTest {
 		composeRule.onNodeWithTag("pull-refresh-background").assertIsDisplayed()
 		val loadingIndicatorBounds = composeRule.onNodeWithTag("pull-refresh-indicator").getUnclippedBoundsInRoot()
 		val loadingBackgroundBounds = composeRule.onNodeWithTag("pull-refresh-background").getUnclippedBoundsInRoot()
-		check(kotlin.math.abs((loadingIndicatorBounds.center.y - loadingBackgroundBounds.center.y).value) < 1f) {
+		check(kotlin.math.abs(
+			(loadingIndicatorBounds.top.value + loadingIndicatorBounds.bottom.value - loadingBackgroundBounds.top.value - loadingBackgroundBounds.bottom.value) / 2f,
+		) < 1f) {
 			"Background and indicator must share their center while refreshing"
 		}
 		composeRule.runOnIdle { check(calls.get() == 1) { "Threshold release must start exactly one refresh" } }
