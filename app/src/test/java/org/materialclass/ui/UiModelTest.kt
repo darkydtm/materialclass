@@ -33,17 +33,11 @@ class UiModelTest {
 		val helper = Class.forName("org.materialclass.ui.AppModelsKt").declaredMethods.firstOrNull { it.name == "gradeHue" }
 		assertTrue("Grade hue must be calculated independently of theme accents", helper != null)
 		helper!!.isAccessible = true
-		val bands = listOf(
-			Triple(20.0, 34.999999, 30f),
-			Triple(35.0, 64.999999, 60f),
-			Triple(65.0, 84.999999, 90f),
-			Triple(85.0, 100.0, 120f),
-		)
-		bands.forEach { (minimum, maximum, expectedHue) ->
-			assertEquals(expectedHue, helper.invoke(null, minimum) as Float, 0.001f)
-			assertEquals(expectedHue, helper.invoke(null, maximum) as Float, 0.001f)
+		listOf(0.0 to 0f, 25.0 to 30f, 50.0 to 60f, 75.0 to 90f, 100.0 to 120f).forEach { (percent, expectedHue) ->
+			assertEquals(expectedHue, helper.invoke(null, percent) as Float, 0.001f)
 		}
-		assertEquals(0f, helper.invoke(null, 19.999999) as Float, 0.001f)
+		assertEquals(0f, helper.invoke(null, -10.0) as Float, 0.001f)
+		assertEquals(120f, helper.invoke(null, 150.0) as Float, 0.001f)
 		assertEquals(0f, helper.invoke(null, Double.NaN) as Float, 0.001f)
 	}
 

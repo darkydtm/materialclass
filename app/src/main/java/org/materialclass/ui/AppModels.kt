@@ -592,13 +592,14 @@ internal fun effectiveFinalScore(subject: GradeSubject): String? =
 	subject.finalScore?.takeIf { it.isNotBlank() }
 		?: if (isCreditSubject(subject)) null else org.materialclass.grades.GradeCalculator.calculate(gradeComponents(subject.schedules)).grade?.toString()
 
-internal fun gradeHue(percent: Double): Float = when {
-	!percent.isFinite() -> 0f
-	percent >= 85.0 -> 120f
-	percent >= 65.0 -> 90f
-	percent >= 35.0 -> 60f
-	percent >= 20.0 -> 30f
-	else -> 0f
+internal fun gradeHue(percent: Double): Float {
+	if (!percent.isFinite()) return 0f
+	val score = percent.coerceIn(0.0, 100.0)
+	return if (score <= 50.0) {
+		(score * 1.2).toFloat()
+	} else {
+		(60.0 + (score - 50.0) * 1.2).toFloat()
+	}
 }
 
 internal fun gradeHueForMark(value: String?, maximum: Double? = null): Float? {
