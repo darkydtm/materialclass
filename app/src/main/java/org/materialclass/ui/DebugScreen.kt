@@ -34,8 +34,13 @@ internal fun readApplicationLogs(
 	execute: (Array<String>) -> Process = { Runtime.getRuntime().exec(it) },
 ): String {
 	require(pid > 0) { "Application PID must be positive" }
-	val process = execute(arrayOf("logcat", "-d", "--pid=$pid"))
-	val output = process.inputStream.bufferedReader().use { it.readText() }
+	val process = execute(arrayOf("logcat", "-d", "-v", "threadtime"))
+	val output = process.inputStream.bufferedReader().useLines { lines ->
+		lines.filter { line ->
+			val fields = line.trimStart().split(Regex("\\s+"), limit = 6)
+			fields.size == 6 && fields[2].toIntOrNull() == pid
+		}.joinToString("\n")
+	}
 	check(process.waitFor() == 0) { "logcat failed" }
 	return output
 }
