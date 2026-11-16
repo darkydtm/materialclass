@@ -116,7 +116,7 @@ class SchoolRepositoryImpl(
 		if (token == null && gateway.refreshSession(session)) token = sessions.tokenFor(session)
 		if (token == null || sessions.currentSession() != session) return GatewayReadResult.Failure(AppError.LoginRequired)
 		var result = call(context(token, key))
-		if (result == GatewayReadResult.Failure(AppError.Unauthorized) && sessions.currentSession() == session && gateway.refreshSession(session)) {
+		if (result is GatewayReadResult.Failure && result.error == AppError.Unauthorized && sessions.currentSession() == session && gateway.refreshSession(session)) {
 			val renewed = sessions.tokenFor(session)
 			if (renewed != null && sessions.currentSession() == session) result = call(context(renewed, key))
 		}
@@ -196,7 +196,7 @@ class SchoolRepositoryImpl(
 			if (key.startsWith("grades:")) DiaryDiagnostics.record(DiaryStage.REPOSITORY, DiaryOutcome.FAILURE, error = AppError.Network, exception = exception)
 			GatewayReadResult.Failure(AppError.Network)
 		}
-		if (result == GatewayReadResult.Failure(AppError.Unauthorized) && sessions.currentSession() == session) {
+		if (result is GatewayReadResult.Failure && result.error == AppError.Unauthorized && sessions.currentSession() == session) {
 			val refreshed = gateway.refreshSession(session)
 			if (refreshed && sessions.currentSession() == session) {
 				val refreshedToken = sessions.tokenFor(session)
