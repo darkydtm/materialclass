@@ -143,7 +143,7 @@ private fun SubjectCard(subject: GradeSubject, text: (String) -> String, viewMod
 							if (schedule.soch != null) GradeTile(schedule.soch, subject.scoreType, schedule.date, text("grade_category_soch"), text, schedule.sochMax?.toDoubleOrNull(), schedule.sochMax, schedule.uuid, "soch", viewModel, navigator)
 						}
 					} else {
-						subject.scores.forEach { score -> GradeTile(score, subject.scoreType, null, null, text) }
+						subject.scores.forEach { score -> GradeTile(score, subject.scoreType, null, null, text, maximum = 5.0) }
 					}
 				}
 		}
@@ -158,11 +158,9 @@ internal fun gradeContainerColor(value: String?, scoreType: String?, maximum: Do
 		AssessmentKind.Credit -> colors.primaryContainer
 		AssessmentKind.Empty -> colors.surfaceContainerHigh
 		AssessmentKind.Numeric -> {
-			val number = value?.substringBefore('/')?.trim()?.toDoubleOrNull()
-			val max = maximum ?: value?.substringAfter('/', "")?.toDoubleOrNull()
-			val percent = if (number != null && max != null && max > 0) number * 100 / max else if (number != null) number * 10 else null
-			if (percent == null || !percent.isFinite()) colors.surfaceContainerHigh
-			else Color.hsl(gradeHue(percent), 0.48f, if (colors.surface.luminance() < 0.5f) 0.27f else 0.86f)
+			val hue = gradeColorHue(value, scoreType, maximum)
+			if (hue == null) colors.surfaceContainerHigh
+			else Color.hsl(hue, 0.48f, if (colors.surface.luminance() < 0.5f) 0.27f else 0.86f)
 		}
 	}
 }

@@ -48,6 +48,15 @@ class UiModelTest {
 	}
 
 	@Test
+	fun displayedMarksUseTheirActualScaleForGradeColor() {
+		assertEquals(60f, gradeColorHue("4", "numeric", 10.0)!!, 0.001f)
+		assertEquals(90f, gradeColorHue("4", "numeric", 5.0)!!, 0.001f)
+		assertEquals(null, gradeColorHue("Зачет", "credit", 10.0))
+		assertEquals(null, gradeColorHue("", "numeric", 10.0))
+		assertEquals(null, gradeColorHue("4", "numeric", 0.0))
+	}
+
+	@Test
 	fun profileNameNormalizesEveryPart() {
 		assertEquals("Иванов Иван Иванович", normalizedFullName("  ИВАНОВ   иВАН ИВАНОВИЧ "))
 		assertEquals(null, normalizedFullName("  "))
