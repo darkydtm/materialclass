@@ -29,6 +29,17 @@ import org.materialclass.BuildConfig
 import org.materialclass.notifications.NotificationCategory
 import org.materialclass.notifications.NotificationRunResult
 
+internal fun readApplicationLogs(
+	pid: Int,
+	execute: (Array<String>) -> Process = { Runtime.getRuntime().exec(it) },
+): String {
+	require(pid > 0) { "Application PID must be positive" }
+	val process = execute(arrayOf("logcat", "-d", "--pid=$pid"))
+	val output = process.inputStream.bufferedReader().use { it.readText() }
+	check(process.waitFor() == 0) { "logcat failed" }
+	return output
+}
+
 @Composable
 internal fun DebugScreen(padding: PaddingValues, text: (String) -> String, simulate: (NotificationCategory) -> NotificationRunResult) {
 	val context = LocalContext.current
@@ -40,7 +51,9 @@ internal fun DebugScreen(padding: PaddingValues, text: (String) -> String, simul
 		Button(onClick = clickFeedback { scope.launch { status = withContext(Dispatchers.IO) { simulate(NotificationCategory.HOMEWORK).status.name } } }, modifier = Modifier.fillMaxWidth()) { Text(text("debug_homework")) }
 		Button(onClick = clickFeedback {
 			scope.launch {
-				val logs = withContext(Dispatchers.IO) { runCatching { val process = Runtime.getRuntime().exec(arrayOf("logcat", "-d", "--pid=${Process.myPid()}")); val output = process.inputStream.bufferedReader().use { it.readText() }; check(process.waitFor() == 0); output }.getOrNull() }
+				val logs = withContext(Dispatchers.IO) {
+					runCatching { readApplicationLogs(Process.myPid()) }.getOrNull()
+				}
 				if (logs == null) status = text("debug_logs_failed") else {
 					(context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("MaterialClass logcat", logs))
 					status = text("debug_logs_copied")
