@@ -31,7 +31,7 @@ import org.materialclass.notifications.NotificationRunResult
 
 internal fun readApplicationLogs(
 	pid: Int,
-	execute: (Array<String>) -> Process = { Runtime.getRuntime().exec(it) },
+	execute: (Array<String>) -> java.lang.Process = { Runtime.getRuntime().exec(it) },
 ): String {
 	require(pid > 0) { "Application PID must be positive" }
 	val process = execute(arrayOf("logcat", "-d", "-v", "threadtime"))
