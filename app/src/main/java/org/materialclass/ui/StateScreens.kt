@@ -12,7 +12,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -46,11 +47,12 @@ internal fun StateScreen(padding: PaddingValues, text: (String) -> String, bar: 
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 internal fun StatePanel(text: (String) -> String, state: UiContent, emptyText: String = "empty_day", retry: (() -> Unit)? = null) {
 	Card(shape = RowShape, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
 		Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
 			when (state) {
-				UiContent.Loading -> CircularProgressIndicator(modifier = Modifier.size(32.dp))
+				UiContent.Loading -> LoadingIndicator(modifier = Modifier.size(32.dp))
 				UiContent.Ready -> Text(text("ready"))
 				UiContent.Empty -> Text(text(emptyText))
 				UiContent.Offline -> Text(text("offline_title"))

@@ -20,7 +20,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -43,6 +44,7 @@ import org.materialclass.data.GradeComparison
 
 
 @Composable
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 internal fun GradeComparisonScreen(padding: PaddingValues, text: (String) -> String, viewModel: SchoolViewModel) {
 	val selection = viewModel.comparisonSelection
 	var result by remember(selection) { mutableStateOf<GatewayReadResult<GradeComparison>?>(null) }
@@ -52,7 +54,7 @@ internal fun GradeComparisonScreen(padding: PaddingValues, text: (String) -> Str
 	PullRefreshLayout(modifier = Modifier.fillMaxSize().padding(padding), onRefresh = { result = viewModel.refreshGradeComparison(selection) }) { scrollModifier ->
 	Column(modifier = scrollModifier.verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 		when (val current = result) {
-			null -> CircularProgressIndicator()
+			null -> LoadingIndicator()
 			GatewayReadResult.Empty -> Text(text("no_data"))
 			is GatewayReadResult.Failure -> Text(text("grade_comparison_unavailable"))
 			is GatewayReadResult.Success -> ComparisonContent(current.value, text)

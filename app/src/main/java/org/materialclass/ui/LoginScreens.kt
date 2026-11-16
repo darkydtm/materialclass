@@ -21,10 +21,11 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextField
@@ -74,6 +75,7 @@ internal fun LoginFlow(text: (String) -> String, viewModel: SchoolViewModel, rou
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 private fun LoginScreen(text: (String) -> String, viewModel: SchoolViewModel) {
 	var login by rememberSaveable { mutableStateOf("") }
 	var password by rememberSaveable { mutableStateOf("") }
@@ -117,7 +119,7 @@ private fun LoginScreen(text: (String) -> String, viewModel: SchoolViewModel) {
 						LoginUiState.InvalidCredentials -> Text(text("login_invalid"), color = MaterialTheme.colorScheme.error)
 						LoginUiState.ConnectionError -> Text(text("login_connection_error_body"), color = MaterialTheme.colorScheme.error)
 						LoginUiState.Unsupported -> Text(text("unsupported"), color = MaterialTheme.colorScheme.error)
-						LoginUiState.Loading -> LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+						LoginUiState.Loading -> LinearWavyProgressIndicator(modifier = Modifier.fillMaxWidth())
 						else -> Unit
 					}
 					Button(
@@ -129,6 +131,7 @@ private fun LoginScreen(text: (String) -> String, viewModel: SchoolViewModel) {
 	}
 }
 @Composable
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 private fun LoginStateScreen(title: String, body: String, text: (String) -> String, reset: () -> Unit) {
 	Column(
 		modifier = Modifier.fillMaxSize().padding(20.dp),
@@ -149,11 +152,11 @@ private fun LoginStateScreen(title: String, body: String, text: (String) -> Stri
 			modifier = Modifier.fillMaxWidth(),
 		) {
 			Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-				if (isLoading) CircularProgressIndicator(modifier = Modifier.size(32.dp))
+				if (isLoading) LoadingIndicator(modifier = Modifier.size(32.dp))
 				else Icon(if (isError) Icons.Default.Close else Icons.Default.Check, contentDescription = null)
 				Text(title, style = MaterialTheme.typography.headlineMedium)
 				Text(body, color = MaterialTheme.colorScheme.onSurfaceVariant)
-				if (isLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+				if (isLoading) LinearWavyProgressIndicator(modifier = Modifier.fillMaxWidth())
 				else Button(onClick = clickFeedback(reset), shape = RowShape, modifier = Modifier.fillMaxWidth()) { Text(text(if (isError && title == text("login_connection_error")) "login_try_again" else "login_again")) }
 			}
 		}
