@@ -130,6 +130,9 @@ class MaterialClassNavigationTest {
 			up()
 		}
 		composeRule.onNodeWithText(debug).assertIsDisplayed()
+		composeRule.onNodeWithText("Date: ${org.materialclass.BuildConfig.BUILD_DATE}").assertIsDisplayed()
+		composeRule.onNodeWithText("Hash: ${org.materialclass.BuildConfig.BUILD_REVISION}").assertIsDisplayed()
+		composeRule.onNodeWithText("Branch: ${org.materialclass.BuildConfig.BUILD_BRANCH}").assertIsDisplayed()
 	}
 
 	@Test

@@ -35,7 +35,7 @@ internal fun DebugScreen(padding: PaddingValues, text: (String) -> String, simul
 	val scope = rememberCoroutineScope()
 	var status by remember { mutableStateOf("") }
 	Column(modifier = Modifier.fillMaxSize().padding(padding).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-		Text("${BuildConfig.BUILD_DATE}\n${BuildConfig.BUILD_BRANCH}\n${BuildConfig.BUILD_REVISION}", style = MaterialTheme.typography.bodyMedium)
+		Text("Date: ${BuildConfig.BUILD_DATE}\nHash: ${BuildConfig.BUILD_REVISION}\nBranch: ${BuildConfig.BUILD_BRANCH}", style = MaterialTheme.typography.bodyMedium)
 		Button(onClick = clickFeedback { scope.launch { status = withContext(Dispatchers.IO) { simulate(NotificationCategory.NEW_GRADE).status.name } } }, modifier = Modifier.fillMaxWidth()) { Text(text("debug_new_grade")) }
 		Button(onClick = clickFeedback { scope.launch { status = withContext(Dispatchers.IO) { simulate(NotificationCategory.HOMEWORK).status.name } } }, modifier = Modifier.fillMaxWidth()) { Text(text("debug_homework")) }
 		Button(onClick = clickFeedback {
