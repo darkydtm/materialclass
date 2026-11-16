@@ -59,13 +59,20 @@ class DebugScreenLogcatTest {
 	@Test
 	fun keepsAppLogsWhenOtherProcessUsesSamePidAsThreadId() {
 		val output = """
-			11-16 10:00:00.000 321 654 I OtherTag: other process
-			11-16 10:00:00.001 321 321 I AppTag: app process
+			11-16 10:00:00.000 654 321 I OtherTag: other process
+			11-16 10:00:00.001 321 654 I AppTag: app process
+			11-16 10:00:00.002 321 987 I AppTag: app secondary thread
 		""".trimIndent()
 
 		val result = readApplicationLogs(321) { FakeProcess(output, 0) }
 
-		assertEquals("11-16 10:00:00.001 321 321 I AppTag: app process", result)
+		assertEquals(
+			listOf(
+				"11-16 10:00:00.001 321 654 I AppTag: app process",
+				"11-16 10:00:00.002 321 987 I AppTag: app secondary thread",
+			),
+			result.lines(),
+		)
 	}
 
 	@Test
