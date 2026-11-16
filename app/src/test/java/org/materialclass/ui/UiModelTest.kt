@@ -43,8 +43,10 @@ class UiModelTest {
 
 	@Test
 	fun displayedMarksUseTheirActualScaleForGradeColor() {
-		assertEquals(60f, gradeColorHue("4", "numeric", 10.0)!!, 0.001f)
-		assertEquals(90f, gradeColorHue("4", "numeric", 5.0)!!, 0.001f)
+		assertEquals(48f, gradeColorHue("4", "numeric", 10.0)!!, 0.001f)
+		assertEquals(96f, gradeColorHue("4", "numeric", 5.0)!!, 0.001f)
+		assertEquals(0f, gradeColorHue("0", "numeric", 10.0)!!, 0.001f)
+		assertEquals(120f, gradeColorHue("10", "numeric", 10.0)!!, 0.001f)
 		assertEquals(null, gradeColorHue("Зачет", "credit", 10.0))
 		assertEquals(null, gradeColorHue("", "numeric", 10.0))
 		assertEquals(null, gradeColorHue("4", "numeric", 0.0))
@@ -54,8 +56,8 @@ class UiModelTest {
 	fun finalGradesUseGradeBandsInsteadOfFivePointPercentages() {
 		assertEquals(0f, finalGradeColorHue("1", "numeric")!!, 0.001f)
 		assertEquals(30f, finalGradeColorHue("2", "numeric")!!, 0.001f)
-		assertEquals(gradeColorHue("2", "numeric", 10.0), finalGradeColorHue("2", "numeric"))
-		assertEquals(60f, gradeColorHue("2", "numeric", 5.0)!!, 0.001f)
+		assertEquals(gradeColorHue("2", "numeric", 5.0), finalGradeColorHue("2", "numeric"))
+		assertEquals(48f, gradeColorHue("2", "numeric", 5.0)!!, 0.001f)
 		assertEquals(60f, finalGradeColorHue("3", "numeric")!!, 0.001f)
 		assertEquals(90f, finalGradeColorHue("4", "numeric")!!, 0.001f)
 		assertEquals(120f, finalGradeColorHue("5", "numeric")!!, 0.001f)
