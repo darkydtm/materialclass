@@ -34,6 +34,70 @@ class SchoolRepositoryTest {
 	}
 
 	@Test
+	fun loadDoesNotPublishCacheAfterLogoutDuringDiskRead() {
+		val sessionLock = java.util.concurrent.locks.ReentrantLock()
+		val started = CountDownLatch(1)
+		val finishRead = CountDownLatch(1)
+		val fixture = Fixture()
+		fixture.gateway.scheduleResult = GatewayReadResult.Success(ScheduleModel(5, 1))
+		fixture.repository.refreshSchedule(range)
+		val recreatedStore = fixture.store
+		val blockingStore = object : SnapshotStore {
+			override fun read(session: ActiveSession): SnapshotStoreRead {
+				started.countDown()
+				check(finishRead.await(5, TimeUnit.SECONDS))
+				return fixture.store.read(session)
+			}
+			override fun write(session: ActiveSession, slices: Map<String, CachedSlice>) = fixture.store.write(session, slices)
+		}
+		val access = LockedFakeSessionAccess(fixture.sessions, sessionLock)
+		val repository = SchoolRepositoryImpl(fixture.gateway, access, blockingStore, { capturedAt })
+		val observation = repository.observeSchedule(range)
+		val pool = java.util.concurrent.Executors.newFixedThreadPool(2)
+		try {
+			val load = pool.submit { repository.loadSchedule(range) }
+			assertTrue(started.await(5, TimeUnit.SECONDS))
+			val logout = pool.submit { sessionLock.lock(); try { fixture.sessions.active = null } finally { sessionLock.unlock() } }
+			logout.get(5, TimeUnit.SECONDS)
+			finishRead.countDown()
+			load.get(5, TimeUnit.SECONDS)
+			assertFalse(observation.current is DataState.Stale)
+		} finally { finishRead.countDown(); pool.shutdownNow() }
+	}
+
+	@Test
+	fun refreshCacheRestoreDoesNotPublishAfterAccountReplacementDuringDiskRead() {
+		val sessionLock = java.util.concurrent.locks.ReentrantLock()
+		val started = CountDownLatch(1)
+		val finishRead = CountDownLatch(1)
+		val fixture = Fixture()
+		fixture.gateway.scheduleResult = GatewayReadResult.Success(ScheduleModel(5, 1))
+		fixture.repository.refreshSchedule(range)
+		val recreatedStore = fixture.store
+		val blockingStore = object : SnapshotStore {
+			override fun read(session: ActiveSession): SnapshotStoreRead {
+				started.countDown()
+				check(finishRead.await(5, TimeUnit.SECONDS))
+				return fixture.store.read(session)
+			}
+			override fun write(session: ActiveSession, slices: Map<String, CachedSlice>) = fixture.store.write(session, slices)
+		}
+		val access = LockedFakeSessionAccess(fixture.sessions, sessionLock)
+		val repository = SchoolRepositoryImpl(fixture.gateway, access, blockingStore, { capturedAt })
+		val observation = repository.observeSchedule(range)
+		val pool = java.util.concurrent.Executors.newFixedThreadPool(2)
+		try {
+			val refresh = pool.submit { repository.refreshSchedule(range) }
+			assertTrue(started.await(5, TimeUnit.SECONDS))
+			val replacement = pool.submit { sessionLock.lock(); try { fixture.sessions.active = ActiveSession(AccountId("replacement"), Generation(2)) } finally { sessionLock.unlock() } }
+			replacement.get(5, TimeUnit.SECONDS)
+			finishRead.countDown()
+			refresh.get(5, TimeUnit.SECONDS)
+			assertFalse(observation.current is DataState.Stale)
+		} finally { finishRead.countDown(); pool.shutdownNow() }
+	}
+
+	@Test
 	fun expiredSessionRefreshesThenRetriesTheUserRead() {
 		val fixture = Fixture()
 		fixture.sessions.expired = true
@@ -464,6 +528,15 @@ class SchoolRepositoryTest {
 		val events = mutableListOf<RepositoryEvent>()
 		val repository = SchoolRepositoryImpl(gateway, sessions, store, { capturedAt }).also { it.events().observe { events += it } }
 	}
+}
+
+private class LockedFakeSessionAccess(
+	private val delegate: FakeSessionAccess,
+	private val lock: java.util.concurrent.locks.ReentrantLock,
+) : SessionAccess {
+	override fun currentSession(): ActiveSession? = lock.run { lock(); try { delegate.currentSession() } finally { unlock() } }
+	override fun tokenFor(session: ActiveSession): String? = lock.run { lock(); try { delegate.tokenFor(session) } finally { unlock() } }
+	override fun <T> withSessionLock(block: () -> T): T = lock.run { lock(); try { block() } finally { unlock() } }
 }
 
 private class FakeSessionAccess(@Volatile var active: ActiveSession?) : SessionAccess {

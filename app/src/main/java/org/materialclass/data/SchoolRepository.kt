@@ -156,33 +156,40 @@ class SchoolRepositoryImpl(
 
 	private fun <T> load(key: String, call: (ReadContext) -> GatewayReadResult<T>) {
 		val session = sessions.currentSession() ?: return refresh(key, call = call)
-		val existing = synchronized(lock) { states[key]?.takeIf { snapshotSession(it) == session } }
+		val existing = synchronized(lock) { states[key]?.takeIf { snapshotFor(it, session) != null } }
 		val needsCache = existing == null && synchronized(lock) { (session to key) !in requestedSlices }
 		val restored = if (needsCache) readSlice<T>(key, session) else null
-		val shouldLoad = synchronized(lock) {
-			if ((session to key) in requestedSlices) return@synchronized false
-			val state = states[key]?.takeIf { snapshotSession(it) == session } ?: restored?.also {
-				states[key] = it
-				update(key, it)
-			}
-			val snapshot = when (state) {
-				is DataState.Ready<*> -> state.snapshot
-				is DataState.Stale<*> -> state.snapshot
-				is DataState.Error<*> -> state.snapshot
-				is DataState.Offline<*> -> state.snapshot
-				else -> null
-			}
-			val belongsToSession = snapshot?.let { it.accountId == session.accountId && it.generation == session.generation }
-			if (belongsToSession == true) false
-			else {
-				if (snapshot != null || state != null) {
-					states.remove(key)
-					update(key, DataState.Loading)
+		val shouldLoad = sessions.withSessionLock {
+			if (sessions.currentSession() != session) return@withSessionLock false
+			synchronized(lock) {
+				if ((session to key) in requestedSlices) return@synchronized false
+				val state = states[key]?.takeIf { snapshotFor(it, session) != null } ?: restored?.also {
+					states[key] = it
+					update(key, it)
 				}
-				requestedSlices.add(session to key)
+				val snapshot = snapshotFor(state, session)
+				if (snapshot != null) false
+				else {
+					if (state != null) {
+						states.remove(key)
+						update(key, DataState.Loading)
+					}
+					requestedSlices.add(session to key)
+				}
 			}
 		}
-		if (shouldLoad && sessions.currentSession() == session) refresh(key, session, call)
+		if (shouldLoad) refresh(key, session, call)
+	}
+
+	private fun snapshotFor(state: DataState<*>?, session: ActiveSession): Snapshot<*>? {
+		val snapshot = when (state) {
+			is DataState.Ready<*> -> state.snapshot
+			is DataState.Stale<*> -> state.snapshot
+			is DataState.Error<*> -> state.snapshot
+			is DataState.Offline<*> -> state.snapshot
+			else -> null
+		}
+		return snapshot?.takeIf { it.accountId == session.accountId && it.generation == session.generation }
 	}
 
 	@Suppress("UNCHECKED_CAST")
@@ -202,11 +209,13 @@ class SchoolRepositoryImpl(
 		}
 		if (expectedSession != null && session != expectedSession) return false
 		val revision = synchronized(lock) { (revisions[key] ?: 0L).plus(1).also { revisions[key] = it } }
-		val needsRestore = synchronized(lock) { states[key] == null || snapshotSession(states[key]) != session }
-		if (needsRestore && sessions.currentSession() == session) {
+		val needsRestore = synchronized(lock) { states[key] == null || snapshotFor(states[key], session) == null }
+		if (needsRestore) {
 			val cached = readSlice<T>(key, session)
-			if (sessions.currentSession() == session) synchronized(lock) {
-				if (states[key] == null || snapshotSession(states[key]) != session) cached?.let { states[key] = it; update(key, it) }
+			if (cached != null) sessions.withSessionLock {
+				if (sessions.currentSession() == session) synchronized(lock) {
+					if (states[key] == null || snapshotFor(states[key], session) == null) { states[key] = cached; update(key, cached) }
+				}
 			}
 		}
 		val token = sessions.tokenFor(session) ?: run {

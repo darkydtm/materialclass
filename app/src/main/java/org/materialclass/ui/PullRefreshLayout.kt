@@ -79,7 +79,7 @@ internal fun PullRefreshLayout(
 		label = "pull-refresh-progress",
 	)
 	val indicatorAlpha by animateFloatAsState(
-		targetValue = if (state.isRefreshing || state.progress > 0f) 1f else 0f,
+		targetValue = if (state.isRefreshing) 1f else (state.progress / threshold).coerceIn(0f, 1f),
 		animationSpec = tween(durationMillis = if (state.isRefreshing) 120 else 220),
 		label = "pull-refresh-alpha",
 	)
@@ -91,7 +91,7 @@ internal fun PullRefreshLayout(
 	Box(modifier) {
 		content(Modifier.nestedScroll(connection))
 		val indicatorModifier = Modifier.align(Alignment.TopCenter)
-			.offset { IntOffset(0, (animatedProgress * threshold - threshold * 0.5f).coerceAtLeast(0f).roundToInt()) }
+			.offset { IntOffset(0, (state.progress - with(LocalDensity.current) { indicatorSize.toPx() / 2f }).coerceAtLeast(0f).roundToInt()) }
 			.size(indicatorSize)
 			.graphicsLayer { alpha = indicatorAlpha }
 			.testTag("pull-refresh-indicator")
