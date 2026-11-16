@@ -30,6 +30,13 @@ interface SessionController {
 	fun refreshTokenFor(session: ActiveSession): String? = null
 	fun userInfoFor(session: ActiveSession): UserInfo? = null
 	fun replaceTokens(session: ActiveSession, accessToken: String, refreshToken: String, expiresAt: Instant): Boolean = false
+	fun replaceTokensIfCurrent(session: ActiveSession, expectedRefreshToken: String, accessToken: String, refreshToken: String, expiresAt: Instant): Boolean =
+		if (refreshTokenFor(session) != expectedRefreshToken) false else replaceTokens(session, accessToken, refreshToken, expiresAt)
+	fun invalidateIfCurrent(session: ActiveSession, expectedRefreshToken: String): Boolean {
+		if (refreshTokenFor(session) != expectedRefreshToken) return false
+		invalidateAndClear()
+		return true
+	}
 	fun invalidateAndClear()
 }
 
@@ -83,6 +90,7 @@ class ConfirmedSchoolGateway(
 ) {
 	private var signedInUser: UserInfo? = null
 	private var lastLoginResponse: LoginResponse? = null
+	private val refreshLock = Any()
 	constructor(gateway: SchoolGateway, sessions: SessionController) : this(
 		gateway,
 		sessions,
@@ -153,26 +161,25 @@ class ConfirmedSchoolGateway(
 		return true
 	}
 
-	fun refresh(): RefreshResult {
-		val session = sessions.currentSession() ?: return RefreshResult.LoginRequired
-		val refreshToken = sessions.refreshTokenFor(session) ?: return RefreshResult.LoginRequired
-		return when (val result = gateway.refresh(refreshToken)) {
+	fun refresh() = synchronized(refreshLock) {
+		val session = sessions.currentSession() ?: return@synchronized RefreshResult.LoginRequired
+		val refreshToken = sessions.refreshTokenFor(session) ?: return@synchronized RefreshResult.LoginRequired
+		when (val result = gateway.refresh(refreshToken)) {
 			is GatewayRefreshResult.Success -> {
-				if (!sessions.replaceTokens(
+				if (!sessions.replaceTokensIfCurrent(
 						session,
+						refreshToken,
 						result.response.accessToken,
 						result.response.refreshToken,
 						result.response.expiresAt,
 					)) {
-					sessions.invalidateAndClear()
-					RefreshResult.Failed(AppError.IdentityNotConfirmed)
-				} else {
-					lastLoginResponse = null
-					RefreshResult.Refreshed(session)
+					return@synchronized RefreshResult.LoginRequired
 				}
+				lastLoginResponse = null
+				RefreshResult.Refreshed(session)
 			}
 			is GatewayRefreshResult.Failure -> if (result.error == AppError.LoginRequired) {
-				sessions.invalidateAndClear()
+				sessions.invalidateIfCurrent(session, refreshToken)
 				RefreshResult.LoginRequired
 			} else RefreshResult.Failed(result.error)
 		}
