@@ -109,7 +109,7 @@ internal fun HomeScreen(
 				contentType = { "lesson" },
 			) { index ->
 				val lesson = today.lessons[index]
-				LessonCard(lesson, journalGradeForLesson(viewModel.scheduleGradesState.readyValue(), lesson)) {
+				LessonCard(lesson, journalGradeForLesson(viewModel.scheduleGradesState.readyValue(), lesson), text, viewModel, navigator) {
 					navigator.goFrom(AppRoute.Home, AppRoute.LessonDetail) { onLessonSelected(lesson.uuid.orEmpty()) }
 				}
 			}
@@ -209,7 +209,7 @@ internal fun ScheduleScreen(
 				contentType = { "lesson" },
 			) { index ->
 				val lesson = day.lessons[index]
-				LessonCard(lesson, journalGradeForLesson(viewModel.scheduleGradesState.readyValue(), lesson)) {
+				LessonCard(lesson, journalGradeForLesson(viewModel.scheduleGradesState.readyValue(), lesson), text, viewModel, navigator) {
 					navigator.goFrom(AppRoute.Schedule, AppRoute.LessonDetail) { onLessonSelected(lesson.uuid.orEmpty()) }
 				}
 			}
@@ -225,7 +225,7 @@ private fun dayNumber(value: String?): String? {
 }
 
 @Composable
-private fun LessonCard(lesson: ScheduleLesson, grade: GradeSchedule?, onClick: () -> Unit) {
+private fun LessonCard(lesson: ScheduleLesson, grade: GradeSchedule?, text: (String) -> String, viewModel: SchoolViewModel, navigator: AppNavigator, onClick: () -> Unit) {
 	Card(onClick = clickFeedback(onClick), shape = LessonShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh), modifier = Modifier.fillMaxWidth()) {
 		Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
 			Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -236,7 +236,7 @@ private fun LessonCard(lesson: ScheduleLesson, grade: GradeSchedule?, onClick: (
 			}
 			Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
 				Text(lesson.label ?: "", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
-				GradeCard(grade)
+				GradeCard(grade, text, viewModel, navigator)
 			}
 			lesson.homework?.let {
 				Text(
@@ -253,16 +253,14 @@ private fun LessonCard(lesson: ScheduleLesson, grade: GradeSchedule?, onClick: (
 }
 
 @Composable
-private fun GradeCard(grade: GradeSchedule?) {
+private fun GradeCard(grade: GradeSchedule?, text: (String) -> String, viewModel: SchoolViewModel, navigator: AppNavigator) {
 	if (grade == null) return
 	val scores = listOf(grade.score to grade.markMax?.toString(), grade.sor to grade.sorMax, grade.soch to grade.sochMax)
 	Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
 		scores.forEachIndexed { index, (score, maximum) ->
 			if (!score.isNullOrBlank()) {
-				val max = maximum?.toDoubleOrNull()
-				Card(shape = RoundedCornerShape(11.dp), colors = CardDefaults.cardColors(containerColor = gradeContainerColor(score, null, max), contentColor = gradeContentColor(score, null, max))) {
-					Text(if (index == 0) score else assessmentWithMaximum(score, null, maximum, score, score, score), modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.titleMedium)
-				}
+				val comparisonType = listOf("formattedScore", "sor", "soch")[index]
+				GradeTile(score, null, grade.date, null, text, maximum?.toDoubleOrNull(), maximum, grade.uuid, comparisonType, viewModel, navigator)
 			}
 		}
 	}
