@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -84,7 +86,8 @@ internal fun ComparisonContent(comparison: GradeComparison, showMaximum: Boolean
 	Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow, contentColor = MaterialTheme.colorScheme.onSurface), modifier = Modifier.fillMaxWidth().testTag("comparison-chart")) {
 		Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 			val maxCount = (scores.maxOfOrNull { score -> (counts[score] ?: 0) + if (score == own) 1 else 0 } ?: 0).coerceAtLeast(1)
-			Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).height(170.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Bottom) {
+			BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+			Row(modifier = Modifier.horizontalScroll(rememberScrollState()).widthIn(min = maxWidth).height(170.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.Bottom) {
 				scores.forEach { score ->
 					val count = (counts[score] ?: 0) + if (score == own) 1 else 0
 					val height by animateDpAsState(targetValue = (if (chartVisible) 6 + 110 * count / maxCount else 6).dp, animationSpec = spring(), label = "comparisonBar")
@@ -94,6 +97,7 @@ internal fun ComparisonContent(comparison: GradeComparison, showMaximum: Boolean
 						Text(score.toString(), style = MaterialTheme.typography.labelLarge)
 					}
 				}
+			}
 			}
 			val count = (counts[selected] ?: 0) + if (selected != null && selected == own) 1 else 0
 			Text(context.resources.getQuantityString(R.plurals.grade_comparison_count, count, count, selected ?: "-"), color = MaterialTheme.colorScheme.onSurfaceVariant)
