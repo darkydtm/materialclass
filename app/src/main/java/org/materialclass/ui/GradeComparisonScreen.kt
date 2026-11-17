@@ -57,14 +57,14 @@ internal fun GradeComparisonScreen(padding: PaddingValues, text: (String) -> Str
 			null -> LoadingIndicator()
 			GatewayReadResult.Empty -> Text(text("no_data"))
 			is GatewayReadResult.Failure -> Text(text("grade_comparison_unavailable"))
-			is GatewayReadResult.Success -> ComparisonContent(current.value, text)
+			is GatewayReadResult.Success -> ComparisonContent(current.value, showMaximum = selection?.second != "formattedScore", text = text)
 		}
 	}
 	}
 }
 
 @Composable
-internal fun ComparisonContent(comparison: GradeComparison, text: (String) -> String) {
+internal fun ComparisonContent(comparison: GradeComparison, showMaximum: Boolean = true, text: (String) -> String) {
 	val locale = LocalConfiguration.current.locales[0]
 	val context = LocalContext.current
 	val own = comparison.studentMark.score
@@ -77,7 +77,7 @@ internal fun ComparisonContent(comparison: GradeComparison, text: (String) -> St
 	LaunchedEffect(comparison) { chartVisible = true }
 	Card(shape = CardShape, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer), modifier = Modifier.fillMaxWidth().testTag("comparison-summary")) {
 		Column(modifier = Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-			Text("${text("grade_comparison_yours")}: ${own ?: text("no_data")}${comparison.maxScore?.let { "/$it" }.orEmpty()}", style = MaterialTheme.typography.labelLarge)
+			Text("${text("grade_comparison_yours")}: ${own ?: text("no_data")}${comparison.maxScore?.takeIf { showMaximum }?.let { "/$it" }.orEmpty()}", style = MaterialTheme.typography.labelLarge)
 			if (lower != null) Text("${text("comparison_above")} $lower / $others", style = MaterialTheme.typography.headlineMedium)
 		}
 	}

@@ -255,12 +255,12 @@ private fun LessonCard(lesson: ScheduleLesson, grade: GradeSchedule?, text: (Str
 @Composable
 private fun GradeCard(grade: GradeSchedule?, text: (String) -> String, viewModel: SchoolViewModel, navigator: AppNavigator) {
 	if (grade == null) return
-	val scores = listOf(grade.score to grade.markMax?.toString(), grade.sor to grade.sorMax, grade.soch to grade.sochMax)
+	val scores = listOf(grade.score to null, grade.sor to grade.sorMax, grade.soch to grade.sochMax)
 	Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
 		scores.forEachIndexed { index, (score, maximum) ->
 			if (!score.isNullOrBlank()) {
 				val comparisonType = listOf("formattedScore", "sor", "soch")[index]
-				GradeTile(score, null, grade.date, null, text, maximum?.toDoubleOrNull(), maximum, grade.uuid, comparisonType, viewModel, navigator)
+				GradeTile(score, null, grade.date, null, text, maximum?.toDoubleOrNull() ?: grade.markMax?.toDouble().takeIf { index == 0 }, maximum, grade.uuid, comparisonType, viewModel, navigator)
 			}
 		}
 	}
