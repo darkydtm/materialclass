@@ -54,13 +54,16 @@ internal fun GradeComparisonScreen(padding: PaddingValues, text: (String) -> Str
 		result = viewModel.refreshGradeComparison(selection)
 	}
 	PullRefreshLayout(modifier = Modifier.fillMaxSize().padding(padding), onRefresh = { result = viewModel.refreshGradeComparison(selection) }) { scrollModifier ->
+	BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+	val viewportHeight = maxHeight
 	Column(modifier = scrollModifier.verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 		when (val current = result) {
-			null -> LoadingIndicator()
+			null -> Box(modifier = Modifier.fillMaxWidth().height(viewportHeight - 40.dp), contentAlignment = Alignment.Center) { LoadingIndicator() }
 			GatewayReadResult.Empty -> Text(text("no_data"))
 			is GatewayReadResult.Failure -> Text(text("grade_comparison_unavailable"))
 			is GatewayReadResult.Success -> ComparisonContent(current.value, showMaximum = selection?.second != "formattedScore", text = text)
 		}
+	}
 	}
 	}
 }
