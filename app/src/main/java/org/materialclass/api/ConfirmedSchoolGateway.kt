@@ -137,7 +137,10 @@ class ConfirmedSchoolGateway(
 		}
 	}
 
-	fun loginForUi(credentials: LoginCredentials): GatewayLoginResult = when (val result = login(credentials)) {
+	fun loginForUi(
+		credentials: LoginCredentials,
+		cancellation: RequestCancellation = RequestCancellation(),
+	): GatewayLoginResult = when (val result = login(credentials, cancellation)) {
 		is LoginResult.Confirmed -> lastLoginResponse?.let { GatewayLoginResult.Success(it) }
 			?: GatewayLoginResult.Failure(AppError.InvalidResponse)
 		is LoginResult.Failure -> GatewayLoginResult.Failure(result.error)
