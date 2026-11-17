@@ -92,9 +92,9 @@ class ConfirmedSchoolGateway(
 		sessions,
 		ContractBlockedIdentityVerifier,
 	)
-	fun login(credentials: LoginCredentials): LoginResult {
+	fun login(credentials: LoginCredentials, cancellation: RequestCancellation = RequestCancellation()): LoginResult {
 		val requestSession = sessions.currentSession()
-		return when (val result = gateway.login(credentials)) {
+		return when (val result = gateway.login(credentials, cancellation)) {
 			is GatewayLoginResult.Failure -> {
 				sessions.clearIfCurrent(requestSession)
 				signedInUser = null
@@ -137,7 +137,10 @@ class ConfirmedSchoolGateway(
 		}
 	}
 
-	fun loginForUi(credentials: LoginCredentials): GatewayLoginResult = when (val result = login(credentials)) {
+	fun loginForUi(
+		credentials: LoginCredentials,
+		cancellation: RequestCancellation = RequestCancellation(),
+	): GatewayLoginResult = when (val result = login(credentials, cancellation)) {
 		is LoginResult.Confirmed -> lastLoginResponse?.let { GatewayLoginResult.Success(it) }
 			?: GatewayLoginResult.Failure(AppError.InvalidResponse)
 		is LoginResult.Failure -> GatewayLoginResult.Failure(result.error)
