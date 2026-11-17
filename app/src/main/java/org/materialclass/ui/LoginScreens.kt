@@ -118,7 +118,6 @@ private fun LoginScreen(text: (String) -> String, viewModel: SchoolViewModel) {
 					when (viewModel.loginState) {
 						LoginUiState.InvalidCredentials -> Text(text("login_invalid"), color = MaterialTheme.colorScheme.error)
 						LoginUiState.ConnectionError -> Text(text("login_connection_error_body"), color = MaterialTheme.colorScheme.error)
-						LoginUiState.Unsupported -> Text(text("unsupported"), color = MaterialTheme.colorScheme.error)
 						LoginUiState.Loading -> LinearWavyProgressIndicator(modifier = Modifier.fillMaxWidth())
 						else -> Unit
 					}

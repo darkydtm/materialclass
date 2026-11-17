@@ -274,7 +274,7 @@ private fun formatCabinet(cabinet: String): String = cabinet.trim()
 internal fun LessonDetailScreen(padding: PaddingValues, text: (String) -> String, viewModel: SchoolViewModel, selectedLesson: String) {
 	val lesson = viewModel.scheduleState.readyValue()?.days.orEmpty().flatMap { it.lessons }.firstOrNull { it.uuid == selectedLesson }
 	if (lesson == null) {
-		StateScreen(padding, text, "lesson_title", "lesson_detail_unavailable", "unsupported") { viewModel.retry(AppRoute.Schedule) }
+		StateScreen(padding, text, "lesson_title", "lesson_detail_unavailable", "error_load_body") { viewModel.retry(AppRoute.Schedule) }
 		return
 	}
 	LaunchedEffect(selectedLesson) { viewModel.loadDiary() }

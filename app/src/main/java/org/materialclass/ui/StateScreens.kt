@@ -49,6 +49,7 @@ internal fun StateScreen(padding: PaddingValues, text: (String) -> String, bar: 
 @Composable
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 internal fun StatePanel(text: (String) -> String, state: UiContent, emptyText: String = "empty_day", retry: (() -> Unit)? = null) {
+	if (state == UiContent.Unsupported) return
 	Card(shape = RowShape, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
 		Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
 			when (state) {
@@ -58,9 +59,9 @@ internal fun StatePanel(text: (String) -> String, state: UiContent, emptyText: S
 				UiContent.Offline -> Text(text("offline_title"))
 				UiContent.Stale -> Text(text("offline_title"))
 				UiContent.Error -> Text(text("error_load"), color = MaterialTheme.colorScheme.error)
-				UiContent.Unsupported -> Text(text("unsupported"), color = MaterialTheme.colorScheme.error)
+				UiContent.Unsupported -> Unit
 			}
-			if (retry != null && state != UiContent.Ready && state != UiContent.Unsupported) TextButton(onClick = clickFeedback(retry)) { Text(text("retry")) }
+			if (retry != null && state != UiContent.Ready) TextButton(onClick = clickFeedback(retry)) { Text(text("retry")) }
 		}
 	}
 }
