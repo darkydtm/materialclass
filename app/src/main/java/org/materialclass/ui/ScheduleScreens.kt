@@ -234,7 +234,7 @@ private fun LessonCard(lesson: ScheduleLesson, grade: GradeSchedule?, text: (Str
 					Text(cabinet, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 				}
 			}
-			Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+			Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
 				Text(lesson.label ?: "", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
 				GradeCard(grade, text, viewModel, navigator)
 			}
@@ -260,7 +260,7 @@ private fun GradeCard(grade: GradeSchedule?, text: (String) -> String, viewModel
 		scores.forEachIndexed { index, (score, maximum) ->
 			if (!score.isNullOrBlank()) {
 				val comparisonType = listOf("formattedScore", "sor", "soch")[index]
-				GradeTile(score, null, grade.date, null, text, maximum?.toDoubleOrNull() ?: grade.markMax?.toDouble().takeIf { index == 0 }, maximum, grade.uuid, comparisonType, viewModel, navigator)
+				GradeTile(score, null, grade.date, null, text, maximum?.toDoubleOrNull() ?: grade.markMax?.toDouble().takeIf { index == 0 }, maximum, grade.uuid, comparisonType, viewModel, navigator, compact = true)
 			}
 		}
 	}

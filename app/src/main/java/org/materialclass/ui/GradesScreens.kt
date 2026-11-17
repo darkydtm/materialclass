@@ -189,7 +189,7 @@ internal fun gradeContentColor(value: String?, scoreType: String?, maximum: Doub
 }
 
 @Composable
-internal fun GradeTile(value: String?, scoreType: String?, date: String?, type: String?, text: (String) -> String, maximum: Double? = null, maximumLabel: String? = null, uuid: String? = null, comparisonType: String? = null, viewModel: SchoolViewModel? = null, navigator: AppNavigator? = null) {
+internal fun GradeTile(value: String?, scoreType: String?, date: String?, type: String?, text: (String) -> String, maximum: Double? = null, maximumLabel: String? = null, uuid: String? = null, comparisonType: String? = null, viewModel: SchoolViewModel? = null, navigator: AppNavigator? = null, compact: Boolean = false) {
 	val feedback = LocalClickFeedback.current
 	val openComparison = { if (!uuid.isNullOrBlank() && comparisonType != null && viewModel != null && navigator != null) { feedback(); viewModel.selectComparison(uuid, comparisonType); navigator.go(AppRoute.GradeComparison) } }
 	Column(
@@ -197,7 +197,7 @@ internal fun GradeTile(value: String?, scoreType: String?, date: String?, type: 
 		horizontalAlignment = Alignment.CenterHorizontally,
 		verticalArrangement = Arrangement.spacedBy(5.dp),
 	) {
-		Box(modifier = Modifier.height(18.dp), contentAlignment = Alignment.Center) {
+		if (!compact) Box(modifier = Modifier.height(18.dp), contentAlignment = Alignment.Center) {
 			if (!type.isNullOrBlank()) Text(type, style = MaterialTheme.typography.labelSmall, maxLines = 1)
 		}
 		Surface(shape = RoundedCornerShape(11.dp), color = gradeContainerColor(value, scoreType, maximum), contentColor = gradeContentColor(value, scoreType, maximum), modifier = Modifier.widthIn(min = 44.dp)) {
@@ -205,7 +205,7 @@ internal fun GradeTile(value: String?, scoreType: String?, date: String?, type: 
 				Text(assessmentWithMaximum(value, scoreType, maximumLabel, text("credit"), text("fail"), text("no_data")), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
 			}
 		}
-		if (!date.isNullOrBlank()) Text(date.substringBefore('T'), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+		if (!compact && !date.isNullOrBlank()) Text(date.substringBefore('T'), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 	}
 }
 
