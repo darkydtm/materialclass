@@ -32,6 +32,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.down
 import androidx.compose.ui.test.up
@@ -45,6 +46,18 @@ import java.util.concurrent.atomic.AtomicInteger
 class MaterialClassNavigationTest {
 	@get:Rule
 	val composeRule = createAndroidComposeRule<ComponentActivity>()
+
+	@Test
+	fun loginFormRemainsAccessibleInShortWindow() {
+		composeRule.setContent {
+			Box(Modifier.height(240.dp)) {
+				MaterialClassApp()
+			}
+		}
+		composeRule.onNodeWithTag("login-input").performScrollTo().assertIsDisplayed()
+		composeRule.onNodeWithTag("password-input").performScrollTo().assertIsDisplayed()
+		composeRule.onNodeWithTag("login-button").performScrollTo().assertIsDisplayed()
+	}
 
 	@Test
 	fun scheduleKeepsSelectedDayAcrossTabsWithRealScheduleDays() {
