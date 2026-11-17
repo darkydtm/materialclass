@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<!-- static fallback for Android < 12 (light) -->
+	<color name="ic_launcher_pc">#EADDFF</color>
+	<color name="ic_launcher_sc">#D6C9F0</color>
+	<color name="ic_launcher_tc">#FFB8D0</color>
+	<color name="ic_launcher_p">#6750A4</color>
+	<color name="ic_launcher_onpc">#21005D</color>
+</resources>

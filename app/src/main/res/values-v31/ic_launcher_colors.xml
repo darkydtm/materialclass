@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<!-- Material You (monet) roles, light -->
+	<color name="ic_launcher_pc">@android:color/system_accent1_100</color>
+	<color name="ic_launcher_sc">@android:color/system_accent2_100</color>
+	<color name="ic_launcher_tc">@android:color/system_accent3_100</color>
+	<color name="ic_launcher_p">@android:color/system_accent1_600</color>
+	<color name="ic_launcher_onpc">@android:color/system_accent1_900</color>
+</resources>
