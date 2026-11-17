@@ -10,7 +10,6 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import org.materialclass.data.AccountId
 
-/** Identify a key without exposing key material. */
 data class KeyHandle(val alias: String)
 
 interface KeyProvider {

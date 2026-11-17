@@ -30,6 +30,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import org.materialclass.api.AppError
 import org.materialclass.api.GatewayLoginResult
 import org.materialclass.api.LoginCredentials
+import org.materialclass.api.RequestCancellation
 import org.materialclass.data.SchoolRepository
 import org.materialclass.ui.theme.MaterialClassTheme
 
@@ -38,6 +39,7 @@ fun MaterialClassApp(
 	repository: SchoolRepository? = null,
 	preferences: AppPreferences? = null,
 	loginHandler: (LoginCredentials) -> GatewayLoginResult = { GatewayLoginResult.Failure(AppError.Network) },
+	cancellableLoginHandler: ((LoginCredentials, RequestCancellation) -> GatewayLoginResult)? = null,
 	startAuthenticated: Boolean = false,
 	onClickFeedback: () -> Unit = {},
 	onBackgroundSettingsChanged: () -> Unit = {},
@@ -60,7 +62,15 @@ fun MaterialClassApp(
 	var backgroundWork by remember(actualPreferences) { mutableStateOf(actualPreferences.backgroundWork()) }
 	var backgroundInterval by remember(actualPreferences) { mutableStateOf(actualPreferences.backgroundInterval()) }
 	val navigator = remember { AppNavigator(if (startAuthenticated) AppRoute.Home else AppRoute.Login) }
-	val viewModel = remember(repository, loginHandler) { SchoolViewModel(repository, loginHandler, actualPreferences.gradesPeriod(), { period -> onNotificationSettingsChange { actualPreferences.setGradesPeriod(period) } }) }
+	val viewModel = remember(repository, loginHandler, cancellableLoginHandler) {
+		SchoolViewModel(
+			repository = repository,
+			loginHandler = loginHandler,
+			initialGradesPeriod = actualPreferences.gradesPeriod(),
+			onGradesPeriod = { period -> onNotificationSettingsChange { actualPreferences.setGradesPeriod(period) } },
+			cancellableLoginHandler = cancellableLoginHandler,
+		)
+	}
 	var selectedSubject by rememberSaveable { mutableStateOf("") }
 	var selectedLesson by rememberSaveable { mutableStateOf("") }
 	var selectedScheduleDay by rememberSaveable { mutableIntStateOf(0) }
@@ -91,7 +101,6 @@ fun MaterialClassApp(
 	}
 	LaunchedEffect(viewModel.loginState) {
 		if (viewModel.loginState == LoginUiState.Confirmed) navigator.reset(AppRoute.Home)
-		if (viewModel.loginState == LoginUiState.ConnectionError) snackbarHostState.showSnackbar(text("login_connection_error"))
 	}
 
 	MaterialClassTheme(theme) {
@@ -100,7 +109,7 @@ fun MaterialClassApp(
 		val renderRoute: @Composable (AppRoute) -> Unit = { route ->
 			CompositionLocalProvider(LocalClickFeedback provides onClickFeedback) {
 				if (route in loginRoutes) {
-					LoginFlow(text, viewModel, loginRoute(viewModel.loginState)) { viewModel.resetLogin(); navigator.reset(AppRoute.Login) }
+					LoginFlow(text, viewModel)
 				} else {
 					AppScaffold(
 						navigator = navigator,

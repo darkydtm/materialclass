@@ -19,6 +19,7 @@ import org.materialclass.api.AppError
 import org.materialclass.api.GatewayLoginResult
 import org.materialclass.api.GatewayReadResult
 import org.materialclass.api.LoginCredentials
+import org.materialclass.api.RequestCancellation
 import org.materialclass.data.DataState
 import org.materialclass.data.DateRange
 import org.materialclass.data.DiaryModel
@@ -227,6 +228,7 @@ class SchoolViewModel(
 	private val loginHandler: (LoginCredentials) -> GatewayLoginResult = { GatewayLoginResult.Failure(AppError.Network) },
 	initialGradesPeriod: String = "1",
 	private val onGradesPeriod: (String) -> Unit = {},
+	private val cancellableLoginHandler: ((LoginCredentials, RequestCancellation) -> GatewayLoginResult)? = null,
 ) {
 	fun gradeComparison(uuid: String, type: String): org.materialclass.api.GatewayReadResult<org.materialclass.data.GradeComparison> =
 		repository?.gradeComparison(uuid, type) ?: org.materialclass.api.GatewayReadResult.Failure(AppError.LoginRequired)
@@ -239,6 +241,8 @@ class SchoolViewModel(
 
 	private val io = Executors.newCachedThreadPool()
 	private var loginRequest = 0L
+	private var loginCancellation: RequestCancellation? = null
+	private var loginTask: java.util.concurrent.Future<*>? = null
 	private var scheduleRequest = 0L
 	private var diaryRequest = 0L
 	private var scheduleRange: DateRange? = null
@@ -279,26 +283,50 @@ class SchoolViewModel(
 		}
 
 	fun login(login: String, password: String) {
-		if (login.isBlank() || password.isBlank()) {
-			loginState = LoginUiState.InvalidCredentials
-			return
-		}
+		if (login.isBlank() || password.isBlank() || loginState == LoginUiState.Loading) return
 		loginState = LoginUiState.Loading
 		val request = ++loginRequest
-		io.execute {
-			val next = when (val result = loginHandler(LoginCredentials(login, password))) {
-				is GatewayLoginResult.Success -> LoginUiState.Confirmed
-				is GatewayLoginResult.Failure -> when (result.error) {
-					AppError.InvalidCredentials -> LoginUiState.InvalidCredentials
-					AppError.Network, AppError.Offline, AppError.Timeout -> LoginUiState.ConnectionError
-					AppError.UnsupportedContract -> LoginUiState.Unsupported
-					else -> LoginUiState.ConnectionError
+		val cancellation = RequestCancellation()
+		loginCancellation = cancellation
+		loginTask = io.submit {
+			val next = try {
+				when (val result = cancellableLoginHandler?.invoke(LoginCredentials(login.trim(), password), cancellation)
+					?: loginHandler(LoginCredentials(login.trim(), password))) {
+					is GatewayLoginResult.Success -> LoginUiState.Confirmed
+					is GatewayLoginResult.Failure -> when (result.error) {
+						AppError.InvalidCredentials -> LoginUiState.InvalidCredentials
+						AppError.DisallowedRole, AppError.IdentityNotConfirmed, AppError.Forbidden -> LoginUiState.AccessDenied
+						AppError.UnsupportedContract -> LoginUiState.Unsupported
+						else -> LoginUiState.ConnectionError
+					}
 				}
+			} catch (_: java.util.concurrent.CancellationException) {
+				return@submit
+			} catch (_: InterruptedException) {
+				Thread.currentThread().interrupt()
+				return@submit
+			} catch (_: Exception) {
+				LoginUiState.ConnectionError
 			}
 			android.os.Handler(android.os.Looper.getMainLooper()).post {
-				if (request == loginRequest) loginState = next
+				if (request == loginRequest && !cancellation.isCancelled) {
+					loginCancellation = null
+					loginTask = null
+					loginState = next
+				}
 			}
+			Unit
 		}
+	}
+
+	fun cancelLogin() {
+		if (loginState != LoginUiState.Loading) return
+		loginRequest++
+		loginCancellation?.cancel()
+		loginCancellation = null
+		loginTask?.cancel(true)
+		loginTask = null
+		loginState = LoginUiState.Ready
 	}
 
 	@Volatile private var lastWeekOffset = 0
@@ -438,6 +466,7 @@ class SchoolViewModel(
 	}
 
 	fun logout() {
+		cancelLogin()
 		loginRequest++
 		scheduleRequest++
 		diaryRequest++
@@ -455,7 +484,8 @@ class SchoolViewModel(
 	}
 
 	fun resetLogin() {
-		loginState = LoginUiState.Ready
+		if (loginState == LoginUiState.Loading) cancelLogin()
+		else loginState = LoginUiState.Ready
 	}
 }
 
@@ -464,6 +494,7 @@ sealed interface LoginUiState {
 	data object Loading : LoginUiState
 	data object Confirmed : LoginUiState
 	data object InvalidCredentials : LoginUiState
+	data object AccessDenied : LoginUiState
 	data object ConnectionError : LoginUiState
 	data object Unsupported : LoginUiState
 }

@@ -24,7 +24,6 @@ import org.materialclass.data.ScheduleModel
 import org.materialclass.data.SubjectsModel
 import org.materialclass.data.SystemDataModel
 
-/** Map only fields observed in the confirmed responses. */
 object ContractMapper {
 	fun mapGradeComparison(body: String): GatewayReadResult<org.materialclass.data.GradeComparison> = try {
 		val root = JsonParser(body).parseObject()

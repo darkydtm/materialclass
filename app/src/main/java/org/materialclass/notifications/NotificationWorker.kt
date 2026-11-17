@@ -5,7 +5,6 @@ import org.materialclass.data.ActiveSession
 import org.materialclass.data.Generation
 import org.materialclass.data.SessionAccess
 
-/** Keep worker input independent from server models until notification sources are confirmed. */
 data class NotificationSession(
 	val activeSession: ActiveSession,
 	val tokenPresent: Boolean,
@@ -34,7 +33,6 @@ interface NotificationDataSource {
 	fun readHomework(session: NotificationSession): CategoryReadResult
 }
 
-/** Do not add transport calls until grades/homework contracts are confirmed. */
 object UnsupportedNotificationDataSource : NotificationDataSource {
 	override fun readNewGrades(session: NotificationSession): CategoryReadResult = CategoryReadResult.Unsupported
 

@@ -178,4 +178,10 @@
 	<string name="offline_title">Latest data</string>
 	<string name="offline_body">The latest saved version is shown.</string>
 	<string name="offline_hint">Try refreshing the data later.</string>
+	<string name="login_required">Enter your login</string>
+	<string name="login_required_password">Enter your password</string>
+	<string name="login_loading_short">Signing in…</string>
+	<string name="login_cancel">Cancel</string>
+	<string name="login_access_denied">A confirmed student account is required to sign in.</string>
+	<string name="login_unsupported">The server returned a response the app cannot process.</string>
 </resources>

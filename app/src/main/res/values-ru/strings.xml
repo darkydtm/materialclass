@@ -180,4 +180,10 @@
 	<string name="offline_title">Последние данные</string>
 	<string name="offline_body">Показана последняя сохранённая версия.</string>
 	<string name="offline_hint">Попробуйте обновить данные позже.</string>
+	<string name="login_required">Введите логин</string>
+	<string name="login_required_password">Введите пароль</string>
+	<string name="login_loading_short">Входим…</string>
+	<string name="login_cancel">Отменить</string>
+	<string name="login_access_denied">Для входа необходим подтверждённый ученический аккаунт.</string>
+	<string name="login_unsupported">Сервер вернул ответ, который приложение не может обработать.</string>
 </resources>

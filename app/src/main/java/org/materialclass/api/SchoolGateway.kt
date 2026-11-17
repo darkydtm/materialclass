@@ -15,7 +15,6 @@ import org.materialclass.data.ScheduleModel
 import org.materialclass.data.SubjectsModel
 import org.materialclass.data.SystemDataModel
 
-/** Keep the transport boundary small so production code cannot invent requests. */
 data class HttpRequestData(
 	val method: String,
 	val url: String,
@@ -44,6 +43,39 @@ sealed class TransportFailure : Exception() {
 
 fun interface HttpsTransport {
 	fun execute(request: HttpRequestData): HttpResponseData
+
+	fun execute(request: HttpRequestData, cancellation: RequestCancellation): HttpResponseData {
+		if (cancellation.isCancelled) throw java.util.concurrent.CancellationException("Request cancelled")
+		return execute(request)
+	}
+}
+
+class RequestCancellation {
+	@Volatile
+	var isCancelled: Boolean = false
+		private set
+	private val lock = Any()
+	private val callbacks = linkedSetOf<() -> Unit>()
+
+	fun cancel() {
+		val pending = synchronized(lock) {
+			if (isCancelled) return
+			isCancelled = true
+			callbacks.toList().also { callbacks.clear() }
+		}
+		pending.forEach { callback -> runCatching(callback) }
+	}
+
+	fun invokeOnCancel(callback: () -> Unit): AutoCloseable {
+		val invokeImmediately = synchronized(lock) {
+			if (isCancelled) true else {
+				callbacks += callback
+				false
+			}
+		}
+		if (invokeImmediately) runCatching(callback)
+		return AutoCloseable { synchronized(lock) { callbacks.remove(callback) } }
+	}
 }
 
 class SchoolGateway(
@@ -51,7 +83,7 @@ class SchoolGateway(
 	private val log: (String) -> Unit = {},
 	private val deviceId: String = java.util.UUID.randomUUID().toString(),
 ) {
-	fun login(credentials: LoginCredentials): GatewayLoginResult {
+	fun login(credentials: LoginCredentials, cancellation: RequestCancellation = RequestCancellation()): GatewayLoginResult {
 		if (credentials.login.isBlank() || credentials.password.isBlank()) {
 			return GatewayLoginResult.Failure(AppError.InvalidCredentials)
 		}
@@ -71,7 +103,8 @@ class SchoolGateway(
 		)
 		log("login request POST $LOGIN_URL")
 		return try {
-			val response = transport.execute(request)
+			val response = transport.execute(request, cancellation)
+			if (cancellation.isCancelled) throw java.util.concurrent.CancellationException("Login cancelled")
 			when {
 				response.status == 401 -> GatewayLoginResult.Failure(AppError.InvalidCredentials)
 				response.status == 403 -> GatewayLoginResult.Failure(AppError.DisallowedRole)
@@ -79,6 +112,11 @@ class SchoolGateway(
 				!response.contentType.lowercase().startsWith("application/json") -> GatewayLoginResult.Failure(AppError.InvalidResponse)
 				else -> ContractMapper.mapLoginResponse(response.body)
 			}
+		} catch (cancelled: java.util.concurrent.CancellationException) {
+			throw cancelled
+		} catch (interrupted: InterruptedException) {
+			Thread.currentThread().interrupt()
+			throw interrupted
 		} catch (_: TransportFailure.Timeout) {
 			GatewayLoginResult.Failure(AppError.Timeout)
 		} catch (_: TransportFailure.Offline) {
@@ -389,9 +427,15 @@ class SchoolGateway(
 }
 
 class UrlConnectionTransport : HttpsTransport {
-	override fun execute(request: HttpRequestData): HttpResponseData {
+	override fun execute(request: HttpRequestData): HttpResponseData =
+		execute(request, RequestCancellation())
+
+	override fun execute(request: HttpRequestData, cancellation: RequestCancellation): HttpResponseData {
+		if (cancellation.isCancelled) throw java.util.concurrent.CancellationException("Request cancelled")
 		val connection = java.net.URI(request.url).toURL().openConnection() as java.net.HttpURLConnection
+		val cancellationRegistration = cancellation.invokeOnCancel { connection.disconnect() }
 		try {
+			if (cancellation.isCancelled) throw java.util.concurrent.CancellationException("Request cancelled")
 			connection.requestMethod = request.method
 			connection.connectTimeout = TIMEOUT_MS
 			connection.readTimeout = TIMEOUT_MS
@@ -401,15 +445,14 @@ class UrlConnectionTransport : HttpsTransport {
 				connection.doOutput = true
 				connection.outputStream.use { it.write(request.body.toByteArray(Charsets.UTF_8)) }
 			}
-			val stream = if (connection.responseCode in 200..299) connection.inputStream else connection.errorStream
+			if (cancellation.isCancelled) throw java.util.concurrent.CancellationException("Request cancelled")
+			val status = connection.responseCode
+			val stream = if (status in 200..299) connection.inputStream else connection.errorStream
 			val rawBody = stream?.use { it.readBytes() } ?: byteArrayOf()
-			return HttpResponseData(
-				connection.responseCode,
-				connection.contentType.orEmpty(),
-				rawBody.toString(Charsets.UTF_8),
-				rawBody,
-			)
+			if (cancellation.isCancelled) throw java.util.concurrent.CancellationException("Request cancelled")
+			return HttpResponseData(status, connection.contentType.orEmpty(), rawBody.toString(Charsets.UTF_8), rawBody)
 		} finally {
+			cancellationRegistration.close()
 			connection.disconnect()
 		}
 	}

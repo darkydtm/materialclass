@@ -2,7 +2,6 @@ package org.materialclass.notifications
 
 import android.content.Context
 
-/** Store notification preferences without coupling them to account data. */
 data class NotificationPreferences(
 	val newGradeEnabled: Boolean = false,
 	val homeworkEnabled: Boolean = false,

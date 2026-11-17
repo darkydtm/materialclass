@@ -44,8 +44,10 @@ class MainActivity : ComponentActivity() {
 					if (settings.vibrationEnabled()) vibrateClick(settings.vibrationStrength())
 				},
 				repository = runtime.repository,
-				loginHandler = { credentials ->
-					runtime.gateway.loginForUi(credentials).also { if (it is GatewayLoginResult.Success) runtime.updateBackgroundSchedule() }
+				cancellableLoginHandler = { credentials, cancellation ->
+					runtime.gateway.loginForUi(credentials, cancellation).also {
+						if (it is GatewayLoginResult.Success) runtime.updateBackgroundSchedule()
+					}
 				},
 				onBackgroundSettingsChanged = runtime::updateBackgroundSchedule,
 				onNotificationSettingsChange = runtime::changeNotificationSettings,

@@ -178,4 +178,10 @@
 	<string name="offline_title">Соңғы деректер</string>
 	<string name="offline_body">Соңғы сақталған нұсқа көрсетілуде.</string>
 	<string name="offline_hint">Деректерді кейінірек жаңартып көріңіз.</string>
+	<string name="login_required">Логинді енгізіңіз</string>
+	<string name="login_required_password">Құпиясөзді енгізіңіз</string>
+	<string name="login_loading_short">Кіру…</string>
+	<string name="login_cancel">Болдырмау</string>
+	<string name="login_access_denied">Кіру үшін расталған оқушы аккаунты қажет.</string>
+	<string name="login_unsupported">Сервер қолданба өңдей алмайтын жауап қайтарды.</string>
 </resources>
